@@ -71,6 +71,8 @@ Spring Scheduler
 
 Spring AI (future)
 
+Python — NLP/ML sidecar service, stateless, called over REST from `corporate` (Phase 2) and `learning` (Phase 4); owns no data, all persistence stays in PostgreSQL via Java modules
+
 PostgreSQL
 
 Redis
