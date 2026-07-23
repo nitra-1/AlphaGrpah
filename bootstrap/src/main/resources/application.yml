@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: alphagraph
+  profiles:
+    default: local
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
