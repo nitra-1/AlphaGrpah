@@ -44,7 +44,8 @@ class PipelineTest {
         List<DomainRow> sink = new ArrayList<>();
         List<String[]> rawRows = List.of(new String[] {"NSE:BEML", "1500.5"}, new String[] {"NSE:ACE", "620.0"});
 
-        PipelineRunResult result = new Pipeline<>(definition(rawRows, sink)).run();
+        PipelineOutcome<RawRow> outcome = new Pipeline<>(definition(rawRows, sink)).run();
+        PipelineRunResult result = outcome.result();
 
         assertThat(result.status()).isEqualTo(PipelineStatus.SUCCESS);
         assertThat(result.rowsRead()).isEqualTo(2);
@@ -52,6 +53,9 @@ class PipelineTest {
         assertThat(result.rowsRejected()).isZero();
         assertThat(result.errors()).isEmpty();
         assertThat(sink).containsExactly(new DomainRow("NSE:BEML", 1500.5), new DomainRow("NSE:ACE", 620.0));
+        assertThat(outcome.parsedRecords()).containsExactly(
+            new RawRow("NSE:BEML", "1500.5"), new RawRow("NSE:ACE", "620.0")
+        );
     }
 
     @Test
@@ -62,7 +66,7 @@ class PipelineTest {
             new String[] {"NSE:INCOMPLETE"} // missing price
         );
 
-        PipelineRunResult result = new Pipeline<>(definition(rawRows, sink)).run();
+        PipelineRunResult result = new Pipeline<>(definition(rawRows, sink)).run().result();
 
         assertThat(result.status()).isEqualTo(PipelineStatus.PARTIAL);
         assertThat(result.rowsRead()).isEqualTo(2);
@@ -77,7 +81,7 @@ class PipelineTest {
         List<DomainRow> sink = new ArrayList<>();
         List<String[]> rawRows = List.<String[]>of(new String[] {"NSE:INCOMPLETE"});
 
-        PipelineRunResult result = new Pipeline<>(definition(rawRows, sink)).run();
+        PipelineRunResult result = new Pipeline<>(definition(rawRows, sink)).run().result();
 
         assertThat(result.status()).isEqualTo(PipelineStatus.FAILED);
         assertThat(result.rowsAccepted()).isZero();
@@ -96,11 +100,13 @@ class PipelineTest {
             r -> new DomainRow(r.symbol(), 0), d -> { }
         );
 
-        PipelineRunResult result = new Pipeline<>(definition).run();
+        PipelineOutcome<RawRow> outcome = new Pipeline<>(definition).run();
+        PipelineRunResult result = outcome.result();
 
         assertThat(result.status()).isEqualTo(PipelineStatus.FAILED);
         assertThat(result.rowsRead()).isZero();
         assertThat(result.errors()).containsExactly("upstream unavailable");
+        assertThat(outcome.parsedRecords()).isEmpty();
     }
 
     @Test

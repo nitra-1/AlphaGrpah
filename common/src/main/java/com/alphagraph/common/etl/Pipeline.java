@@ -18,7 +18,7 @@ public final class Pipeline<R, T, D> {
         this.definition = definition;
     }
 
-    public PipelineRunResult run() {
+    public PipelineOutcome<T> run() {
         Instant startedAt = Instant.now();
         String pipelineName = definition.sourceConfig().name();
 
@@ -27,9 +27,10 @@ public final class Pipeline<R, T, D> {
             R raw = definition.collector().fetch(definition.sourceConfig());
             parsed = definition.parser().parse(raw);
         } catch (RuntimeException e) {
-            return new PipelineRunResult(
+            PipelineRunResult failed = new PipelineRunResult(
                 pipelineName, startedAt, Instant.now(), PipelineStatus.FAILED, 0, 0, 0, List.of(String.valueOf(e.getMessage()))
             );
+            return new PipelineOutcome<>(List.of(), failed);
         }
 
         int rowsAccepted = 0;
@@ -54,9 +55,10 @@ public final class Pipeline<R, T, D> {
         }
 
         PipelineStatus status = statusFor(parsed.size(), rowsAccepted, rowsRejected);
-        return new PipelineRunResult(
+        PipelineRunResult result = new PipelineRunResult(
             pipelineName, startedAt, Instant.now(), status, parsed.size(), rowsAccepted, rowsRejected, errors
         );
+        return new PipelineOutcome<>(parsed, result);
     }
 
     private static PipelineStatus statusFor(int rowsRead, int rowsAccepted, int rowsRejected) {
