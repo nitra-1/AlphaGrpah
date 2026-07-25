@@ -12,8 +12,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 /**
  * Encodes the dependency rules from docs/001_System_Architecture.md §4 as executable checks,
  * so a violation is caught at build time instead of at review time. Phase 0 ships only
- * package-info.java in every module, so these rules pass vacuously today — they start
- * doing real work the moment Phase 1 adds classes.
+ * package-info.java in every module, so every rule below is allowed to match zero classes
+ * (ArchUnit fails the build on an empty match by default) — allowEmptyShould(true) can come
+ * off once Phase 1 adds real classes and these rules start doing real work.
  */
 class ModuleBoundaryArchTest {
 
@@ -35,6 +36,7 @@ class ModuleBoundaryArchTest {
                 "com.alphagraph.decision..", "com.alphagraph.learning..", "com.alphagraph.api..",
                 "com.alphagraph.scheduler.."
             )
+            .allowEmptyShould(true)
             .check(ALL_CLASSES);
     }
 
@@ -43,6 +45,7 @@ class ModuleBoundaryArchTest {
         for (String module : DOMAIN_MODULES) {
             noClasses().that().resideInAPackage("com.alphagraph." + module + "..")
                 .should().dependOnClassesThat().resideInAnyPackage(otherDomains(module))
+                .allowEmptyShould(true)
                 .check(ALL_CLASSES);
         }
     }
@@ -52,6 +55,7 @@ class ModuleBoundaryArchTest {
         noClasses().that().resideOutsideOfPackage("com.alphagraph.api..")
             .and().resideOutsideOfPackage("com.alphagraph.bootstrap..")
             .should().dependOnClassesThat().resideInAPackage("com.alphagraph.api..")
+            .allowEmptyShould(true)
             .check(ALL_CLASSES);
     }
 
@@ -60,6 +64,7 @@ class ModuleBoundaryArchTest {
         noClasses().that().resideOutsideOfPackage("com.alphagraph.scheduler..")
             .and().resideOutsideOfPackage("com.alphagraph.bootstrap..")
             .should().dependOnClassesThat().resideInAPackage("com.alphagraph.scheduler..")
+            .allowEmptyShould(true)
             .check(ALL_CLASSES);
     }
 
