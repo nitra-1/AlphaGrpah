@@ -3,6 +3,8 @@ spring:
     name: alphagraph
   profiles:
     default: local
+  flyway:
+    enabled: false # migrations run per-module via FlywayMultiSchemaConfig instead
 
 management:
   endpoints:
