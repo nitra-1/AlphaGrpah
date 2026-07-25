@@ -3,7 +3,8 @@ Module 0.2 status: DONE (tech stack below; Python NLP/ML sidecar added for corpo
 Module 0.3 status: DONE (15-module Gradle scaffold matching the module map below, ArchUnit module-boundary test in bootstrap, verified: ./gradlew build passes and the app boots)
 Module 0.4 status: DONE (Flyway migrations for common/reference/scheduler/api schemas per docs/003_Database_Architecture.md, verified against a real local Postgres 17 instance - schemas, tables, indexes, constraints, seed data, and the updated_at trigger all confirmed working)
 Module 0.5 status: DONE (Collector/Parser/Validator/Normalizer/Loader + Pipeline orchestrator + RequiredFieldsValidator in the common module, 5 passing unit tests covering success/partial/failure paths)
-Module 0.6 status: NOT STARTED (Data Quality Engine - next up)
+Module 0.6 status: DONE (DataQualityEngine in common.quality - DataQualitySpec/DataQualityInput/DataQualityScore + equal-weight placeholder formula, 8 passing unit tests, kept independent of both the ETL framework and any domain module - scheduler wires the two together in Module 0.8)
+Module 0.7 status: NOT STARTED (Rule Engine - next up)
 
 Local dev environment notes (for resuming without rediscovery):
 - Repo: https://github.com/nitra-1/AlphaGrpah (main branch)
