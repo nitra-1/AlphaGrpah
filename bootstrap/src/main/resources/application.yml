@@ -11,3 +11,7 @@ management:
     web:
       exposure:
         include: health
+
+alphagraph:
+  data-quality:
+    floor: 0.7 # batches scoring below this are quarantined - never reach Calculate/Score
