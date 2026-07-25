@@ -40,7 +40,7 @@ Owns nothing business-specific; provides shared enum-like reference tables used 
 | Table | Purpose |
 |---|---|
 | `rule_definitions` | `id`, `name`, `target_metric`, `version`, `active`, `created_at`. Unique on (`name`, `version`); at most one `active=true` row per `name`. |
-| `rule_conditions` | `id`, `rule_id` (FK), `operator`, `threshold`, `weight`. |
+| `rule_conditions` | `id`, `rule_id` (FK), `operator`, `threshold`, `upper_bound` (nullable; required and only meaningful when `operator = BETWEEN`, as the range's upper bound — `threshold` is the lower bound), `weight`. |
 | `data_quality_scores` | `id`, `pipeline_execution_id` (FK), `completeness`, `duplicate_rate`, `missing_field_rate`, `validation_error_rate`, `score`, `computed_at`. |
 
 ### `api`-support (auth, Phase 0 minimal)
