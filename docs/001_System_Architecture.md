@@ -44,7 +44,7 @@ All Phase 1+ modules exist as empty package skeletons from Phase 0 onward so the
 3. Domain modules (`market`, `financial`, `ownership`, `corporate`, `sector`, `technical`, `risk`) depend on `common` and `reference`, never on each other directly — cross-domain data flows through `intelligence`, not sideways.
 4. `intelligence`, `decision`, `learning` may depend on domain modules (read-only, via published interfaces/DTOs, never by reaching into another module's JPA repositories).
 5. `scheduler` depends on the ETL contracts in `common` (Collector/Parser/Validator/Normalizer/Loader interfaces — see [002_Engine_Architecture](002_Engine_Architecture.md)) and orchestrates concrete pipelines registered by domain modules. It does not contain domain logic.
-6. `api` may depend on any domain/intelligence module to assemble DTOs. No domain module may depend on `api`.
+6. `api` may depend on any domain/intelligence module to assemble DTOs, and on `scheduler` specifically for the admin recovery endpoint that triggers a pipeline run on demand (added in Module 0.9 — see [004_API_Architecture §6](004_API_Architecture.md)). No domain module may depend on `api`, and no module other than `api`/`bootstrap` may depend on `scheduler`.
 7. `web` never talks to the database or any module directly — HTTP calls to `api` only.
 8. Enforcement: package-private classes by default; a module's public surface is limited to a `<module>.api` sub-package (Java interfaces + DTOs) plus its Spring-registered beans. A build-time check (ArchUnit, added in Phase 0 CI) fails the build on illegal cross-module access.
 

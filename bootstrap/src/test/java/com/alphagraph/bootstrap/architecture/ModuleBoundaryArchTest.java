@@ -60,9 +60,14 @@ class ModuleBoundaryArchTest {
     }
 
     @Test
-    void schedulerIsAPureOrchestratorNothingDependsOnIt() {
+    void onlyApiAndBootstrapDependOnScheduler() {
+        // api depends on scheduler deliberately as of Module 0.9: the admin recovery endpoint
+        // (POST /pipeline-definitions/{id}/run, docs/004_API_Architecture.md §6) calls
+        // DailyPipelineScheduler directly. No domain/intelligence/decision/learning module
+        // should ever need to reach into scheduler.
         noClasses().that().resideOutsideOfPackage("com.alphagraph.scheduler..")
             .and().resideOutsideOfPackage("com.alphagraph.bootstrap..")
+            .and().resideOutsideOfPackage("com.alphagraph.api..")
             .should().dependOnClassesThat().resideInAPackage("com.alphagraph.scheduler..")
             .allowEmptyShould(true)
             .check(ALL_CLASSES);
