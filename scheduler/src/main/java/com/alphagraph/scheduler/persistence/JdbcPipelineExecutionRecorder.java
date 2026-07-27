@@ -38,11 +38,11 @@ public class JdbcPipelineExecutionRecorder implements PipelineExecutionRecorder 
     }
 
     @Override
-    public UUID startExecution(UUID pipelineId) {
+    public UUID startExecution(UUID pipelineId, String correlationId) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-            "INSERT INTO scheduler.pipeline_executions (id, pipeline_id, status) VALUES (?, ?, 'RUNNING')",
-            id, pipelineId
+            "INSERT INTO scheduler.pipeline_executions (id, pipeline_id, status, correlation_id) VALUES (?, ?, 'RUNNING', ?)",
+            id, pipelineId, correlationId
         );
         return id;
     }

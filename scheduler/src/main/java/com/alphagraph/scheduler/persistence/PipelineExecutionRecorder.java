@@ -15,7 +15,7 @@ public interface PipelineExecutionRecorder {
 
     UUID ensurePipelineDefinition(String name, String module, String cronExpression);
 
-    UUID startExecution(UUID pipelineId);
+    UUID startExecution(UUID pipelineId, String correlationId);
 
     void completeExecution(UUID executionId, PipelineRunResult result);
 

@@ -14,7 +14,9 @@ import com.alphagraph.common.quality.DataQualityScore;
 import com.alphagraph.common.quality.DataQualitySpec;
 import com.alphagraph.scheduler.notification.NotificationPort;
 import com.alphagraph.scheduler.persistence.PipelineExecutionRecorder;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +37,7 @@ class PipelineOrchestratorTest {
         UUID executionId = UUID.randomUUID();
         PipelineRunResult completedWith;
         DataQualityScore recordedScore;
+        String capturedCorrelationId;
         final Map<String, String> ensuredDefinitions = new HashMap<>();
 
         @Override
@@ -44,8 +47,9 @@ class PipelineOrchestratorTest {
         }
 
         @Override
-        public UUID startExecution(UUID pid) {
+        public UUID startExecution(UUID pid, String correlationId) {
             assertThat(pid).isEqualTo(pipelineId);
+            this.capturedCorrelationId = correlationId;
             return executionId;
         }
 
@@ -89,6 +93,32 @@ class PipelineOrchestratorTest {
             Set.of("symbol", "value"),
             Row::symbol
         );
+    }
+
+    @AfterEach
+    void clearMdc() {
+        MDC.clear();
+    }
+
+    @Test
+    void correlationIdIsReadFromMdcWhenPresent() {
+        FakeRecorder recorder = new FakeRecorder();
+        PipelineOrchestrator orchestrator = new PipelineOrchestrator(recorder, new DataQualityEngine(), new FakeNotificationPort(), 0.7);
+
+        MDC.put("requestId", "test-request-123");
+        orchestrator.run(definitionFor(List.<String[]>of(new String[] {"NSE:BEML", "1500.5"})), qualitySpec(), "0 0 18 * * *");
+
+        assertThat(recorder.capturedCorrelationId).isEqualTo("test-request-123");
+    }
+
+    @Test
+    void correlationIdIsNullWhenMdcHasNoRequestId() {
+        FakeRecorder recorder = new FakeRecorder();
+        PipelineOrchestrator orchestrator = new PipelineOrchestrator(recorder, new DataQualityEngine(), new FakeNotificationPort(), 0.7);
+
+        orchestrator.run(definitionFor(List.<String[]>of(new String[] {"NSE:BEML", "1500.5"})), qualitySpec(), "0 0 18 * * *");
+
+        assertThat(recorder.capturedCorrelationId).isNull();
     }
 
     @Test

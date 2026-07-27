@@ -10,12 +10,14 @@ import com.alphagraph.common.etl.SourceConfig;
 import com.alphagraph.common.etl.Validator;
 import com.alphagraph.common.quality.DataQualitySpec;
 import com.alphagraph.scheduler.orchestration.PipelineOrchestrator;
+import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * The 6 PM trigger from docs/002_Engine_Architecture.md §6. No manual execution: every pipeline
@@ -44,7 +46,15 @@ public class DailyPipelineScheduler {
 
     @Scheduled(cron = CRON_6PM_IST, zone = "Asia/Kolkata")
     public void runScheduledPipelines() {
-        runDummyPipeline();
+        // @Scheduled runs on a scheduler thread with no HTTP request behind it, so there's no
+        // X-Request-Id for api's CorrelationIdFilter to have set - generate one here so this
+        // run's log lines and pipeline_executions row are still traceable as one unit.
+        MDC.put("requestId", "cron-" + UUID.randomUUID());
+        try {
+            runDummyPipeline();
+        } finally {
+            MDC.remove("requestId");
+        }
     }
 
     public void runDummyPipeline() {

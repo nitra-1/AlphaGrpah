@@ -32,7 +32,7 @@ Owns nothing business-specific; provides shared enum-like reference tables used 
 | Table | Purpose |
 |---|---|
 | `pipeline_definitions` | Registered pipelines (name, module, cron expression, active flag). |
-| `pipeline_executions` | One row per run: `pipeline_id`, `started_at`, `finished_at`, `status` (`RUNNING`/`SUCCESS`/`FAILED`/`PARTIAL`), `rows_read`, `rows_accepted`, `rows_rejected`, `retry_count`. |
+| `pipeline_executions` | One row per run: `pipeline_id`, `started_at`, `finished_at`, `status` (`RUNNING`/`SUCCESS`/`FAILED`/`PARTIAL`), `rows_read`, `rows_accepted`, `rows_rejected`, `retry_count`, `correlation_id` (nullable — added Module 0.10; the `X-Request-Id` of the triggering API call, or a generated `cron-<uuid>` for scheduled runs). |
 | `pipeline_execution_errors` | One row per failure/rejected-row cause, FK to `pipeline_executions`, with a message and the offending source record reference. |
 
 ### `common`-owned engine tables (Rule Engine + Data Quality, per [002_Engine_Architecture](002_Engine_Architecture.md))

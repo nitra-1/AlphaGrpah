@@ -12,6 +12,7 @@ import com.alphagraph.common.quality.DataQualitySpec;
 import com.alphagraph.common.rules.RuleSet;
 import com.alphagraph.scheduler.notification.NotificationPort;
 import com.alphagraph.scheduler.persistence.PipelineExecutionRecorder;
+import org.slf4j.MDC;
 
 import java.util.List;
 import java.util.UUID;
@@ -21,6 +22,11 @@ import java.util.UUID;
  * (all three are {@link Pipeline#run()}) -> Data Quality Gate -> Calculate -> Score -> Notify.
  * This is the only place that constructs and runs a {@link Pipeline} — domain modules register
  * {@link PipelineDefinition}s, they never drive them, per docs/001_System_Architecture.md §4.
+ *
+ * Reads the "requestId" MDC key (set by api's CorrelationIdFilter for API-triggered runs, or by
+ * DailyPipelineScheduler itself for cron-triggered ones) so every execution row can be traced
+ * back to whatever triggered it, per docs/005_Deployment.md §5. Whoever calls run() is
+ * responsible for having that key set - the orchestrator only reads it.
  */
 public final class PipelineOrchestrator {
 
@@ -44,7 +50,7 @@ public final class PipelineOrchestrator {
         String module = definition.sourceConfig().module();
 
         UUID pipelineId = recorder.ensurePipelineDefinition(name, module, cronExpression);
-        UUID executionId = recorder.startExecution(pipelineId);
+        UUID executionId = recorder.startExecution(pipelineId, MDC.get("requestId"));
 
         PipelineOutcome<T> outcome = new Pipeline<>(definition).run();
         recorder.completeExecution(executionId, outcome.result());
