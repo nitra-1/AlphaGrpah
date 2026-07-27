@@ -2,6 +2,7 @@ package com.alphagraph.market.pricing;
 
 import com.alphagraph.common.etl.Collector;
 import com.alphagraph.common.etl.SourceConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
@@ -37,6 +38,7 @@ public class HttpBhavdataCollector implements Collector<List<String>> {
     private final String urlTemplate;
     private final Clock clock;
 
+    @Autowired
     public HttpBhavdataCollector(
         RestClient.Builder restClientBuilder,
         @Value("${alphagraph.market.nse-bhavdata-url-template:https://archives.nseindia.com/products/content/sec_bhavdata_full_%s.csv}")
