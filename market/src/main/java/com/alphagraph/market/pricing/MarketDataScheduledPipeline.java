@@ -1,5 +1,6 @@
 package com.alphagraph.market.pricing;
 
+import com.alphagraph.common.etl.Collector;
 import com.alphagraph.common.etl.PipelineDefinition;
 import com.alphagraph.common.etl.PipelineRunner;
 import com.alphagraph.common.etl.RequiredFieldsValidator;
@@ -15,19 +16,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-/** Module 1.1: registers the daily NSE OHLC/volume/delivery pipeline for the scheduler to discover. */
+/**
+ * Module 1.1: registers the daily NSE OHLC/volume/delivery pipeline for the scheduler to
+ * discover. Depends on the Collector interface, not a concrete implementation, so the bundled
+ * sample (BhavdataCollector, local/test) and the real HTTP fetch (HttpBhavdataCollector,
+ * docker/prod) can coexist — exactly one is active per Spring profile.
+ */
 @Component
 public class MarketDataScheduledPipeline implements ScheduledPipeline {
 
     private static final String CRON_6PM_IST = "0 0 18 * * *";
 
-    private final BhavdataCollector collector;
+    private final Collector<List<String>> collector;
     private final BhavdataParser parser;
     private final BhavdataNormalizer normalizer;
     private final DailyPriceLoader loader;
 
     public MarketDataScheduledPipeline(
-        BhavdataCollector collector, BhavdataParser parser, BhavdataNormalizer normalizer, DailyPriceLoader loader
+        Collector<List<String>> collector, BhavdataParser parser, BhavdataNormalizer normalizer, DailyPriceLoader loader
     ) {
         this.collector = collector;
         this.parser = parser;

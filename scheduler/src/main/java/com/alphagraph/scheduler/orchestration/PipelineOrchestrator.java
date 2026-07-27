@@ -57,6 +57,18 @@ public final class PipelineOrchestrator implements PipelineRunner {
         PipelineOutcome<T> outcome = new Pipeline<>(definition).run();
         recorder.completeExecution(executionId, outcome.result());
 
+        // rowsRead == 0 means Download/Process itself never produced a batch (e.g. the
+        // Collector's source returned a 404) - there's nothing to compute a data quality score
+        // over. This is deliberately narrower than "status == FAILED": a batch where every row
+        // was read but then rejected is also FAILED (see Pipeline's statusFor), but that case
+        // has real data to score and should still reach the quality gate below, which correctly
+        // reports it as quarantined rather than a bare collector failure.
+        if (outcome.result().rowsRead() == 0) {
+            String reason = outcome.result().errors().isEmpty() ? "no rows read" : outcome.result().errors().get(0);
+            notificationPort.notify(name, "FAILED - %s".formatted(reason));
+            return;
+        }
+
         DataQualityInput input = DataQualityInput.from(outcome.parsedRecords(), qualitySpec, outcome.result().rowsRejected());
         DataQualityScore qualityScore = dataQualityEngine.score(input);
         recorder.recordDataQualityScore(executionId, qualityScore);

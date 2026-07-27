@@ -152,4 +152,27 @@ class PipelineOrchestratorTest {
         assertThat(notifications.messages).hasSize(1);
         assertThat(notifications.messages.get(0)).startsWith("test-source: Quarantined");
     }
+
+    @Test
+    void collectorFailureShortCircuitsBeforeDataQualityScoringAndNeverSaysCompleted() {
+        FakeRecorder recorder = new FakeRecorder();
+        FakeNotificationPort notifications = new FakeNotificationPort();
+        PipelineOrchestrator orchestrator = new PipelineOrchestrator(recorder, new DataQualityEngine(), notifications, 0.7);
+
+        SourceConfig sourceConfig = new SourceConfig("broken-source", "scheduler");
+        Collector<List<String[]>> brokenCollector = config -> {
+            throw new IllegalStateException("upstream returned 404");
+        };
+        PipelineDefinition<List<String[]>, Row, Row> definition = new PipelineDefinition<>(
+            sourceConfig, brokenCollector, raw -> List.of(), r -> com.alphagraph.common.etl.ValidationResult.valid(),
+            r -> r, r -> { }
+        );
+
+        orchestrator.run(definition, qualitySpec(), "0 0 18 * * *");
+
+        assertThat(recorder.completedWith.status().name()).isEqualTo("FAILED");
+        assertThat(recorder.recordedScore).isNull();
+        assertThat(notifications.messages).hasSize(1);
+        assertThat(notifications.messages.get(0)).isEqualTo("broken-source: FAILED - upstream returned 404");
+    }
 }

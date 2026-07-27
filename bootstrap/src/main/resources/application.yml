@@ -20,3 +20,7 @@ alphagraph:
     # JWT_SECRET in docker/prod - see docs/005_Deployment.md §6 on rotation.
     jwt-secret: ${JWT_SECRET:local-dev-only-secret-do-not-use-in-production-32bytes}
     jwt-expiry-minutes: 60
+  market:
+    # Only used by HttpBhavdataCollector (docker/prod profiles). A URL path change on NSE's
+    # side is a config update here, not a redeploy - a format change still needs code changes.
+    nse-bhavdata-url-template: https://archives.nseindia.com/products/content/sec_bhavdata_full_%s.csv
