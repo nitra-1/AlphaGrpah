@@ -49,7 +49,15 @@ Owns nothing business-specific; provides shared enum-like reference tables used 
 |---|---|
 | `platform_users` | Internal/admin users only in Phase 0 (no renter/provider-style consumer accounts here — AlphaGraph has no such concept). `id`, `email`, `password_hash`, `role` (`ADMIN`, `SYSTEM`), `active`. |
 
-## 4. Schema Ownership Diagram
+## 3a. Phase 1 Tables
+
+### `market` schema (Module 1.1)
+
+| Table | Purpose |
+|---|---|
+| `daily_prices` | `id`, `instrument_id` (value reference to `reference.instruments`, no FK), `trade_date`, `open_price`, `high_price`, `low_price`, `close_price`, `volume`, `delivery_percentage` (nullable). Unique on (`instrument_id`, `trade_date`) — this is the Loader's upsert key. Market cap is deliberately not a column: none of NSE's daily bhavcopy/delivery reports carry it directly, and deriving it from the security master's issued-capital field needs units/semantics we weren't confident of when this table was designed (see Module 1.1 notes in `claude.md`) — add it via a migration once a real source exists. |
+
+
 
 ```mermaid
 erDiagram
