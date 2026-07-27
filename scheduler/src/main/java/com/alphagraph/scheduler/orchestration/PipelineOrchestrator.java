@@ -5,6 +5,7 @@ import com.alphagraph.common.engine.SimpleScore;
 import com.alphagraph.common.etl.Pipeline;
 import com.alphagraph.common.etl.PipelineDefinition;
 import com.alphagraph.common.etl.PipelineOutcome;
+import com.alphagraph.common.etl.PipelineRunner;
 import com.alphagraph.common.quality.DataQualityEngine;
 import com.alphagraph.common.quality.DataQualityInput;
 import com.alphagraph.common.quality.DataQualityScore;
@@ -28,7 +29,7 @@ import java.util.UUID;
  * back to whatever triggered it, per docs/005_Deployment.md §5. Whoever calls run() is
  * responsible for having that key set - the orchestrator only reads it.
  */
-public final class PipelineOrchestrator {
+public final class PipelineOrchestrator implements PipelineRunner {
 
     private final PipelineExecutionRecorder recorder;
     private final DataQualityEngine dataQualityEngine;
@@ -45,6 +46,7 @@ public final class PipelineOrchestrator {
         this.qualityFloor = qualityFloor;
     }
 
+    @Override
     public <R, T, D> void run(PipelineDefinition<R, T, D> definition, DataQualitySpec<T> qualitySpec, String cronExpression) {
         String name = definition.sourceConfig().name();
         String module = definition.sourceConfig().module();
