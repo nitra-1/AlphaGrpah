@@ -51,7 +51,7 @@ public class PipelineReadRepository {
         List<PipelineExecutionSummaryDto> content = jdbcTemplate.query(
             """
             SELECT e.id, d.name AS pipeline_name, e.status, e.started_at, e.finished_at,
-                   e.rows_read, e.rows_accepted, e.rows_rejected
+                   e.rows_read, e.rows_accepted, e.rows_rejected, e.correlation_id
             FROM scheduler.pipeline_executions e
             JOIN scheduler.pipeline_definitions d ON d.id = e.pipeline_id
             ORDER BY e.started_at DESC
@@ -60,7 +60,8 @@ public class PipelineReadRepository {
             (rs, rowNum) -> new PipelineExecutionSummaryDto(
                 (UUID) rs.getObject("id"), rs.getString("pipeline_name"), rs.getString("status"),
                 toInstant(rs.getTimestamp("started_at")), toInstant(rs.getTimestamp("finished_at")),
-                rs.getInt("rows_read"), rs.getInt("rows_accepted"), rs.getInt("rows_rejected")
+                rs.getInt("rows_read"), rs.getInt("rows_accepted"), rs.getInt("rows_rejected"),
+                rs.getString("correlation_id")
             ),
             size, page * size
         );
@@ -72,7 +73,7 @@ public class PipelineReadRepository {
         List<PipelineExecutionDetailDto> rows = jdbcTemplate.query(
             """
             SELECT e.id, d.name AS pipeline_name, e.status, e.started_at, e.finished_at,
-                   e.rows_read, e.rows_accepted, e.rows_rejected, e.retry_count
+                   e.rows_read, e.rows_accepted, e.rows_rejected, e.retry_count, e.correlation_id
             FROM scheduler.pipeline_executions e
             JOIN scheduler.pipeline_definitions d ON d.id = e.pipeline_id
             WHERE e.id = ?
@@ -81,7 +82,7 @@ public class PipelineReadRepository {
                 (UUID) rs.getObject("id"), rs.getString("pipeline_name"), rs.getString("status"),
                 toInstant(rs.getTimestamp("started_at")), toInstant(rs.getTimestamp("finished_at")),
                 rs.getInt("rows_read"), rs.getInt("rows_accepted"), rs.getInt("rows_rejected"),
-                rs.getInt("retry_count"), List.of(), null
+                rs.getInt("retry_count"), rs.getString("correlation_id"), List.of(), null
             ),
             id
         );
@@ -109,7 +110,8 @@ public class PipelineReadRepository {
         PipelineExecutionDetailDto base = rows.get(0);
         return Optional.of(new PipelineExecutionDetailDto(
             base.id(), base.pipelineName(), base.status(), base.startedAt(), base.finishedAt(),
-            base.rowsRead(), base.rowsAccepted(), base.rowsRejected(), base.retryCount(), errors, qualityScore
+            base.rowsRead(), base.rowsAccepted(), base.rowsRejected(), base.retryCount(), base.correlationId(),
+            errors, qualityScore
         ));
     }
 

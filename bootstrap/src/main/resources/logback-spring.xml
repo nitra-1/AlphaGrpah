@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Structured JSON logs to stdout, per docs/005_Deployment.md §5. LogstashEncoder includes every
+MDC key as a top-level JSON field automatically, so CorrelationIdFilter's "requestId" (and
+whatever else lands in MDC later) shows up without needing to list keys here.
+-->
+<configuration>
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </root>
+</configuration>

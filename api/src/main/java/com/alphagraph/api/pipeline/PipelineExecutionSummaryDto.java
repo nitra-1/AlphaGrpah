@@ -5,6 +5,6 @@ import java.util.UUID;
 
 public record PipelineExecutionSummaryDto(
     UUID id, String pipelineName, String status, Instant startedAt, Instant finishedAt,
-    int rowsRead, int rowsAccepted, int rowsRejected
+    int rowsRead, int rowsAccepted, int rowsRejected, String correlationId
 ) {
 }
