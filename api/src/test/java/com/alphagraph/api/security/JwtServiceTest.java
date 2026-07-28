@@ -27,8 +27,15 @@ class JwtServiceTest {
         JwtService service = new JwtService(SECRET, 60);
         String token = service.issueToken("admin@alphagraph.local", "ADMIN");
 
-        String tampered = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+        // Flip a character safely inside the payload segment (a few characters past the first
+        // '.'), not the last character of the whole token - a base64 segment's final character
+        // can have "don't care" trailing bits, so tampering only that one occasionally decodes
+        // to the same bytes as the original and the test flakes (seen in practice).
+        int position = token.indexOf('.') + 5;
+        char replacement = token.charAt(position) == 'A' ? 'B' : 'A';
+        String tampered = token.substring(0, position) + replacement + token.substring(position + 1);
 
+        assertThat(tampered).isNotEqualTo(token);
         assertThat(service.validate(tampered)).isEmpty();
     }
 

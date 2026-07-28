@@ -3,6 +3,7 @@ package com.alphagraph.market.pricing;
 import com.alphagraph.common.etl.Collector;
 import com.alphagraph.common.etl.SourceConfig;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
@@ -30,6 +31,7 @@ import java.util.List;
  */
 @Component
 @Profile({"docker", "prod"})
+@Qualifier("market")
 public class HttpBhavdataCollector implements Collector<List<String>> {
 
     private static final DateTimeFormatter URL_DATE_FORMAT = DateTimeFormatter.ofPattern("ddMMyyyy");

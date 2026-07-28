@@ -9,6 +9,7 @@ import com.alphagraph.common.etl.SourceConfig;
 import com.alphagraph.common.etl.Validator;
 import com.alphagraph.common.quality.DataQualitySpec;
 import com.alphagraph.market.api.DailyPrice;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -21,6 +22,11 @@ import java.util.function.Function;
  * discover. Depends on the Collector interface, not a concrete implementation, so the bundled
  * sample (BhavdataCollector, local/test) and the real HTTP fetch (HttpBhavdataCollector,
  * docker/prod) can coexist — exactly one is active per Spring profile.
+ *
+ * The @Qualifier("market") is load-bearing, not decorative: without it, any other module's
+ * Collector<List<String>> bean (e.g. ownership's ShareholdingCollector) is an equally valid
+ * candidate for this exact generic type as far as Spring's concerned, and the app fails to
+ * start with NoUniqueBeanDefinitionException.
  */
 @Component
 public class MarketDataScheduledPipeline implements ScheduledPipeline {
@@ -33,7 +39,8 @@ public class MarketDataScheduledPipeline implements ScheduledPipeline {
     private final DailyPriceLoader loader;
 
     public MarketDataScheduledPipeline(
-        Collector<List<String>> collector, BhavdataParser parser, BhavdataNormalizer normalizer, DailyPriceLoader loader
+        @Qualifier("market") Collector<List<String>> collector,
+        BhavdataParser parser, BhavdataNormalizer normalizer, DailyPriceLoader loader
     ) {
         this.collector = collector;
         this.parser = parser;
