@@ -8,4 +8,6 @@ dependencies {
     implementation(project(":sector"))
     implementation(project(":technical"))
     implementation(project(":risk"))
+    implementation("org.springframework:spring-context")
+    implementation("org.slf4j:slf4j-api")
 }
