@@ -12,12 +12,19 @@ import java.util.UUID;
  * interest income for them instead, see the loader javadoc), ROCE isn't a standard disclosure for
  * banks, and EPS/cash-flow-from-operations aren't always broken out at the individual-quarter
  * level in every summary source.
+ *
+ * The balance sheet fields ({@code totalAssets} through {@code ebit}, added in Module 1.6 for the
+ * Fundamental Engine's Efficiency/Leverage metrics) are deliberately left null for banks in the
+ * bundled sample - see the loader javadoc for why "current assets/liabilities" and "debt" don't
+ * map onto a bank's balance sheet without a sector-aware model that doesn't exist yet.
  */
 public record FinancialResult(
     UUID instrumentId, String symbol, LocalDate periodEnd, String periodType,
     BigDecimal sales, BigDecimal pat, BigDecimal eps,
     BigDecimal roePercentage, BigDecimal rocePercentage,
     BigDecimal operatingMarginPercentage, BigDecimal netMarginPercentage,
-    BigDecimal cashFlowFromOperations
+    BigDecimal cashFlowFromOperations,
+    BigDecimal totalAssets, BigDecimal currentAssets, BigDecimal currentLiabilities,
+    BigDecimal totalDebt, BigDecimal totalEquity, BigDecimal interestExpense, BigDecimal ebit
 ) {
 }

@@ -32,18 +32,25 @@ public class FinancialResultsLoader implements Loader<FinancialResult> {
             """
             INSERT INTO financial.financial_results
                 (id, instrument_id, period_end, period_type, sales, pat, eps, roe_percentage,
-                 roce_percentage, operating_margin_percentage, net_margin_percentage, cash_flow_from_operations)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 roce_percentage, operating_margin_percentage, net_margin_percentage, cash_flow_from_operations,
+                 total_assets, current_assets, current_liabilities, total_debt, total_equity, interest_expense, ebit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (instrument_id, period_end, period_type) DO UPDATE SET
                 sales = EXCLUDED.sales, pat = EXCLUDED.pat, eps = EXCLUDED.eps,
                 roe_percentage = EXCLUDED.roe_percentage, roce_percentage = EXCLUDED.roce_percentage,
                 operating_margin_percentage = EXCLUDED.operating_margin_percentage,
                 net_margin_percentage = EXCLUDED.net_margin_percentage,
-                cash_flow_from_operations = EXCLUDED.cash_flow_from_operations
+                cash_flow_from_operations = EXCLUDED.cash_flow_from_operations,
+                total_assets = EXCLUDED.total_assets, current_assets = EXCLUDED.current_assets,
+                current_liabilities = EXCLUDED.current_liabilities, total_debt = EXCLUDED.total_debt,
+                total_equity = EXCLUDED.total_equity, interest_expense = EXCLUDED.interest_expense,
+                ebit = EXCLUDED.ebit
             """,
             UUID.randomUUID(), result.instrumentId(), result.periodEnd(), result.periodType(),
             result.sales(), result.pat(), result.eps(), result.roePercentage(), result.rocePercentage(),
-            result.operatingMarginPercentage(), result.netMarginPercentage(), result.cashFlowFromOperations()
+            result.operatingMarginPercentage(), result.netMarginPercentage(), result.cashFlowFromOperations(),
+            result.totalAssets(), result.currentAssets(), result.currentLiabilities(), result.totalDebt(),
+            result.totalEquity(), result.interestExpense(), result.ebit()
         );
     }
 }

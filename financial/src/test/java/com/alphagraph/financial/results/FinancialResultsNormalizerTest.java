@@ -24,7 +24,8 @@ class FinancialResultsNormalizerTest {
 
         RawFinancialResultRow raw = new RawFinancialResultRow(
             "TCS", "2025-03-31", "QUARTERLY", "64479.00", "12224.00", "33.79",
-            "51.50", "69.80", "24.20", "19.00", null
+            "51.50", "69.80", "24.20", "19.00", null,
+            "159629.00", "123000.00", "53001.00", "0.00", "94756.00", null, "15601.00"
         );
 
         FinancialResult result = normalizer.normalize(raw);
@@ -38,6 +39,10 @@ class FinancialResultsNormalizerTest {
         assertThat(result.eps()).isEqualByComparingTo("33.79");
         assertThat(result.roePercentage()).isEqualByComparingTo("51.50");
         assertThat(result.cashFlowFromOperations()).isNull();
+        assertThat(result.totalAssets()).isEqualByComparingTo("159629.00");
+        assertThat(result.totalDebt()).isEqualByComparingTo("0.00");
+        assertThat(result.ebit()).isEqualByComparingTo("15601.00");
+        assertThat(result.interestExpense()).isNull();
     }
 
     @Test
@@ -45,7 +50,8 @@ class FinancialResultsNormalizerTest {
         when(instrumentLookup.findIdBySymbol("ZOMATO")).thenReturn(Optional.empty());
 
         RawFinancialResultRow raw = new RawFinancialResultRow(
-            "ZOMATO", "2025-03-31", "QUARTERLY", "5000.00", "200.00", null, null, null, null, null, null
+            "ZOMATO", "2025-03-31", "QUARTERLY", "5000.00", "200.00", null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         assertThatIllegalStateException()
@@ -58,7 +64,8 @@ class FinancialResultsNormalizerTest {
         when(instrumentLookup.findIdBySymbol("ESCORTS")).thenReturn(Optional.of(UUID.randomUUID()));
 
         RawFinancialResultRow raw = new RawFinancialResultRow(
-            "ESCORTS", "2025-03-31", "QUARTERLY", "2445.00", "297.50", null, null, null, null, null, null
+            "ESCORTS", "2025-03-31", "QUARTERLY", "2445.00", "297.50", null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         FinancialResult result = normalizer.normalize(raw);
@@ -69,5 +76,7 @@ class FinancialResultsNormalizerTest {
         assertThat(result.operatingMarginPercentage()).isNull();
         assertThat(result.netMarginPercentage()).isNull();
         assertThat(result.cashFlowFromOperations()).isNull();
+        assertThat(result.totalAssets()).isNull();
+        assertThat(result.totalEquity()).isNull();
     }
 }

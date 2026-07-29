@@ -17,7 +17,9 @@ import java.util.function.Function;
 
 /**
  * Module 1.3: registers the financial results (fundamentals) pipeline for the scheduler to
- * discover.
+ * discover. Module 1.6 (Fundamental Engine) extended the sample with a second real period per
+ * company (Q4 FY24, for YoY growth) and real balance sheet figures for the current period
+ * (Efficiency/Leverage metrics) - see the CSV and financial.api.FinancialResult for details.
  *
  * Sample data sourcing note: RELIANCE/TCS/INFY/HDFCBANK/ICICIBANK Q4 FY25 figures were looked up
  * from public quarterly-results reporting at the time this was written (sales, PAT, EPS where
@@ -25,8 +27,15 @@ import java.util.function.Function;
  * derived from PAT/sales rather than separately reported). ESCORTS' sales/PAT are from its real
  * Q4 FY25 result; its other fields weren't confidently isolated at the single-quarter level and
  * are left null rather than guessed. BEML/ACE figures are representative estimates from general
- * knowledge, not independently verified. All of it is a stand-in for a real automated source (see
- * the package-info for why one doesn't cleanly exist yet).
+ * knowledge, not independently verified. Q4 FY24 (Module 1.6) and balance sheet figures (Module
+ * 1.6) follow the same standard: real sourced values or null, never guessed - notably, TCS's Q4
+ * FY24 EPS was dropped despite an initial search hit, because it exactly matched Q4 FY25's EPS in
+ * a way that looked like a citation mix-up rather than a genuine (if plausible, given TCS's
+ * periodic buybacks) coincidence - left null rather than risk asserting a wrong number.
+ * HDFCBANK/ICICIBANK have no balance sheet figures at all: a bank's balance sheet doesn't map
+ * onto "current assets/liabilities" or conventional "debt" without a sector-aware model that
+ * doesn't exist yet. All of it is a stand-in for a real automated source (see the package-info for
+ * why one doesn't cleanly exist yet).
  *
  * Depends on the concrete FinancialResultsCollector, not the Collector interface - unlike market
  * (which needs interface-based swapping between the bundled sample and the real HTTP fetch),
@@ -84,6 +93,13 @@ public class FinancialResultsScheduledPipeline implements ScheduledPipeline {
         expectedFields.put("operatingMarginPct", RawFinancialResultRow::operatingMarginPct);
         expectedFields.put("netMarginPct", RawFinancialResultRow::netMarginPct);
         expectedFields.put("cashFlowFromOps", RawFinancialResultRow::cashFlowFromOps);
+        expectedFields.put("totalAssets", RawFinancialResultRow::totalAssets);
+        expectedFields.put("currentAssets", RawFinancialResultRow::currentAssets);
+        expectedFields.put("currentLiabilities", RawFinancialResultRow::currentLiabilities);
+        expectedFields.put("totalDebt", RawFinancialResultRow::totalDebt);
+        expectedFields.put("totalEquity", RawFinancialResultRow::totalEquity);
+        expectedFields.put("interestExpense", RawFinancialResultRow::interestExpense);
+        expectedFields.put("ebit", RawFinancialResultRow::ebit);
         DataQualitySpec<RawFinancialResultRow> qualitySpec = new DataQualitySpec<>(
             expectedFields, requiredFields.keySet(), RawFinancialResultRow::symbol
         );

@@ -32,7 +32,11 @@ public class FinancialResultsNormalizer implements Normalizer<RawFinancialResult
             new BigDecimal(raw.sales()), new BigDecimal(raw.pat()), toBigDecimalOrNull(raw.eps()),
             toBigDecimalOrNull(raw.roePct()), toBigDecimalOrNull(raw.rocePct()),
             toBigDecimalOrNull(raw.operatingMarginPct()), toBigDecimalOrNull(raw.netMarginPct()),
-            toBigDecimalOrNull(raw.cashFlowFromOps())
+            toBigDecimalOrNull(raw.cashFlowFromOps()),
+            toBigDecimalOrNull(raw.totalAssets()), toBigDecimalOrNull(raw.currentAssets()),
+            toBigDecimalOrNull(raw.currentLiabilities()), toBigDecimalOrNull(raw.totalDebt()),
+            toBigDecimalOrNull(raw.totalEquity()), toBigDecimalOrNull(raw.interestExpense()),
+            toBigDecimalOrNull(raw.ebit())
         );
     }
 
