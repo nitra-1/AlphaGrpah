@@ -1,0 +1,8 @@
+# Module 2.1: Document Pipeline sidecar - stateless NLP/ML service called over REST from the
+# corporate module (docs/001_System_Architecture.md Sec.5). Owns no data of its own.
+fastapi==0.141.1
+uvicorn[standard]==0.52.0
+python-multipart==0.0.32
+pdfplumber==0.11.10
+sentence-transformers==5.6.1
+spacy==3.8.14

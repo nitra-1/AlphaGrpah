@@ -1,5 +1,10 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5433/alphagraph
+    # Port 5434, not Postgres' default 5432/5433 - this is a standalone instance (data dir
+    # D:\pgdata) started independently via pg_ctl, deliberately kept separate from this machine's
+    # shared postgresql-x64-17 Windows service (which other local projects depend on and must
+    # never be reconfigured for this project's sake). Start it with:
+    #   pg_ctl -D D:\pgdata -o "-p 5434" -l D:\pgdata\startup.log start
+    url: jdbc:postgresql://localhost:5434/alphagraph
     username: alphagraph_app
     password: ${DB_PASSWORD:alphagraph_local_dev}

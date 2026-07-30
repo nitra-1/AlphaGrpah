@@ -14,5 +14,11 @@ out/
 node_modules/
 dist/
 
+# nlp-sidecar (Python)
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
 .DS_Store
 Thumbs.db

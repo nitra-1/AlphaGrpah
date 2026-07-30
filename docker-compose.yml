@@ -1,5 +1,9 @@
 services:
   postgres:
+    # Module 2.1's document_chunks.embedding is a plain real[], not pgvector's vector type -
+    # pgvector isn't available on this project's real local Postgres install, so the schema
+    # doesn't depend on it anywhere yet. Switch this to pgvector/pgvector:pg16 (a drop-in
+    # postgres:16 image with the extension precompiled) if/when the embedding column migrates.
     image: postgres:16
     environment:
       POSTGRES_DB: alphagraph
@@ -19,6 +23,11 @@ services:
     image: redis:7
     ports:
       - "6379:6379"
+
+  nlp-sidecar:
+    build: ./nlp-sidecar
+    ports:
+      - "8000:8000"
 
 volumes:
   postgres-data:

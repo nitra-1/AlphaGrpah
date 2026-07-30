@@ -24,3 +24,7 @@ alphagraph:
     # Only used by HttpBhavdataCollector (docker/prod profiles). A URL path change on NSE's
     # side is a config update here, not a redeploy - a format change still needs code changes.
     nse-bhavdata-url-template: https://archives.nseindia.com/products/content/sec_bhavdata_full_%s.csv
+  nlp-sidecar:
+    # Module 2.1: the Python NLP sidecar (nlp-sidecar/). localhost:8000 for local dev (run
+    # uvicorn directly); docker-compose's service name resolves this in docker/prod profiles.
+    base-url: ${NLP_SIDECAR_URL:http://localhost:8000}
