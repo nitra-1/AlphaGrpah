@@ -9,14 +9,16 @@ import java.util.UUID;
 
 /**
  * Persists one {@link ExtractedEvent} as a {@code corporate.corporate_events} row. No upsert key
- * here (unlike {@code DocumentChunkWriter}'s (document_id, chunk_index)) - a document is only ever
- * extracted once per {@link EventExtractionOrchestrator}'s PROCESSED -> EVENTS_EXTRACTED status
- * transition, so idempotency comes from that status guard, not a unique constraint on this table.
+ * here - a document is only ever classified once per {@link EventExtractionOrchestrator}'s
+ * checkpoint guard ({@code document_consumer_checkpoints}), not a document-status transition
+ * anymore (see {@link KnowledgeDocumentReader}).
  *
  * {@code raw_response} is cast via {@code ::jsonb} in the SQL text itself rather than bound with
  * {@code java.sql.Types.OTHER} or a driver-specific {@code PGobject} - this module deliberately
  * has no compile-time dependency on {@code org.postgresql:postgresql} (see the V2 migration's
- * pgvector note), so the text-to-jsonb cast has to happen in SQL, not in JDBC binding code.
+ * pgvector note), so the text-to-jsonb cast has to happen in SQL, not in JDBC binding code. The
+ * column still stores {@link ExtractedEvent#provenance()} (which topic/fact triggered the match)
+ * rather than a raw LLM response, now that this engine is rule-based.
  */
 @Component
 class CorporateEventWriter {
@@ -27,7 +29,7 @@ class CorporateEventWriter {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    void write(UUID documentId, UUID instrumentId, String symbol, ExtractedEvent event, int promptVersion, Instant extractedAt) {
+    void write(UUID documentId, UUID instrumentId, String symbol, ExtractedEvent event, int ruleVersion, Instant extractedAt) {
         jdbcTemplate.update(
             """
             INSERT INTO corporate.corporate_events (
@@ -39,7 +41,7 @@ class CorporateEventWriter {
             UUID.randomUUID(), documentId, instrumentId, symbol,
             event.eventType().name(), event.category(), event.summary(),
             event.confidence(), event.expectedDuration(), event.revenueImpact().name(), event.signal().name(),
-            promptVersion, event.rawResponse(), Timestamp.from(extractedAt)
+            ruleVersion, event.provenance(), Timestamp.from(extractedAt)
         );
     }
 }

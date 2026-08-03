@@ -7,10 +7,12 @@ import com.alphagraph.corporate.api.RevenueImpact;
 /**
  * One event as classified by {@link CorporateEventEngine}, before it has a document/instrument
  * identity or a persisted id - {@link CorporateEventWriter} attaches those at persistence time.
- * {@code rawResponse} carries the engine's full JSON response verbatim, for auditability.
+ * {@code provenance} is a small JSON descriptor of which canonical topic/fact triggered this
+ * classification, for auditability - it replaces the pre-retrofit raw Claude response, since this
+ * engine no longer calls Claude itself.
  */
 record ExtractedEvent(
-    EventType eventType, String category, String summary, int confidence,
-    String expectedDuration, RevenueImpact revenueImpact, EventSignal signal, String rawResponse
+    EventType eventType, String category, String summary, double confidence,
+    String expectedDuration, RevenueImpact revenueImpact, EventSignal signal, String provenance
 ) {
 }
