@@ -147,9 +147,12 @@ public class DocumentIntelligenceEngine {
               win, order execution update, order cancellation, or order completion. Use
               "MANAGEMENT" if the document contains forward-looking management commentary such as
               revenue/margin guidance, demand outlook, pricing, competition, capex plans, or risk
-              commentary. If neither applies, or another kind of specialized processing seems
-              relevant, suggest a short descriptive uppercase identifier of your own, or return an
-              empty list if nothing specialized applies.
+              commentary. Use "NEWS" if this is a general news item, government notification, or
+              policy announcement (not a company's own filing) that names or materially affects
+              one or more companies - e.g. a sector policy change, a government scheme, an
+              industry-wide development. If none applies, or another kind of specialized
+              processing seems relevant, suggest a short descriptive uppercase identifier of your
+              own, or return an empty list if nothing specialized applies.
 
             Document text:
             %s
