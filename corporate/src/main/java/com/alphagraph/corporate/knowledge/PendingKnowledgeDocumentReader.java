@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 /** One document ready for canonical knowledge extraction - the input to {@link DocumentIntelligenceEngine}. */
-record PendingKnowledgeDocument(UUID id, String symbol, String extractedText) {
+record PendingKnowledgeDocument(UUID id, UUID instrumentId, String symbol, String extractedText) {
 }
 
 /** Reads documents that have finished Module 2.1's text/chunk/embed pipeline but not yet had canonical knowledge extracted. */
@@ -22,9 +22,9 @@ class PendingKnowledgeDocumentReader {
 
     List<PendingKnowledgeDocument> findProcessed() {
         return jdbcTemplate.query(
-            "SELECT id, symbol, extracted_text FROM corporate.documents WHERE status = 'PROCESSED'",
+            "SELECT id, instrument_id, symbol, extracted_text FROM corporate.documents WHERE status = 'PROCESSED'",
             (rs, rowNum) -> new PendingKnowledgeDocument(
-                (UUID) rs.getObject("id"), rs.getString("symbol"), rs.getString("extracted_text")
+                (UUID) rs.getObject("id"), (UUID) rs.getObject("instrument_id"), rs.getString("symbol"), rs.getString("extracted_text")
             )
         );
     }

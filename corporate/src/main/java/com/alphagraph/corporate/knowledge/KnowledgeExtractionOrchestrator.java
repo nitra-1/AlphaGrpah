@@ -8,12 +8,14 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Runs {@link DocumentIntelligenceEngine} over every document {@link PendingKnowledgeDocumentReader}
- * finds in PROCESSED status, persists the canonical facts/topics/summary via
- * {@link CanonicalKnowledgeWriter}, then advances the document to KNOWLEDGE_EXTRACTED - the last
- * shared pipeline stage. From here, every downstream rule engine (Corporate Event Engine, Order
- * Book Engine, ...) reads this document independently, tracking its own progress via
- * {@code corporate.document_consumer_checkpoints} rather than any further document-status change.
+ * Runs the full three-stage pipeline over every document {@link PendingKnowledgeDocumentReader}
+ * finds in PROCESSED status: Stage 1 ({@link DocumentIntelligenceEngine}) classifies the document;
+ * {@link DocumentRouter} dispatches to whichever Stage 2 {@link DocumentExtractor}s apply and
+ * collects their facts; {@link CanonicalKnowledgeWriter} persists both. The document then advances
+ * to KNOWLEDGE_EXTRACTED - the last shared pipeline stage. From here, every downstream rule engine
+ * (Corporate Event Engine, Order Book Engine, ...) reads this document independently, tracking its
+ * own progress via {@code corporate.document_consumer_checkpoints} rather than any further
+ * document-status change.
  */
 @Component
 public class KnowledgeExtractionOrchestrator {
@@ -21,16 +23,18 @@ public class KnowledgeExtractionOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeExtractionOrchestrator.class);
 
     private final PendingKnowledgeDocumentReader documentReader;
-    private final DocumentIntelligenceEngine engine;
+    private final DocumentIntelligenceEngine classificationEngine;
+    private final DocumentRouter router;
     private final CanonicalKnowledgeWriter writer;
     private final JdbcTemplate jdbcTemplate;
 
     public KnowledgeExtractionOrchestrator(
-        PendingKnowledgeDocumentReader documentReader, DocumentIntelligenceEngine engine,
-        CanonicalKnowledgeWriter writer, JdbcTemplate jdbcTemplate
+        PendingKnowledgeDocumentReader documentReader, DocumentIntelligenceEngine classificationEngine,
+        DocumentRouter router, CanonicalKnowledgeWriter writer, JdbcTemplate jdbcTemplate
     ) {
         this.documentReader = documentReader;
-        this.engine = engine;
+        this.classificationEngine = classificationEngine;
+        this.router = router;
         this.writer = writer;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -55,8 +59,14 @@ public class KnowledgeExtractionOrchestrator {
     }
 
     private void extractOne(PendingKnowledgeDocument document) {
-        CanonicalExtraction extraction = engine.extract(document.extractedText());
-        writer.write(document.id(), extraction);
+        DocumentClassification classification = classificationEngine.classify(document.extractedText());
+        writer.writeClassification(document.id(), classification);
+
+        DocumentContext context = new DocumentContext(
+            document.id(), document.instrumentId(), document.symbol(), document.extractedText(), classification
+        );
+        List<ExtractedFact> facts = router.route(context);
+        writer.writeFacts(document.id(), facts);
 
         jdbcTemplate.update(
             "UPDATE corporate.documents SET status = 'KNOWLEDGE_EXTRACTED' WHERE id = ?", document.id()

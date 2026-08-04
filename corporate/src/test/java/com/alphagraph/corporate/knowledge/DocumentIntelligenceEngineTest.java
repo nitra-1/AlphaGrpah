@@ -11,88 +11,83 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
 
 /**
- * Tests the parsing/normalization logic that turns Claude's canonical structured-output JSON into
- * a {@link CanonicalExtraction}, plus prompt/schema construction. Does not exercise
- * {@link DocumentIntelligenceEngine#extract(String)}'s live Claude call - that is covered by this
- * module's live end-to-end verification, matching every other engine's split between
- * unit-testable pure logic and a separate real-service verification step.
+ * Tests Stage 1's parsing/normalization logic - turning Claude's classification JSON into a
+ * {@link DocumentClassification}, plus prompt/schema construction. Stage 1 no longer extracts
+ * business facts (that's Stage 2's job - see {@link OrderExtractorTest}), so there's no facts
+ * field to test here anymore. Does not exercise the live Claude call - covered by this module's
+ * live end-to-end verification.
  */
 class DocumentIntelligenceEngineTest {
 
     private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(mock(AnthropicClient.class), new ObjectMapper());
 
     @Test
-    void parsesFullExtractionFromValidJson() {
+    void parsesFullClassificationFromValidJson() {
         String json = """
             {
               "documentType": "ORDER_ANNOUNCEMENT",
+              "topics": ["Large Order", "Government Contract", "Defence"],
+              "entities": ["BEL", "Ministry of Defence"],
+              "summary": "BEL received a Rs 2,800 Cr defence order.",
               "sentiment": "POSITIVE",
               "confidence": 92,
-              "summary": "BEL received a Rs 2,800 Cr defence order.",
-              "topics": ["Large Order", "Government Contract", "Defence"],
-              "facts": [
-                {"key": "customer", "value": "Ministry of Defence", "unit": ""},
-                {"key": "Order Value", "value": "2800", "unit": "CRORE"}
-              ]
+              "recommendedExtractors": ["ORDER"]
             }
             """;
 
-        CanonicalExtraction extraction = engine.parseExtraction(json);
+        DocumentClassification classification = engine.parseClassification(json);
 
-        assertThat(extraction.documentType()).isEqualTo("ORDER_ANNOUNCEMENT");
-        assertThat(extraction.sentiment()).isEqualTo(Sentiment.POSITIVE);
-        assertThat(extraction.confidence()).isEqualTo(92);
-        assertThat(extraction.summary()).isEqualTo("BEL received a Rs 2,800 Cr defence order.");
-        assertThat(extraction.topics()).containsExactly("Large Order", "Government Contract", "Defence");
-        assertThat(extraction.facts()).hasSize(2);
-        assertThat(extraction.facts().get(0).factType()).isEqualTo("customer");
-        // "Order Value" normalizes to "ordervalue" so downstream lookups survive key-naming variance.
-        assertThat(extraction.facts().get(1).factType()).isEqualTo("ordervalue");
-        assertThat(extraction.facts().get(1).unit()).isEqualTo("CRORE");
-        assertThat(extraction.rawResponse()).isEqualTo(json);
+        assertThat(classification.documentType()).isEqualTo("ORDER_ANNOUNCEMENT");
+        assertThat(classification.topics()).containsExactly("Large Order", "Government Contract", "Defence");
+        assertThat(classification.entities()).containsExactly("BEL", "Ministry of Defence");
+        assertThat(classification.summary()).isEqualTo("BEL received a Rs 2,800 Cr defence order.");
+        assertThat(classification.sentiment()).isEqualTo(Sentiment.POSITIVE);
+        assertThat(classification.confidence()).isEqualTo(92);
+        assertThat(classification.recommendedExtractors()).containsExactly("ORDER");
     }
 
     @Test
-    void emptyFactsAndTopicsAreValid() {
+    void emptyTopicsEntitiesAndExtractorsAreValid() {
         String json = """
-            {"documentType": "GENERAL_UPDATE", "sentiment": "NEUTRAL", "confidence": 60,
-             "summary": "Routine filing.", "topics": [], "facts": []}
+            {"documentType": "GENERAL_UPDATE", "topics": [], "entities": [], "summary": "Routine filing.",
+             "sentiment": "NEUTRAL", "confidence": 60, "recommendedExtractors": []}
             """;
 
-        CanonicalExtraction extraction = engine.parseExtraction(json);
+        DocumentClassification classification = engine.parseClassification(json);
 
-        assertThat(extraction.topics()).isEmpty();
-        assertThat(extraction.facts()).isEmpty();
+        assertThat(classification.topics()).isEmpty();
+        assertThat(classification.entities()).isEmpty();
+        assertThat(classification.recommendedExtractors()).isEmpty();
     }
 
     @Test
     void malformedJsonThrowsIllegalStateException() {
         assertThatIllegalStateException()
-            .isThrownBy(() -> engine.parseExtraction("not valid json"))
+            .isThrownBy(() -> engine.parseClassification("not valid json"))
             .withMessageContaining("Could not parse");
     }
 
     @Test
     void sentimentOutsideDeclaredEnumThrowsIllegalStateException() {
         String json = """
-            {"documentType": "x", "sentiment": "MIXED", "confidence": 50,
-             "summary": "x", "topics": [], "facts": []}
+            {"documentType": "x", "topics": [], "entities": [], "summary": "x",
+             "sentiment": "MIXED", "confidence": 50, "recommendedExtractors": []}
             """;
 
         assertThatIllegalStateException()
-            .isThrownBy(() -> engine.parseExtraction(json))
+            .isThrownBy(() -> engine.parseClassification(json))
             .withMessageContaining("outside the declared schema enum");
     }
 
     @Test
     void outOfRangeConfidenceThrowsIllegalStateException() {
         String json = """
-            {"documentType": "x", "sentiment": "NEUTRAL", "confidence": 150,
-             "summary": "x", "topics": [], "facts": []}
+            {"documentType": "x", "topics": [], "entities": [], "summary": "x",
+             "sentiment": "NEUTRAL", "confidence": 150, "recommendedExtractors": []}
             """;
 
         assertThatIllegalStateException()
-            .isThrownBy(() -> engine.parseExtraction(json))
+            .isThrownBy(() -> engine.parseClassification(json))
             .withMessageContaining("out-of-range confidence");
     }
 
@@ -104,14 +99,14 @@ class DocumentIntelligenceEngineTest {
     }
 
     @Test
-    void promptIncludesDocumentTextAndOrderFactVocabulary() {
+    void promptIncludesDocumentTextAndRoutingVocabularyButNoFactExtraction() {
         String prompt = DocumentIntelligenceEngine.buildPrompt("BEL received a Rs 2,800 Cr order.");
 
         assertThat(prompt)
-            .contains("customer", "orderValue", "businessUnit", "executionStart", "executionEnd")
-            .contains("orderLifecycleStage", "NEW_ORDER", "TENDER_WIN", "CANCELLATION", "COMPLETION")
+            .contains("recommendedExtractors", "ORDER", "MANAGEMENT")
             .contains("Large Order", "Government Contract", "Promoter Selling")
-            .contains("BEL received a Rs 2,800 Cr order.");
+            .contains("BEL received a Rs 2,800 Cr order.")
+            .contains("do NOT extract specific figures");
     }
 
     @Test
