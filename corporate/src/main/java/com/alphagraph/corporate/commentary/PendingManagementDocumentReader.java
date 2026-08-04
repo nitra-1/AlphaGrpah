@@ -1,32 +1,33 @@
-package com.alphagraph.corporate.orderbook;
+package com.alphagraph.corporate.commentary;
 
 import com.alphagraph.corporate.api.DocumentFact;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** One document ready for order-fact parsing, with its canonical facts already loaded. */
-record PendingOrderDocument(UUID id, UUID instrumentId, String symbol, List<DocumentFact> facts) {
+/** One document ready for management-observation parsing, with its canonical facts and announcement time already loaded. */
+record PendingManagementDocument(UUID id, UUID instrumentId, String symbol, Instant announcedAt, List<DocumentFact> facts) {
 }
 
 /**
- * Reads documents in KNOWLEDGE_EXTRACTED status without an {@link OrderBookLedgerReader#CONSUMER}
+ * Reads documents in KNOWLEDGE_EXTRACTED status without a {@link ManagementObservationReader#CONSUMER}
  * checkpoint yet - the same checkpoint-based idempotency pattern as
- * {@code corporate.events.KnowledgeDocumentReader}, since both engines independently consume the
- * same shared canonical output.
+ * {@code corporate.orderbook.PendingOrderDocumentReader}, since this engine independently consumes
+ * the same shared canonical output.
  */
 @Component
-class PendingOrderDocumentReader {
+class PendingManagementDocumentReader {
 
     private final JdbcTemplate jdbcTemplate;
 
-    PendingOrderDocumentReader(JdbcTemplate jdbcTemplate) {
+    PendingManagementDocumentReader(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    List<PendingOrderDocument> findUnprocessed() {
+    List<PendingManagementDocument> findUnprocessed() {
         List<UUID> documentIds = jdbcTemplate.query(
             """
             SELECT d.id
@@ -38,19 +39,19 @@ class PendingOrderDocumentReader {
               )
             """,
             (rs, rowNum) -> (UUID) rs.getObject("id"),
-            OrderBookLedgerReader.CONSUMER
+            ManagementObservationReader.CONSUMER
         );
 
         return documentIds.stream().map(this::loadDocument).toList();
     }
 
-    private PendingOrderDocument loadDocument(UUID documentId) {
+    private PendingManagementDocument loadDocument(UUID documentId) {
         var docRow = jdbcTemplate.queryForMap(
-            "SELECT instrument_id, symbol FROM corporate.documents WHERE id = ?", documentId
+            "SELECT instrument_id, symbol, announced_at FROM corporate.documents WHERE id = ?", documentId
         );
 
         List<DocumentFact> facts = jdbcTemplate.query(
-            "SELECT id, fact_type, fact_value, unit, confidence, created_at, commitment_level, fact_group FROM corporate.document_facts WHERE document_id = ?",
+            "SELECT id, fact_type, fact_value, unit, confidence, created_at, commitment_level, fact_group FROM corporate.document_facts WHERE document_id = ? AND fact_group IS NOT NULL",
             (rs, rowNum) -> new DocumentFact(
                 (UUID) rs.getObject("id"), documentId, rs.getString("fact_type"), rs.getString("fact_value"),
                 rs.getString("unit"), rs.getDouble("confidence"), rs.getTimestamp("created_at").toInstant(),
@@ -59,6 +60,9 @@ class PendingOrderDocumentReader {
             documentId
         );
 
-        return new PendingOrderDocument(documentId, (UUID) docRow.get("instrument_id"), (String) docRow.get("symbol"), facts);
+        return new PendingManagementDocument(
+            documentId, (UUID) docRow.get("instrument_id"), (String) docRow.get("symbol"),
+            ((java.sql.Timestamp) docRow.get("announced_at")).toInstant(), facts
+        );
     }
 }

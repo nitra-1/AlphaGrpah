@@ -45,8 +45,8 @@ class CanonicalKnowledgeWriter {
     void writeFacts(UUID documentId, List<ExtractedFact> facts) {
         for (ExtractedFact fact : facts) {
             jdbcTemplate.update(
-                "INSERT INTO corporate.document_facts (id, document_id, fact_type, fact_value, unit, confidence, commitment_level) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                UUID.randomUUID(), documentId, fact.factType(), fact.value(), fact.unit(), fact.extractionConfidence(), fact.commitmentLevel()
+                "INSERT INTO corporate.document_facts (id, document_id, fact_type, fact_value, unit, confidence, commitment_level, fact_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID(), documentId, fact.factType(), fact.value(), fact.unit(), fact.extractionConfidence(), fact.commitmentLevel(), fact.factGroup()
             );
         }
     }

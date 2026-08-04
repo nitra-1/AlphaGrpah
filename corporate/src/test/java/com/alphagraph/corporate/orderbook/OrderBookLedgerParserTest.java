@@ -82,6 +82,6 @@ class OrderBookLedgerParserTest {
     }
 
     private DocumentFact fact(String type, String value, String unit) {
-        return new DocumentFact(UUID.randomUUID(), documentId, type, value, unit, 90.0, Instant.now());
+        return new DocumentFact(UUID.randomUUID(), documentId, type, value, unit, 90.0, Instant.now(), null, null);
     }
 }
