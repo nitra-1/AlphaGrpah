@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.knowledge;
 
+import com.alphagraph.corporate.relationships.RelationshipBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,11 +12,13 @@ import java.util.List;
  * Runs the full three-stage pipeline over every document {@link PendingKnowledgeDocumentReader}
  * finds in PROCESSED status: Stage 1 ({@link DocumentIntelligenceEngine}) classifies the document;
  * {@link DocumentRouter} dispatches to whichever Stage 2 {@link DocumentExtractor}s apply and
- * collects their facts; {@link CanonicalKnowledgeWriter} persists both. The document then advances
- * to KNOWLEDGE_EXTRACTED - the last shared pipeline stage. From here, every downstream rule engine
- * (Corporate Event Engine, Order Book Engine, ...) reads this document independently, tracking its
- * own progress via {@code corporate.document_consumer_checkpoints} rather than any further
- * document-status change.
+ * collects their facts; {@link CanonicalKnowledgeWriter} persists both. {@link RelationshipBuilder}
+ * (Module 2.7) then runs synchronously over the same facts, resolving any entity/relationship
+ * tags they carry into {@code knowledge.relationship} edges - the graph's only writer, right after
+ * the facts it reads become durable. The document then advances to KNOWLEDGE_EXTRACTED - the last
+ * shared pipeline stage. From here, every downstream rule engine (Corporate Event Engine, Order
+ * Book Engine, ...) reads this document independently, tracking its own progress via
+ * {@code corporate.document_consumer_checkpoints} rather than any further document-status change.
  */
 @Component
 public class KnowledgeExtractionOrchestrator {
@@ -26,16 +29,19 @@ public class KnowledgeExtractionOrchestrator {
     private final DocumentIntelligenceEngine classificationEngine;
     private final DocumentRouter router;
     private final CanonicalKnowledgeWriter writer;
+    private final RelationshipBuilder relationshipBuilder;
     private final JdbcTemplate jdbcTemplate;
 
     public KnowledgeExtractionOrchestrator(
         PendingKnowledgeDocumentReader documentReader, DocumentIntelligenceEngine classificationEngine,
-        DocumentRouter router, CanonicalKnowledgeWriter writer, JdbcTemplate jdbcTemplate
+        DocumentRouter router, CanonicalKnowledgeWriter writer, RelationshipBuilder relationshipBuilder,
+        JdbcTemplate jdbcTemplate
     ) {
         this.documentReader = documentReader;
         this.classificationEngine = classificationEngine;
         this.router = router;
         this.writer = writer;
+        this.relationshipBuilder = relationshipBuilder;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -55,6 +61,8 @@ public class KnowledgeExtractionOrchestrator {
             }
         }
 
+        relationshipBuilder.expandCompetitorGroups();
+
         log.info("Knowledge extraction: {} documents processed, {} failed (of {})", succeeded, failed, pending.size());
     }
 
@@ -67,6 +75,7 @@ public class KnowledgeExtractionOrchestrator {
         );
         List<ExtractedFact> facts = router.route(context);
         writer.writeFacts(document.id(), facts);
+        relationshipBuilder.build(document.id(), document.symbol(), facts);
 
         jdbcTemplate.update(
             "UPDATE corporate.documents SET status = 'KNOWLEDGE_EXTRACTED' WHERE id = ?", document.id()

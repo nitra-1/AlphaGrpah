@@ -72,6 +72,41 @@ class NewsExtractorTest {
     }
 
     @Test
+    void parsesRelatedEntityAndRelationshipType() {
+        String json = """
+            {"impacts": [
+              {"companyName": "Kaynes Technology", "direction": "POSITIVE", "signal": "PLI Beneficiary",
+               "impactSummary": "Direct beneficiary of the new semiconductor PLI scheme.", "confidence": 90,
+               "relatedEntityName": "Semiconductor PLI", "relatedEntityType": "GOVERNMENT_SCHEME", "relationshipType": "BENEFICIARY_OF"}
+            ]}
+            """;
+
+        ExtractionResult result = extractor.parseResult(json);
+
+        Map<String, ExtractedFact> byType = result.facts().stream()
+            .collect(java.util.stream.Collectors.toMap(ExtractedFact::factType, f -> f));
+        assertThat(byType.get("relatedentityname").value()).isEqualTo("Semiconductor PLI");
+        assertThat(byType.get("relatedentitytype").value()).isEqualTo("GOVERNMENT_SCHEME");
+        assertThat(byType.get("relationshiptype").value()).isEqualTo("BENEFICIARY_OF");
+    }
+
+    @Test
+    void emptyRelatedEntityFieldsProduceNoRelatedEntityFacts() {
+        String json = """
+            {"impacts": [
+              {"companyName": "Kaynes Technology", "direction": "POSITIVE", "signal": "PLI Beneficiary",
+               "impactSummary": "Direct beneficiary of the new semiconductor PLI scheme.", "confidence": 90,
+               "relatedEntityName": "", "relatedEntityType": "", "relationshipType": ""}
+            ]}
+            """;
+
+        ExtractionResult result = extractor.parseResult(json);
+
+        assertThat(result.facts()).extracting(ExtractedFact::factType)
+            .doesNotContain("relatedentityname", "relatedentitytype", "relationshiptype");
+    }
+
+    @Test
     void impactMissingCompanyNameIsSkipped() {
         String json = """
             {"impacts": [
@@ -102,6 +137,7 @@ class NewsExtractorTest {
 
         assertThat(prompt)
             .contains("companyName", "direction", "signal", "impactSummary")
+            .contains("relatedEntityName", "relatedEntityType", "relationshipType", "BENEFICIARY_OF")
             .contains("Government announces new Semiconductor PLI scheme.");
     }
 

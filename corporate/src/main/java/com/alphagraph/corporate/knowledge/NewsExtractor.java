@@ -32,6 +32,15 @@ import java.util.UUID;
  * {@code corporate.news.NewsInstrumentMatcher}'s job, a separate, deterministic step. Keeping
  * extraction and universe-matching apart means this extractor's output stays valid even if the
  * tracked universe changes later - no re-extraction needed.
+ *
+ * <p>Module 2.7: also identifies, per impact, which OTHER entity a company's relationship runs
+ * through - a government scheme it benefits from, a theme it belongs to, a competitor, a
+ * customer - and the relationship type connecting them (a controlled vocabulary, matching
+ * {@code corporate.api.RelationshipType}). This is optional and independent of the tracked-
+ * universe question above: {@code corporate.relationships.RelationshipBuilder} resolves BOTH the
+ * company and the related entity through {@code corporate.relationships.EntityResolver} against
+ * the full graph (not just tracked instruments), so an untracked company like Kaynes still gets a
+ * real BENEFICIARY_OF edge even though it never gets a {@code document_instrument_links} row.
  */
 @Component
 class NewsExtractor implements DocumentExtractor {
@@ -108,6 +117,13 @@ class NewsExtractor implements DocumentExtractor {
             ));
             addIfPresent(facts, "signal", impact.signal(), confidence, group);
             addIfPresent(facts, "impactSummary", impact.impactSummary(), confidence, group);
+            // Module 2.7: which graph entity this impact relates to and how - e.g. companyName
+            // "Kaynes" BENEFICIARY_OF relatedEntityName "Semiconductor PLI" (relatedEntityType
+            // GOVERNMENT_SCHEME). All three are optional together - not every impact resolves to
+            // a clean graph edge (plain sentiment with no identifiable scheme/theme/customer).
+            addIfPresent(facts, "relatedEntityName", impact.relatedEntityName(), confidence, group);
+            addIfPresent(facts, "relatedEntityType", impact.relatedEntityType(), confidence, group);
+            addIfPresent(facts, "relationshipType", impact.relationshipType(), confidence, group);
         }
 
         return new ExtractionResult(facts);
@@ -146,6 +162,26 @@ class NewsExtractor implements DocumentExtractor {
             - confidence: 0-100, your confidence in this company being genuinely, materially
               affected (not just tangentially mentioned)
 
+            If the news names or implies a specific OTHER entity that explains WHY this company is
+            affected - a government scheme, a broader industry theme, a customer, a competitor -
+            also extract:
+            - relatedEntityName: that other entity's name, e.g. "Semiconductor PLI", "EMS",
+              "Ministry of Defence" - empty if there's no clean, specific entity to name (a vague
+              "market conditions" is not a specific entity)
+            - relatedEntityType: exactly one of CUSTOMER, THEME, GOVERNMENT_SCHEME, COMPETITOR -
+              empty if relatedEntityName is empty
+            - relationshipType: exactly one of CUSTOMER_OF, SUPPLIER_OF, COMPETES_WITH,
+              SUBSIDIARY_OF, PART_OF_THEME, BENEFICIARY_OF, AFFECTED_BY, EXPORTS_TO,
+              USES_COMMODITY, PARTNER_OF, EXECUTES_FOR, OPERATES_IN - whichever best describes how
+              the company relates to relatedEntityName (e.g. a company benefiting from a
+              government scheme is BENEFICIARY_OF that scheme; a company entering a new industry
+              theme is PART_OF_THEME) - empty if relatedEntityName is empty
+
+            Example: "The government announced a new Semiconductor PLI scheme. Kaynes Technology
+            welcomed the scheme." -> companyName "Kaynes Technology", relatedEntityName
+            "Semiconductor PLI", relatedEntityType GOVERNMENT_SCHEME, relationshipType
+            BENEFICIARY_OF.
+
             If the news doesn't materially affect any identifiable company, return an empty
             impacts list. Do not invent companies that aren't named or clearly implied by the
             text, and do not include a company that's only mentioned in passing with no real
@@ -157,17 +193,29 @@ class NewsExtractor implements DocumentExtractor {
     }
 
     static OutputConfig buildOutputConfig() {
-        Map<String, Object> impactSchema = Map.of(
-            "type", "object",
-            "properties", Map.of(
-                "companyName", Map.of("type", "string"),
-                "direction", Map.of("type", "string", "enum", List.of("POSITIVE", "NEGATIVE", "NEUTRAL")),
-                "signal", Map.of("type", "string"),
-                "impactSummary", Map.of("type", "string"),
-                "confidence", Map.of("type", "integer", "description", "0-100 confidence in this extraction.")
-            ),
-            "required", List.of("companyName", "direction", "signal", "impactSummary", "confidence"),
-            "additionalProperties", false
+        Map<String, Object> impactSchema = Map.ofEntries(
+            Map.entry("type", "object"),
+            Map.entry("properties", Map.ofEntries(
+                Map.entry("companyName", Map.of("type", "string")),
+                Map.entry("direction", Map.of("type", "string", "enum", List.of("POSITIVE", "NEGATIVE", "NEUTRAL"))),
+                Map.entry("signal", Map.of("type", "string")),
+                Map.entry("impactSummary", Map.of("type", "string")),
+                Map.entry("confidence", Map.of("type", "integer", "description", "0-100 confidence in this extraction.")),
+                Map.entry("relatedEntityName", Map.of("type", "string", "description", "Empty string if there's no specific related entity.")),
+                Map.entry("relatedEntityType", Map.of("type", "string", "enum", List.of(
+                    "", "CUSTOMER", "THEME", "GOVERNMENT_SCHEME", "COMPETITOR"
+                ))),
+                Map.entry("relationshipType", Map.of("type", "string", "enum", List.of(
+                    "", "CUSTOMER_OF", "SUPPLIER_OF", "COMPETES_WITH", "SUBSIDIARY_OF", "PART_OF_THEME",
+                    "BENEFICIARY_OF", "AFFECTED_BY", "EXPORTS_TO", "USES_COMMODITY", "PARTNER_OF",
+                    "EXECUTES_FOR", "OPERATES_IN"
+                )))
+            )),
+            Map.entry("required", List.of(
+                "companyName", "direction", "signal", "impactSummary", "confidence",
+                "relatedEntityName", "relatedEntityType", "relationshipType"
+            )),
+            Map.entry("additionalProperties", false)
         );
         Map<String, Object> impactsArraySchema = Map.of("type", "array", "items", impactSchema);
         Map<String, Object> rootProperties = Map.of("impacts", impactsArraySchema);

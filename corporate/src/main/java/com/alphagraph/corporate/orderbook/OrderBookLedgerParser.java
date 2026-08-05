@@ -1,11 +1,13 @@
 package com.alphagraph.corporate.orderbook;
 
 import com.alphagraph.corporate.api.DocumentFact;
+import com.alphagraph.corporate.api.EntityType;
 import com.alphagraph.corporate.api.OrderBookEntry;
 import com.alphagraph.corporate.api.OrderLifecycleStage;
 import com.alphagraph.corporate.api.OrderRecurrence;
 import com.alphagraph.corporate.api.OrderScope;
 import com.alphagraph.corporate.api.OrderSector;
+import com.alphagraph.corporate.relationships.EntityResolver;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -21,9 +23,21 @@ import java.util.stream.Collectors;
  * {@code corporate.knowledge.DocumentIntelligenceEngine}'s prompt asks for; anything else (a
  * financial result, a management commentary document, ...) simply produces no ledger row, the same
  * "zero is a valid outcome" precedent as {@code corporate.corporate_events}.
+ *
+ * <p>Module 2.7 retrofit: the {@code customer} fact's free text is resolved through
+ * {@link EntityResolver} into a {@code customerEntityId} rather than stored directly - the same
+ * text ("Ministry of Defence") always resolves to the same entity regardless of how a later
+ * document happens to phrase it, which is what makes {@code OrderBookSignalDetector}'s
+ * REPEAT_CUSTOMER signal exact instead of a string-similarity guess.
  */
 @Component
 class OrderBookLedgerParser {
+
+    private final EntityResolver entityResolver;
+
+    OrderBookLedgerParser(EntityResolver entityResolver) {
+        this.entityResolver = entityResolver;
+    }
 
     Optional<OrderBookEntry> parse(UUID documentId, UUID instrumentId, String symbol, java.util.List<DocumentFact> facts) {
         Map<String, DocumentFact> byType = facts.stream()
@@ -42,6 +56,7 @@ class OrderBookLedgerParser {
         }
 
         String customer = valueOf(byType, "customer");
+        UUID customerEntityId = customer == null || customer.isBlank() ? null : entityResolver.resolve(EntityType.CUSTOMER, customer);
         Double orderValueCrore = parseOrderValueCrore(byType.get("ordervalue"));
         String businessUnit = valueOf(byType, "businessunit");
         String executionStart = valueOf(byType, "executionstart");
@@ -52,7 +67,7 @@ class OrderBookLedgerParser {
 
         return Optional.of(new OrderBookEntry(
             UUID.randomUUID(), documentId, instrumentId, symbol,
-            customer, orderValueCrore, businessUnit, executionStart, executionEnd,
+            customerEntityId, orderValueCrore, businessUnit, executionStart, executionEnd,
             orderScope, orderSector, orderRecurrence, lifecycleStage, Instant.now()
         ));
     }

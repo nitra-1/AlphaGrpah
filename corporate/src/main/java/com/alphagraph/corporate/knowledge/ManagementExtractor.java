@@ -26,6 +26,11 @@ import java.util.UUID;
  * assumption - each becomes its own {@code fact_group} so a downstream reader
  * ({@code corporate.commentary.ManagementObservationParser}) can reassemble each statement's
  * facts without conflating two different statements from the same document.
+ *
+ * <p>Module 2.7: also identifies, per statement, a related graph entity where the language
+ * clearly names one - e.g. "entering Semiconductor Packaging" implies a PART_OF_THEME edge to a
+ * THEME entity named "Semiconductor". Optional: most statements (a plain revenue growth
+ * percentage) have no identifiable related entity.
  */
 @Component
 class ManagementExtractor implements DocumentExtractor {
@@ -106,6 +111,12 @@ class ManagementExtractor implements DocumentExtractor {
             addIfPresent(facts, "guidancePeriod", statement.period(), confidence, group);
             addIfPresent(facts, "direction", statement.direction(), confidence, group);
             addIfPresent(facts, "signal", statement.signal(), confidence, group);
+            // Module 2.7: e.g. "entering Semiconductor Packaging" -> relatedEntityName
+            // "Semiconductor", relatedEntityType THEME, relationshipType PART_OF_THEME. Optional -
+            // most metrics (a plain revenue % guidance) have no identifiable related entity.
+            addIfPresent(facts, "relatedEntityName", statement.relatedEntityName(), confidence, group);
+            addIfPresent(facts, "relatedEntityType", statement.relatedEntityType(), confidence, group);
+            addIfPresent(facts, "relationshipType", statement.relationshipType(), confidence, group);
         }
 
         return new ExtractionResult(facts);
@@ -156,6 +167,19 @@ class ManagementExtractor implements DocumentExtractor {
             - confidence: 0-100, your confidence you extracted and classified this statement
               correctly
 
+            If the statement clearly names or implies a specific OTHER entity - an industry theme
+            the company is entering, a government scheme, a named customer, a named competitor -
+            also extract:
+            - relatedEntityName: that entity's name, e.g. "Semiconductor", "PLI Electronics" -
+              empty if there's no clean, specific entity to name
+            - relatedEntityType: exactly one of CUSTOMER, THEME, GOVERNMENT_SCHEME, COMPETITOR -
+              empty if relatedEntityName is empty
+            - relationshipType: exactly one of CUSTOMER_OF, SUPPLIER_OF, COMPETES_WITH,
+              SUBSIDIARY_OF, PART_OF_THEME, BENEFICIARY_OF, AFFECTED_BY, EXPORTS_TO,
+              USES_COMMODITY, PARTNER_OF, EXECUTES_FOR, OPERATES_IN - whichever best describes the
+              relationship (e.g. "entering Semiconductor Packaging" is PART_OF_THEME) - empty if
+              relatedEntityName is empty
+
             If the document contains no forward-looking management commentary, return an empty
             statements list. Do not invent statements that aren't actually in the text.
 
@@ -178,10 +202,20 @@ class ManagementExtractor implements DocumentExtractor {
                 Map.entry("direction", Map.of("type", "string", "enum", List.of("POSITIVE", "NEGATIVE", "NEUTRAL"))),
                 Map.entry("signal", Map.of("type", "string")),
                 Map.entry("commitmentLevel", Map.of("type", "string", "enum", List.of("LOW", "MEDIUM", "HIGH", "VERY_HIGH"))),
-                Map.entry("confidence", Map.of("type", "integer", "description", "0-100 confidence in this extraction."))
+                Map.entry("confidence", Map.of("type", "integer", "description", "0-100 confidence in this extraction.")),
+                Map.entry("relatedEntityName", Map.of("type", "string", "description", "Empty string if there's no specific related entity.")),
+                Map.entry("relatedEntityType", Map.of("type", "string", "enum", List.of(
+                    "", "CUSTOMER", "THEME", "GOVERNMENT_SCHEME", "COMPETITOR"
+                ))),
+                Map.entry("relationshipType", Map.of("type", "string", "enum", List.of(
+                    "", "CUSTOMER_OF", "SUPPLIER_OF", "COMPETES_WITH", "SUBSIDIARY_OF", "PART_OF_THEME",
+                    "BENEFICIARY_OF", "AFFECTED_BY", "EXPORTS_TO", "USES_COMMODITY", "PARTNER_OF",
+                    "EXECUTES_FOR", "OPERATES_IN"
+                )))
             )),
             Map.entry("required", List.of(
-                "metricType", "valueText", "valueNumeric", "period", "direction", "signal", "commitmentLevel", "confidence"
+                "metricType", "valueText", "valueNumeric", "period", "direction", "signal", "commitmentLevel", "confidence",
+                "relatedEntityName", "relatedEntityType", "relationshipType"
             )),
             Map.entry("additionalProperties", false)
         );

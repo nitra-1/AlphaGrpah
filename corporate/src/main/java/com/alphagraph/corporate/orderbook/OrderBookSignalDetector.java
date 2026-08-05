@@ -4,6 +4,7 @@ import com.alphagraph.corporate.api.OrderBookEntry;
 import com.alphagraph.corporate.api.OrderLifecycleStage;
 import com.alphagraph.corporate.api.OrderSignal;
 import com.alphagraph.corporate.api.OrderSignalType;
+import com.alphagraph.corporate.relationships.EntityReader;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -11,14 +12,17 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Detects dashboard-facing signals from one instrument's order-lifecycle ledger.
  * MARGIN_IMPROVING is deliberately not detected - see {@code OrderSignalType}'s javadoc for why.
- * REPEAT_CUSTOMER matching is a simple case-insensitive/trimmed name comparison - a real,
- * disclosed limitation (the same customer can appear under slightly different names across
- * filings), not a fuzzy-matching system, matching this project's precedent of shipping a real,
- * simple implementation over an elaborate one when the data doesn't yet demand it.
+ * REPEAT_CUSTOMER matching compares resolved {@code customerEntityId} values (Module 2.7 retrofit)
+ * rather than customer name strings - since {@code corporate.relationships.EntityResolver} is the
+ * only thing that ever produces a customer entity id, two ledger entries naming the same customer
+ * always share the same id regardless of how each document happened to phrase the name, fixing a
+ * real limitation Module 2.4 originally disclosed (case-insensitive string matching missed
+ * genuinely-the-same customer named slightly differently across filings).
  */
 @Component
 class OrderBookSignalDetector {
@@ -29,9 +33,15 @@ class OrderBookSignalDetector {
         OrderLifecycleStage.NEW_ORDER, OrderLifecycleStage.TENDER_WIN, OrderLifecycleStage.EXECUTION_UPDATE
     );
 
+    private final EntityReader entityReader;
+
+    OrderBookSignalDetector(EntityReader entityReader) {
+        this.entityReader = entityReader;
+    }
+
     List<OrderSignal> detect(List<OrderBookEntry> entries, LocalDate asOfDate) {
         List<OrderSignal> signals = new ArrayList<>();
-        Set<String> seenCustomers = new HashSet<>();
+        Set<UUID> seenCustomerEntityIds = new HashSet<>();
 
         List<OrderBookEntry> sortedByTime = entries.stream()
             .sorted((a, b) -> a.detectedAt().compareTo(b.detectedAt()))
@@ -48,12 +58,13 @@ class OrderBookSignalDetector {
                         "Order value " + entry.orderValueCrore() + " Cr exceeds the large-order threshold"));
                 }
 
-                String normalizedCustomer = normalizeCustomer(entry.customer());
-                if (normalizedCustomer != null) {
-                    if (seenCustomers.contains(normalizedCustomer)) {
-                        signals.add(signal(entry, OrderSignalType.REPEAT_CUSTOMER, "Repeat business from " + entry.customer()));
+                UUID customerEntityId = entry.customerEntityId();
+                if (customerEntityId != null) {
+                    if (seenCustomerEntityIds.contains(customerEntityId)) {
+                        String customerName = entityReader.findCanonicalName(customerEntityId).orElse("this customer");
+                        signals.add(signal(entry, OrderSignalType.REPEAT_CUSTOMER, "Repeat business from " + customerName));
                     }
-                    seenCustomers.add(normalizedCustomer);
+                    seenCustomerEntityIds.add(customerEntityId);
                 }
             }
 
@@ -71,10 +82,6 @@ class OrderBookSignalDetector {
 
     private static OrderSignal signal(OrderBookEntry entry, OrderSignalType type, String detail) {
         return new OrderSignal(entry.instrumentId(), entry.symbol(), type, entry.id(), detail, java.time.Instant.now());
-    }
-
-    private static String normalizeCustomer(String customer) {
-        return customer == null || customer.isBlank() ? null : customer.trim().toLowerCase();
     }
 
     private static Integer parseYear(String value) {

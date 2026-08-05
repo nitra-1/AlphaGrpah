@@ -75,6 +75,41 @@ class ManagementExtractorTest {
     }
 
     @Test
+    void parsesRelatedEntityAndRelationshipType() {
+        String json = """
+            {"statements": [
+              {"metricType": "DEMAND", "valueText": "entering Semiconductor Packaging", "valueNumeric": "",
+               "period": "", "direction": "POSITIVE", "signal": "New Theme Entry", "commitmentLevel": "MEDIUM", "confidence": 85,
+               "relatedEntityName": "Semiconductor", "relatedEntityType": "THEME", "relationshipType": "PART_OF_THEME"}
+            ]}
+            """;
+
+        ExtractionResult result = extractor.parseResult(json);
+
+        Map<String, ExtractedFact> byType = result.facts().stream()
+            .collect(java.util.stream.Collectors.toMap(ExtractedFact::factType, f -> f));
+        assertThat(byType.get("relatedentityname").value()).isEqualTo("Semiconductor");
+        assertThat(byType.get("relatedentitytype").value()).isEqualTo("THEME");
+        assertThat(byType.get("relationshiptype").value()).isEqualTo("PART_OF_THEME");
+    }
+
+    @Test
+    void emptyRelatedEntityFieldsProduceNoRelatedEntityFacts() {
+        String json = """
+            {"statements": [
+              {"metricType": "REVENUE_GUIDANCE", "valueText": "30%", "valueNumeric": "30", "period": "next two years",
+               "direction": "POSITIVE", "signal": "Growth Visibility", "commitmentLevel": "HIGH", "confidence": 95,
+               "relatedEntityName": "", "relatedEntityType": "", "relationshipType": ""}
+            ]}
+            """;
+
+        ExtractionResult result = extractor.parseResult(json);
+
+        assertThat(result.facts()).extracting(ExtractedFact::factType)
+            .doesNotContain("relatedentityname", "relatedentitytype", "relationshiptype");
+    }
+
+    @Test
     void qualitativeStatementWithoutNumericValueOmitsThatFact() {
         String json = """
             {"statements": [
@@ -109,6 +144,7 @@ class ManagementExtractorTest {
         assertThat(prompt)
             .contains("REVENUE_GUIDANCE", "MARGIN_GUIDANCE", "CAPEX", "DEMAND", "PRICING", "COMPETITION", "HIRING", "EXPORTS", "RISK")
             .contains("commitmentLevel", "LOW", "VERY_HIGH")
+            .contains("relatedEntityName", "relatedEntityType", "relationshipType", "PART_OF_THEME")
             .contains("We expect 30% revenue growth over the next two years.");
     }
 

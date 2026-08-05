@@ -20,13 +20,13 @@ class OrderBookLedgerWriter {
         jdbcTemplate.update(
             """
             INSERT INTO corporate.order_book_ledger (
-                id, document_id, instrument_id, symbol, customer, order_value_crore, business_unit,
+                id, document_id, instrument_id, symbol, customer_entity_id, order_value_crore, business_unit,
                 execution_start, execution_end, order_scope, order_sector, order_recurrence,
                 lifecycle_stage, detected_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             entry.id(), entry.documentId(), entry.instrumentId(), entry.symbol(),
-            entry.customer(), entry.orderValueCrore(), entry.businessUnit(),
+            entry.customerEntityId(), entry.orderValueCrore(), entry.businessUnit(),
             entry.executionStart(), entry.executionEnd(),
             entry.orderScope() == null ? null : entry.orderScope().name(),
             entry.orderSector() == null ? null : entry.orderSector().name(),

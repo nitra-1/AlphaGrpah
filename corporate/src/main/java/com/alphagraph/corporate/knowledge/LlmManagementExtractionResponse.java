@@ -14,6 +14,7 @@ record LlmManagementExtractionResponse(List<LlmManagementStatement> statements) 
 /** One forward-looking statement. {@code valueNumeric} is an empty string when the statement is qualitative prose with nothing to parse (most Demand/Pricing/Competition/Risk commentary). */
 record LlmManagementStatement(
     String metricType, String valueText, String valueNumeric, String period,
-    String direction, String signal, String commitmentLevel, int confidence
+    String direction, String signal, String commitmentLevel, int confidence,
+    String relatedEntityName, String relatedEntityType, String relationshipType
 ) {
 }

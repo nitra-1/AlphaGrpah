@@ -122,7 +122,7 @@ class OrderBookAggregationEngineTest {
     private OrderBookEntry entry(OrderLifecycleStage stage, Double valueCrore, String start, String end) {
         return new OrderBookEntry(
             UUID.randomUUID(), UUID.randomUUID(), instrumentId, "TEST",
-            "Some Customer", valueCrore, "Unit", start, end, null, null, null, stage, Instant.now()
+            UUID.randomUUID(), valueCrore, "Unit", start, end, null, null, null, stage, Instant.now()
         );
     }
 }

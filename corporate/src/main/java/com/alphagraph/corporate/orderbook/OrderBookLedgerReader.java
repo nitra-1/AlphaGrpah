@@ -33,14 +33,14 @@ class OrderBookLedgerReader {
     List<OrderBookEntry> findByInstrument(UUID instrumentId) {
         return jdbcTemplate.query(
             """
-            SELECT id, document_id, instrument_id, symbol, customer, order_value_crore, business_unit,
+            SELECT id, document_id, instrument_id, symbol, customer_entity_id, order_value_crore, business_unit,
                    execution_start, execution_end, order_scope, order_sector, order_recurrence,
                    lifecycle_stage, detected_at
             FROM corporate.order_book_ledger WHERE instrument_id = ?
             """,
             (rs, rowNum) -> new OrderBookEntry(
                 (UUID) rs.getObject("id"), (UUID) rs.getObject("document_id"), (UUID) rs.getObject("instrument_id"),
-                rs.getString("symbol"), rs.getString("customer"),
+                rs.getString("symbol"), (UUID) rs.getObject("customer_entity_id"),
                 rs.getObject("order_value_crore") == null ? null : rs.getDouble("order_value_crore"),
                 rs.getString("business_unit"), rs.getString("execution_start"), rs.getString("execution_end"),
                 rs.getString("order_scope") == null ? null : OrderScope.valueOf(rs.getString("order_scope")),
