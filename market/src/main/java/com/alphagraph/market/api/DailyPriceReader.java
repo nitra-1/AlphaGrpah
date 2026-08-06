@@ -1,6 +1,7 @@
 package com.alphagraph.market.api;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -17,4 +18,7 @@ public interface DailyPriceReader {
 
     /** Full daily price history for one instrument, ordered ascending by trade date. */
     List<DailyPrice> findHistory(UUID instrumentId);
+
+    /** Most recent trading day's price for one instrument - added in Module 3.3 (Portfolio Dashboard), the first consumer that needs a live mark-to-market price rather than a full history. */
+    Optional<DailyPrice> findLatest(UUID instrumentId);
 }
