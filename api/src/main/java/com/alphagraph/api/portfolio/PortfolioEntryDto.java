@@ -17,6 +17,6 @@ public record PortfolioEntryDto(
     BigDecimal unrealizedPnl, BigDecimal unrealizedPnlPercent,
     Double swingScore, String swingRating, Integer swingRank,
     Double longTermScore, String longTermRating, Integer longTermRank,
-    String riskLevel
+    String riskLevel, Double riskScore
 ) {
 }

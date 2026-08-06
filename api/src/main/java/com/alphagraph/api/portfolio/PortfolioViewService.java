@@ -78,7 +78,8 @@ public class PortfolioViewService {
             score.map(DecisionScore::longTermScore).orElse(null),
             score.map(s -> s.longTermRating().name()).orElse(null),
             score.map(DecisionScore::longTermRank).orElse(null),
-            risk.map(r -> r.overallRisk().name()).orElse(null)
+            risk.map(r -> r.overallRisk().name()).orElse(null),
+            risk.map(RiskScore::riskScore).orElse(null)
         );
     }
 }

@@ -25,15 +25,23 @@ import java.util.List;
 public class PortfolioController {
 
     private final PortfolioViewService viewService;
+    private final PortfolioRiskService riskService;
 
-    public PortfolioController(PortfolioViewService viewService) {
+    public PortfolioController(PortfolioViewService viewService, PortfolioRiskService riskService) {
         this.viewService = viewService;
+        this.riskService = riskService;
     }
 
     @Operation(summary = "List the portfolio", description = "Every current holding with live price, unrealized P&L, and current Swing/Long-Term Score, Rank, and Risk.")
     @GetMapping
     public List<PortfolioEntryDto> list() {
         return viewService.list();
+    }
+
+    @Operation(summary = "Portfolio-wide risk (Module 3.4)", description = "Market-value-weighted Risk Score plus single-holding and sector concentration - aggregate risk across the whole portfolio, distinct from each holding's own risk level.")
+    @GetMapping("/risk")
+    public PortfolioRiskDto risk() {
+        return riskService.compute();
     }
 
     @Operation(summary = "Buy into a position", description = "Creates the holding, or recalculates its weighted-average cost basis if one already exists.")
