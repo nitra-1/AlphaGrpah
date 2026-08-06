@@ -1,4 +1,4 @@
-package com.alphagraph.intelligence.analyst;
+package com.alphagraph.decision.analyst;
 
 /**
  * One already-verified, already-worded fact about an instrument - every number in

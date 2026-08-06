@@ -1,4 +1,4 @@
-package com.alphagraph.intelligence.analyst;
+package com.alphagraph.decision.analyst;
 
 import com.alphagraph.corporate.api.CorporateEvent;
 import com.alphagraph.corporate.api.CorporateScore;
@@ -23,6 +23,8 @@ import com.alphagraph.corporate.orderbook.OrderBookSnapshotReader;
 import com.alphagraph.corporate.relationships.EntityReader;
 import com.alphagraph.corporate.relationships.RelationshipReader;
 import com.alphagraph.corporate.signal.CorporateScoreReader;
+import com.alphagraph.decision.api.DecisionScore;
+import com.alphagraph.decision.engine.DecisionScoreReader;
 import com.alphagraph.sector.api.SectorScore;
 import com.alphagraph.sector.engine.SectorScoreReader;
 import org.springframework.stereotype.Component;
@@ -38,11 +40,16 @@ import java.util.UUID;
  * arithmetic (deltas, "highest ever", sector rank) happens here, deterministically, before the
  * LLM is ever called. Per the user's explicit design: "AI explains, it never calculates."
  *
- * <p>Lives in {@code intelligence}, not {@code corporate}, because it genuinely bridges two
- * domains (corporate signals and sector standing) - {@code corporate} cannot depend on
- * {@code sector} directly (docs/001_System_Architecture.md §4: domain modules never depend on
- * each other), the same reason {@code intelligence.risk.RiskAnalysisOrchestrator} already bridges
- * financial/technical/ownership instead of living in one of those modules.
+ * <p>Lives in {@code decision}, not {@code intelligence} where Module 2.9 originally built it:
+ * at the time, bridging corporate signals and sector standing required {@code intelligence}
+ * (domain modules never depend on each other directly, docs/001_System_Architecture.md §4). Once
+ * Module 3.1 gave {@code decision} its own direct dependency on every domain module it needed
+ * (Rule 4 has always named {@code decision} alongside {@code intelligence} as allowed to), the
+ * bridging justification for living in {@code intelligence} no longer applied - and
+ * decision/package-info.java had claimed ownership of "AI analyst" since Module 0.3's original
+ * scaffold. Relocated here in Module 3.7 when extending it to explain Rank changes required
+ * {@code decision.engine.DecisionScoreReader}, which {@code intelligence} cannot depend on
+ * (decision already depends on intelligence, so the reverse would be a circular dependency).
  */
 @Component
 class AnalystEvidenceBuilder {
@@ -60,13 +67,14 @@ class AnalystEvidenceBuilder {
     private final SectorScoreReader sectorScoreReader;
     private final RelationshipReader relationshipReader;
     private final EntityReader entityReader;
+    private final DecisionScoreReader decisionScoreReader;
 
     AnalystEvidenceBuilder(
         CorporateScoreReader corporateScoreReader, OrderBookSnapshotReader orderBookSnapshotReader,
         OrderBookLedgerReader orderBookLedgerReader, ManagementSnapshotReader managementSnapshotReader,
         ManagementObservationReader managementObservationReader, NewsCatalystSnapshotReader newsCatalystSnapshotReader,
         CorporateEventReader corporateEventReader, SectorScoreReader sectorScoreReader,
-        RelationshipReader relationshipReader, EntityReader entityReader
+        RelationshipReader relationshipReader, EntityReader entityReader, DecisionScoreReader decisionScoreReader
     ) {
         this.corporateScoreReader = corporateScoreReader;
         this.orderBookSnapshotReader = orderBookSnapshotReader;
@@ -78,9 +86,11 @@ class AnalystEvidenceBuilder {
         this.sectorScoreReader = sectorScoreReader;
         this.relationshipReader = relationshipReader;
         this.entityReader = entityReader;
+        this.decisionScoreReader = decisionScoreReader;
     }
 
-    List<EvidenceFact> buildEvidence(UUID instrumentId) {
+    /** Explains a Corporate Score change (Module 2.9's original capability). */
+    List<EvidenceFact> buildScoreEvidence(UUID instrumentId) {
         List<EvidenceFact> facts = new ArrayList<>();
         addScoreChangeFact(facts, instrumentId);
         addOrderBookFacts(facts, instrumentId);
@@ -110,6 +120,69 @@ class AnalystEvidenceBuilder {
                 latest.corporateScore(), latest.corporateRating()
             )));
         }
+    }
+
+    /**
+     * Explains a Swing Rank change (Module 3.7) - the roadmap's own worked example ("Why moved
+     * from Rank 18 to Rank 5?"). Rank-specific facts (the rank move itself, then which of the six
+     * domain scores moved most) come first, followed by the same corporate-side context
+     * {@link #buildScoreEvidence} already surfaces - those facts still explain WHY the underlying
+     * scores moved, they just weren't previously connected to a Rank because no Rank existed
+     * before Module 3.1.
+     */
+    List<EvidenceFact> buildRankEvidence(UUID instrumentId) {
+        List<EvidenceFact> facts = new ArrayList<>();
+        addRankChangeFacts(facts, instrumentId);
+        addOrderBookFacts(facts, instrumentId);
+        addManagementFacts(facts, instrumentId);
+        addSectorFact(facts, instrumentId);
+        addNewsCatalystFact(facts, instrumentId);
+        addCorporateEventFacts(facts, instrumentId);
+        addGraphFacts(facts, instrumentId);
+        return facts;
+    }
+
+    private void addRankChangeFacts(List<EvidenceFact> facts, UUID instrumentId) {
+        List<DecisionScore> history = decisionScoreReader.findHistory(instrumentId);
+        if (history.isEmpty()) {
+            return;
+        }
+        DecisionScore latest = history.get(0);
+        if (history.size() < 2) {
+            facts.add(new EvidenceFact("RANK_CURRENT", "Swing Rank is currently %d (Swing Score %.2f, %s) - first score on record, no prior value to compare against".formatted(
+                latest.swingRank(), latest.swingScore(), latest.swingRating()
+            )));
+            return;
+        }
+
+        DecisionScore previous = history.get(1);
+        if (latest.swingRank() != null && previous.swingRank() != null && !latest.swingRank().equals(previous.swingRank())) {
+            int delta = previous.swingRank() - latest.swingRank();
+            String direction = delta > 0 ? "improved" : "declined";
+            facts.add(new EvidenceFact("RANK_CHANGE", "Swing Rank %s from %d to %d (%s by %d) since %s".formatted(
+                direction, previous.swingRank(), latest.swingRank(), direction, Math.abs(delta), previous.asOfDate()
+            )));
+        }
+        addDomainDeltaFact(facts, "Technical", previous.technicalScore(), latest.technicalScore());
+        addDomainDeltaFact(facts, "Fundamental", previous.fundamentalScore(), latest.fundamentalScore());
+        addDomainDeltaFact(facts, "Institutional", previous.institutionalScore(), latest.institutionalScore());
+        addDomainDeltaFact(facts, "Sector", previous.sectorScore(), latest.sectorScore());
+        addDomainDeltaFact(facts, "Risk", previous.riskScore(), latest.riskScore());
+        addDomainDeltaFact(facts, "Corporate", previous.corporateScore(), latest.corporateScore());
+    }
+
+    private void addDomainDeltaFact(List<EvidenceFact> facts, String domainName, Double previousScore, Double latestScore) {
+        if (previousScore == null || latestScore == null) {
+            return;
+        }
+        double delta = latestScore - previousScore;
+        if (Math.abs(delta) < MEANINGFUL_SCORE_DELTA) {
+            return;
+        }
+        String direction = delta > 0 ? "improved" : "declined";
+        facts.add(new EvidenceFact(domainName.toUpperCase() + "_SCORE_CHANGE", "%s Score %s from %.1f to %.1f".formatted(
+            domainName, direction, previousScore, latestScore
+        )));
     }
 
     private void addOrderBookFacts(List<EvidenceFact> facts, UUID instrumentId) {

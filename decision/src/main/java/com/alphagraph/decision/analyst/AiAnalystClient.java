@@ -1,4 +1,4 @@
-package com.alphagraph.intelligence.analyst;
+package com.alphagraph.decision.analyst;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.errors.AnthropicIoException;

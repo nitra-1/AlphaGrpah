@@ -1,4 +1,4 @@
-package com.alphagraph.intelligence.analyst;
+package com.alphagraph.decision.analyst;
 
 import com.alphagraph.corporate.api.CorporateEvent;
 import com.alphagraph.corporate.api.CorporateRating;
@@ -26,6 +26,9 @@ import com.alphagraph.corporate.orderbook.OrderBookSnapshotReader;
 import com.alphagraph.corporate.relationships.EntityReader;
 import com.alphagraph.corporate.relationships.RelationshipReader;
 import com.alphagraph.corporate.signal.CorporateScoreReader;
+import com.alphagraph.decision.api.DecisionRating;
+import com.alphagraph.decision.api.DecisionScore;
+import com.alphagraph.decision.engine.DecisionScoreReader;
 import com.alphagraph.sector.api.Leadership;
 import com.alphagraph.sector.api.MoneyFlow;
 import com.alphagraph.sector.api.Rotation;
@@ -56,11 +59,12 @@ class AnalystEvidenceBuilderTest {
     private final SectorScoreReader sectorScoreReader = mock(SectorScoreReader.class);
     private final RelationshipReader relationshipReader = mock(RelationshipReader.class);
     private final EntityReader entityReader = mock(EntityReader.class);
+    private final DecisionScoreReader decisionScoreReader = mock(DecisionScoreReader.class);
 
     private final AnalystEvidenceBuilder builder = new AnalystEvidenceBuilder(
         corporateScoreReader, orderBookSnapshotReader, orderBookLedgerReader, managementSnapshotReader,
         managementObservationReader, newsCatalystSnapshotReader, corporateEventReader, sectorScoreReader,
-        relationshipReader, entityReader
+        relationshipReader, entityReader, decisionScoreReader
     );
 
     private final UUID instrumentId = UUID.randomUUID();
@@ -69,7 +73,7 @@ class AnalystEvidenceBuilderTest {
     void emptyEverywhereYieldsNoFacts() {
         stubEmptyDefaults();
 
-        assertThat(builder.buildEvidence(instrumentId)).isEmpty();
+        assertThat(builder.buildScoreEvidence(instrumentId)).isEmpty();
     }
 
     @Test
@@ -79,7 +83,7 @@ class AnalystEvidenceBuilderTest {
         CorporateScore yesterday = score(50.0, CorporateRating.NEUTRAL, LocalDate.of(2026, 6, 1));
         when(corporateScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).contains("SCORE_CHANGE");
         assertThat(facts.stream().filter(f -> f.factType().equals("SCORE_CHANGE")).findFirst().orElseThrow().description())
@@ -91,7 +95,7 @@ class AnalystEvidenceBuilderTest {
         stubEmptyDefaults();
         when(corporateScoreReader.findHistory(instrumentId)).thenReturn(List.of(score(60.0, CorporateRating.NEUTRAL, LocalDate.of(2026, 6, 1))));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).contains("SCORE_CURRENT").doesNotContain("SCORE_CHANGE");
     }
@@ -103,7 +107,7 @@ class AnalystEvidenceBuilderTest {
         OrderBookSnapshot prior = orderBookSnapshot(1000.0, LocalDate.of(2026, 6, 1));
         when(orderBookSnapshotReader.findHistory(instrumentId)).thenReturn(List.of(latest, prior));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).contains("ORDER_BOOK_MILESTONE");
         assertThat(facts.stream().filter(f -> f.factType().equals("ORDER_BOOK_MILESTONE")).findFirst().orElseThrow().description())
@@ -117,7 +121,7 @@ class AnalystEvidenceBuilderTest {
         OrderBookSnapshot prior = orderBookSnapshot(1000.0, LocalDate.of(2026, 6, 1));
         when(orderBookSnapshotReader.findHistory(instrumentId)).thenReturn(List.of(latest, prior));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).contains("ORDER_BOOK_CURRENT").doesNotContain("ORDER_BOOK_MILESTONE");
     }
@@ -127,7 +131,7 @@ class AnalystEvidenceBuilderTest {
         stubEmptyDefaults();
         when(orderBookSnapshotReader.findHistory(instrumentId)).thenReturn(List.of(orderBookSnapshot(2800.0, LocalDate.of(2026, 6, 1))));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).contains("ORDER_BOOK_CURRENT").doesNotContain("ORDER_BOOK_MILESTONE");
     }
@@ -143,7 +147,7 @@ class AnalystEvidenceBuilderTest {
         );
         when(orderBookLedgerReader.findByInstrument(instrumentId)).thenReturn(List.of(entry));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts.stream().filter(f -> f.factType().equals("ORDER_WIN")).findFirst().orElseThrow().description())
             .contains("2800").contains("Ministry of Defence").contains("TENDER_WIN");
@@ -156,7 +160,7 @@ class AnalystEvidenceBuilderTest {
         ManagementCommentarySnapshot yesterday = managementSnapshot(70.0, GuidanceTrend.STABLE, LocalDate.of(2026, 6, 1));
         when(managementSnapshotReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).doesNotContain("GROWTH_VISIBILITY_CHANGE");
     }
@@ -168,7 +172,7 @@ class AnalystEvidenceBuilderTest {
         ManagementCommentarySnapshot yesterday = managementSnapshot(55.0, GuidanceTrend.STABLE, LocalDate.of(2026, 6, 1));
         when(managementSnapshotReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts).extracting(EvidenceFact::factType).contains("GROWTH_VISIBILITY_CHANGE", "GUIDANCE_TREND");
     }
@@ -182,7 +186,7 @@ class AnalystEvidenceBuilderTest {
         when(sectorScoreReader.findLatestForInstrument(instrumentId)).thenReturn(Optional.of(defence));
         when(sectorScoreReader.findAllLatest()).thenReturn(List.of(other, defence));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts.stream().filter(f -> f.factType().equals("SECTOR_STANDING")).findFirst().orElseThrow().description())
             .contains("Defence").contains("strongest");
@@ -197,7 +201,7 @@ class AnalystEvidenceBuilderTest {
         when(sectorScoreReader.findLatestForInstrument(instrumentId)).thenReturn(Optional.of(itSector));
         when(sectorScoreReader.findAllLatest()).thenReturn(List.of(defence, itSector));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts.stream().filter(f -> f.factType().equals("SECTOR_STANDING")).findFirst().orElseThrow().description())
             .contains("#2 of 2");
@@ -210,7 +214,7 @@ class AnalystEvidenceBuilderTest {
             new NewsCatalystSnapshot(instrumentId, "BEL", LocalDate.of(2026, 6, 1), 30.0, NewsCatalystTrend.NEGATIVE, 2, 60.0, 1, Instant.now())
         ));
 
-        assertThat(builder.buildEvidence(instrumentId)).extracting(EvidenceFact::factType).doesNotContain("NEWS_CATALYST");
+        assertThat(builder.buildScoreEvidence(instrumentId)).extracting(EvidenceFact::factType).doesNotContain("NEWS_CATALYST");
     }
 
     @Test
@@ -220,7 +224,7 @@ class AnalystEvidenceBuilderTest {
         CorporateEvent negative = event(EventSignal.NEGATIVE, EventType.PROMOTER_SELLING);
         when(corporateEventReader.findRecentByInstrument(instrumentId, 90)).thenReturn(List.of(positive, negative));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         List<String> eventDescriptions = facts.stream().filter(f -> f.factType().equals("CORPORATE_EVENT")).map(EvidenceFact::description).toList();
         assertThat(eventDescriptions).hasSize(1);
@@ -236,10 +240,121 @@ class AnalystEvidenceBuilderTest {
             new RelationshipEdge(entityId, "BEL", RelationshipType.BENEFICIARY_OF, UUID.randomUUID(), "Defence Indigenisation", 90.0)
         ));
 
-        List<EvidenceFact> facts = builder.buildEvidence(instrumentId);
+        List<EvidenceFact> facts = builder.buildScoreEvidence(instrumentId);
 
         assertThat(facts.stream().filter(f -> f.factType().equals("GRAPH_RELATIONSHIP")).findFirst().orElseThrow().description())
             .isEqualTo("Beneficiary of Defence Indigenisation");
+    }
+
+    @Test
+    void emptyDecisionHistoryYieldsNoRankFacts() {
+        stubEmptyDefaults();
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of());
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts).extracting(EvidenceFact::factType).doesNotContain("RANK_CHANGE", "RANK_CURRENT");
+    }
+
+    @Test
+    void singleDecisionScoreDayProducesRankCurrentFactNotChangeFact() {
+        stubEmptyDefaults();
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(
+            decisionScore(LocalDate.of(2026, 6, 1), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0)
+        ));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts).extracting(EvidenceFact::factType).contains("RANK_CURRENT").doesNotContain("RANK_CHANGE");
+    }
+
+    @Test
+    void rankImprovementProducesRankChangeFactWithCorrectDirection() {
+        stubEmptyDefaults();
+        DecisionScore today = decisionScore(LocalDate.of(2026, 6, 2), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        DecisionScore yesterday = decisionScore(LocalDate.of(2026, 6, 1), 18, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts.stream().filter(f -> f.factType().equals("RANK_CHANGE")).findFirst().orElseThrow().description())
+            .contains("improved").contains("18").contains("5").contains("by 13");
+    }
+
+    @Test
+    void rankDeclineProducesRankChangeFactWithCorrectDirection() {
+        stubEmptyDefaults();
+        DecisionScore today = decisionScore(LocalDate.of(2026, 6, 2), 18, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        DecisionScore yesterday = decisionScore(LocalDate.of(2026, 6, 1), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts.stream().filter(f -> f.factType().equals("RANK_CHANGE")).findFirst().orElseThrow().description())
+            .contains("declined").contains("5").contains("18").contains("by 13");
+    }
+
+    @Test
+    void unchangedRankProducesNoRankChangeFact() {
+        stubEmptyDefaults();
+        DecisionScore today = decisionScore(LocalDate.of(2026, 6, 2), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        DecisionScore yesterday = decisionScore(LocalDate.of(2026, 6, 1), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts).extracting(EvidenceFact::factType).doesNotContain("RANK_CHANGE");
+    }
+
+    @Test
+    void domainScoreDeltaAtOrAboveThresholdProducesAChangeFactPerDomain() {
+        stubEmptyDefaults();
+        DecisionScore today = decisionScore(LocalDate.of(2026, 6, 2), 5, 90.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        DecisionScore yesterday = decisionScore(LocalDate.of(2026, 6, 1), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts.stream().filter(f -> f.factType().equals("TECHNICAL_SCORE_CHANGE")).findFirst().orElseThrow().description())
+            .contains("improved").contains("80.0").contains("90.0");
+        assertThat(facts).extracting(EvidenceFact::factType).doesNotContain("FUNDAMENTAL_SCORE_CHANGE");
+    }
+
+    @Test
+    void domainScoreDeltaBelowThresholdProducesNoChangeFact() {
+        stubEmptyDefaults();
+        DecisionScore today = decisionScore(LocalDate.of(2026, 6, 2), 5, 82.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        DecisionScore yesterday = decisionScore(LocalDate.of(2026, 6, 1), 5, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0);
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts).extracting(EvidenceFact::factType).doesNotContain("TECHNICAL_SCORE_CHANGE");
+    }
+
+    @Test
+    void missingDomainScoreOnEitherDayIsSkippedRatherThanThrowing() {
+        stubEmptyDefaults();
+        DecisionScore today = decisionScore(LocalDate.of(2026, 6, 2), 5, 90.0, 80.0, 80.0, 80.0, 80.0, null);
+        DecisionScore yesterday = decisionScore(LocalDate.of(2026, 6, 1), 5, 80.0, 80.0, 80.0, 80.0, 80.0, null);
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of(today, yesterday));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts).extracting(EvidenceFact::factType).doesNotContain("CORPORATE_SCORE_CHANGE");
+    }
+
+    @Test
+    void rankEvidenceAlsoIncludesTheSameCorporateContextScoreEvidenceUses() {
+        stubEmptyDefaults();
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of());
+        UUID sectorId = UUID.randomUUID();
+        when(sectorScoreReader.findLatestForInstrument(instrumentId)).thenReturn(Optional.of(sectorScore(sectorId, "Defence", 90.0)));
+        when(sectorScoreReader.findAllLatest()).thenReturn(List.of(sectorScore(sectorId, "Defence", 90.0)));
+
+        List<EvidenceFact> facts = builder.buildRankEvidence(instrumentId);
+
+        assertThat(facts).extracting(EvidenceFact::factType).contains("SECTOR_STANDING");
     }
 
     private void stubEmptyDefaults() {
@@ -252,6 +367,20 @@ class AnalystEvidenceBuilderTest {
         when(corporateEventReader.findRecentByInstrument(instrumentId, 90)).thenReturn(List.of());
         when(sectorScoreReader.findLatestForInstrument(instrumentId)).thenReturn(Optional.empty());
         when(entityReader.findByLinkedInstrument(instrumentId)).thenReturn(Optional.empty());
+        when(decisionScoreReader.findHistory(instrumentId)).thenReturn(List.of());
+    }
+
+    private DecisionScore decisionScore(
+        LocalDate asOfDate, int swingRank, Double technicalScore, Double fundamentalScore,
+        Double institutionalScore, Double sectorScoreValue, Double riskScoreValue, Double corporateScoreValue
+    ) {
+        return new DecisionScore(
+            instrumentId, "BEL", asOfDate,
+            80.0, DecisionRating.BUY, swingRank,
+            75.0, DecisionRating.BUY, 1,
+            technicalScore, fundamentalScore, institutionalScore, sectorScoreValue, riskScoreValue, corporateScoreValue,
+            90.0, 1, Instant.now()
+        );
     }
 
     private CorporateScore score(double value, CorporateRating rating, LocalDate asOfDate) {
