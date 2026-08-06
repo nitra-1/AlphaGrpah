@@ -56,4 +56,17 @@ public class ManagementSnapshotReader {
             ROW_MAPPER, instrumentId
         );
     }
+
+    /** Every instrument's latest snapshot, highest growth visibility score first - added in Module 2.10 for the "Growth Visibility" dashboard widget. */
+    public List<ManagementCommentarySnapshot> findAllLatest() {
+        List<ManagementCommentarySnapshot> rows = jdbcTemplate.query(
+            """
+            SELECT DISTINCT ON (instrument_id) instrument_id, symbol, as_of_date, growth_visibility_score, guidance_trend,
+                   management_credibility, confidence, rule_set_version, computed_at
+            FROM corporate.management_commentary_snapshots ORDER BY instrument_id, as_of_date DESC
+            """,
+            ROW_MAPPER
+        );
+        return rows.stream().sorted((a, b) -> Double.compare(b.growthVisibilityScore(), a.growthVisibilityScore())).toList();
+    }
 }

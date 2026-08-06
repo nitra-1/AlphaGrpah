@@ -58,4 +58,17 @@ public class CorporateScoreReader {
             ROW_MAPPER, instrumentId
         );
     }
+
+    /** Every instrument's latest score, highest Corporate Score first - added in Module 2.10 for the "Corporate Score" dashboard widget. */
+    public List<CorporateScore> findAllLatest() {
+        List<CorporateScore> rows = jdbcTemplate.query(
+            """
+            SELECT DISTINCT ON (instrument_id) instrument_id, symbol, as_of_date, corporate_score, corporate_rating, order_book_score,
+                   management_score, news_catalyst_score, event_net_signal, confidence, rule_set_version, computed_at
+            FROM corporate.corporate_scores ORDER BY instrument_id, as_of_date DESC
+            """,
+            ROW_MAPPER
+        );
+        return rows.stream().sorted((a, b) -> Double.compare(b.corporateScore(), a.corporateScore())).toList();
+    }
 }
