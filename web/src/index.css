@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens - "modern fintech" (light, one strong accent color), per the user's
+ * choice over the dark-terminal / clean-SaaS / institutional-report alternatives.
+ * Registered via Tailwind v4's @theme so they're usable both as Tailwind utilities
+ * (bg-accent, text-loss, ...) and as raw CSS vars (Recharts needs real color strings,
+ * not Tailwind classes).
+ */
+@theme {
+  --color-bg: #f9fafb;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-text: #111827;
+  --color-text-muted: #6b7280;
+
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-soft: #eef2ff;
+
+  --color-gain: #16a34a;
+  --color-gain-soft: #f0fdf4;
+  --color-loss: #dc2626;
+  --color-loss-soft: #fef2f2;
+  --color-neutral-signal: #d97706;
+  --color-neutral-signal-soft: #fffbeb;
+
+  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
