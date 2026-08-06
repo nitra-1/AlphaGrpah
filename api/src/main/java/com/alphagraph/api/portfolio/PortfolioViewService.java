@@ -45,12 +45,12 @@ public class PortfolioViewService {
         return portfolioService.list().stream().map(this::toDto).toList();
     }
 
-    public Optional<PortfolioEntryDto> buy(UUID instrumentId, BigDecimal quantity, BigDecimal price) {
-        return portfolioService.buy(instrumentId, quantity, price).map(this::toDto);
+    public Optional<PortfolioEntryDto> buy(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
+        return portfolioService.buy(instrumentId, quantity, price, rationale).map(this::toDto);
     }
 
-    public Optional<PortfolioEntryDto> sell(UUID instrumentId, BigDecimal quantity) {
-        return portfolioService.sell(instrumentId, quantity).map(this::toDto);
+    public Optional<PortfolioEntryDto> sell(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
+        return portfolioService.sell(instrumentId, quantity, price, rationale).map(this::toDto);
     }
 
     private PortfolioEntryDto toDto(PortfolioHolding holding) {

@@ -44,20 +44,20 @@ public class PortfolioController {
         return riskService.compute();
     }
 
-    @Operation(summary = "Buy into a position", description = "Creates the holding, or recalculates its weighted-average cost basis if one already exists.")
+    @Operation(summary = "Buy into a position", description = "Creates the holding, or recalculates its weighted-average cost basis if one already exists. Auto-records a BUY entry in the Trade Journal (Module 3.8).")
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/buy")
     public ResponseEntity<PortfolioEntryDto> buy(@Valid @RequestBody BuyRequest request) {
-        PortfolioEntryDto entry = viewService.buy(request.instrumentId(), request.quantity(), request.price())
+        PortfolioEntryDto entry = viewService.buy(request.instrumentId(), request.quantity(), request.price(), request.rationale())
             .orElseThrow(() -> new NotFoundException("No instrument with id " + request.instrumentId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(entry);
     }
 
-    @Operation(summary = "Sell from a position", description = "Reduces the holding; the position is removed entirely once its quantity reaches zero. Errors if the quantity exceeds what's held.")
+    @Operation(summary = "Sell from a position", description = "Reduces the holding; the position is removed entirely once its quantity reaches zero. Errors if the quantity exceeds what's held. Auto-records a SELL entry (with realized P&L) in the Trade Journal (Module 3.8).")
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/sell")
     public PortfolioEntryDto sell(@Valid @RequestBody SellRequest request) {
-        return viewService.sell(request.instrumentId(), request.quantity())
+        return viewService.sell(request.instrumentId(), request.quantity(), request.price(), request.rationale())
             .orElseThrow(() -> new NotFoundException("No holding for instrument " + request.instrumentId()));
     }
 }

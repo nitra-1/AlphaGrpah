@@ -1,6 +1,7 @@
 package com.alphagraph.decision.portfolio;
 
 import com.alphagraph.decision.api.PortfolioHolding;
+import com.alphagraph.decision.journal.TradeJournalService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -13,11 +14,12 @@ import java.util.UUID;
 
 /**
  * Owns the single global portfolio (Module 3.3) - current holdings only, weighted-average cost
- * basis. Not a transaction ledger: {@link #buy} and {@link #sell} mutate one position's
- * quantity/avgBuyPrice in place, they don't record the individual event anywhere - that's Module
- * 3.8's (Trade Journal) job. Same {@code Optional}-on-not-found shape as
- * {@code decision.watchlist.WatchlistService}, for the same reason (this module cannot depend on
- * api.error.NotFoundException).
+ * basis. Not a transaction ledger itself: {@link #buy} and {@link #sell} mutate one position's
+ * quantity/avgBuyPrice in place, but every successful call also auto-records the trade via
+ * {@link TradeJournalService} (Module 3.8) - the journal is a byproduct of these two methods, not
+ * a separate manual-entry surface, so a trade is never entered twice. Same
+ * {@code Optional}-on-not-found shape as {@code decision.watchlist.WatchlistService}, for the
+ * same reason (this module cannot depend on api.error.NotFoundException).
  */
 @Component
 public class PortfolioService {
@@ -25,21 +27,24 @@ public class PortfolioService {
     private final JdbcTemplate jdbcTemplate;
     private final PortfolioStore store;
     private final PortfolioReader reader;
+    private final TradeJournalService tradeJournalService;
 
-    public PortfolioService(JdbcTemplate jdbcTemplate, PortfolioStore store, PortfolioReader reader) {
+    public PortfolioService(JdbcTemplate jdbcTemplate, PortfolioStore store, PortfolioReader reader, TradeJournalService tradeJournalService) {
         this.jdbcTemplate = jdbcTemplate;
         this.store = store;
         this.reader = reader;
+        this.tradeJournalService = tradeJournalService;
     }
 
     /**
      * Adds to a position, recalculating the weighted-average cost basis:
      * newAvgPrice = (existingQty * existingAvgPrice + buyQty * buyPrice) / (existingQty + buyQty).
-     * Creates a new holding at exactly buyPrice if none exists yet.
+     * Creates a new holding at exactly buyPrice if none exists yet. Records a BUY journal entry
+     * on success; {@code rationale} is optional context for why the trade was made.
      *
      * @return empty if instrumentId doesn't exist in reference.instruments at all
      */
-    public Optional<PortfolioHolding> buy(UUID instrumentId, BigDecimal quantity, BigDecimal price) {
+    public Optional<PortfolioHolding> buy(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
         if (quantity.signum() <= 0) {
             throw new IllegalArgumentException("Buy quantity must be positive");
         }
@@ -69,20 +74,26 @@ public class PortfolioService {
         }
 
         store.upsert(instrumentId, symbol, newQuantity, newAvgPrice);
+        tradeJournalService.recordBuy(instrumentId, symbol, quantity, price, rationale);
         return reader.findByInstrument(instrumentId);
     }
 
     /**
      * Reduces a position. The average cost basis is untouched by a sell (only future buys move
      * it) - a sell realizes a gain/loss against the existing basis, it doesn't change what
-     * remains was "paid for". The holding is deleted once quantity reaches zero.
+     * remains was "paid for". The holding is deleted once quantity reaches zero. Records a SELL
+     * journal entry on success, with realized P&L computed against the cost basis captured
+     * BEFORE this sell mutates it: realizedPnl = quantity * (price - costBasisAtSale).
      *
      * @return empty if there's no holding at all for this instrument
-     * @throws IllegalArgumentException if quantity exceeds what's held
+     * @throws IllegalArgumentException if quantity exceeds what's held, or price isn't positive
      */
-    public Optional<PortfolioHolding> sell(UUID instrumentId, BigDecimal quantity) {
+    public Optional<PortfolioHolding> sell(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
         if (quantity.signum() <= 0) {
             throw new IllegalArgumentException("Sell quantity must be positive");
+        }
+        if (price.signum() <= 0) {
+            throw new IllegalArgumentException("Sell price must be positive");
         }
 
         Optional<PortfolioHolding> existing = reader.findByInstrument(instrumentId);
@@ -96,15 +107,23 @@ public class PortfolioService {
             );
         }
 
+        BigDecimal costBasisAtSale = holding.avgBuyPrice();
+        BigDecimal realizedPnl = quantity.multiply(price.subtract(costBasisAtSale));
+
         BigDecimal remaining = holding.quantity().subtract(quantity);
+        Optional<PortfolioHolding> result;
         if (remaining.signum() == 0) {
             store.delete(instrumentId);
             // Transient confirmation value only - quantity=0 is never actually persisted (the
             // CHECK constraint on portfolio_holdings.quantity forbids it), the row is deleted.
-            return Optional.of(new PortfolioHolding(holding.id(), instrumentId, holding.symbol(), BigDecimal.ZERO, holding.avgBuyPrice(), holding.updatedAt()));
+            result = Optional.of(new PortfolioHolding(holding.id(), instrumentId, holding.symbol(), BigDecimal.ZERO, holding.avgBuyPrice(), holding.updatedAt()));
+        } else {
+            store.upsert(instrumentId, holding.symbol(), remaining, holding.avgBuyPrice());
+            result = reader.findByInstrument(instrumentId);
         }
-        store.upsert(instrumentId, holding.symbol(), remaining, holding.avgBuyPrice());
-        return reader.findByInstrument(instrumentId);
+
+        tradeJournalService.recordSell(instrumentId, holding.symbol(), quantity, price, costBasisAtSale, realizedPnl, rationale);
+        return result;
     }
 
     public List<PortfolioHolding> list() {
