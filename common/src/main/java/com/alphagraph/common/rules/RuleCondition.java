@@ -19,4 +19,17 @@ public record RuleCondition(RuleOperator operator, double threshold, Double uppe
     public RuleCondition(RuleOperator operator, double threshold, double weight) {
         this(operator, threshold, null, weight);
     }
+
+    /** Shared by every {@link RuleEvaluator} so threshold semantics stay in exactly one place. */
+    public boolean matches(double value) {
+        return switch (operator) {
+            case GT -> value > threshold;
+            case LT -> value < threshold;
+            case GTE -> value >= threshold;
+            case LTE -> value <= threshold;
+            case EQ -> value == threshold;
+            case BETWEEN -> value >= threshold && value <= upperBound;
+            case ALWAYS -> true;
+        };
+    }
 }

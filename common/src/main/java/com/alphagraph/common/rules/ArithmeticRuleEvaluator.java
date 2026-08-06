@@ -21,23 +21,12 @@ public final class ArithmeticRuleEvaluator implements RuleEvaluator {
         double contribution = 0.0;
         List<RuleCondition> matched = new ArrayList<>();
         for (RuleCondition condition : rule.conditions()) {
-            if (matches(condition, value)) {
+            if (condition.matches(value)) {
                 contribution += condition.weight();
                 matched.add(condition);
             }
         }
 
         return new EvaluationResult(rule.name(), true, contribution, matched);
-    }
-
-    private static boolean matches(RuleCondition condition, double value) {
-        return switch (condition.operator()) {
-            case GT -> value > condition.threshold();
-            case LT -> value < condition.threshold();
-            case GTE -> value >= condition.threshold();
-            case LTE -> value <= condition.threshold();
-            case EQ -> value == condition.threshold();
-            case BETWEEN -> value >= condition.threshold() && value <= condition.upperBound();
-        };
     }
 }

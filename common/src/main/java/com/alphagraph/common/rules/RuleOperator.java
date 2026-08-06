@@ -10,5 +10,7 @@ public enum RuleOperator {
     GTE,
     LTE,
     EQ,
-    BETWEEN
+    BETWEEN,
+    /** Matches unconditionally - the metric's presence alone is the signal, its magnitude is read directly by whoever combines it (e.g. {@link WeightedAverageRuleEvaluator}), not bucketed against a threshold. */
+    ALWAYS
 }
