@@ -30,4 +30,14 @@ public class EntityReader {
         );
         return names.isEmpty() ? Optional.empty() : Optional.of(names.get(0));
     }
+
+    /** The COMPANY entity a tracked instrument was seeded as (V9 migration) - lets a caller start a graph traversal from "this instrument's own entity". */
+    public Optional<UUID> findByLinkedInstrument(UUID instrumentId) {
+        List<UUID> ids = jdbcTemplate.query(
+            "SELECT id FROM knowledge.entity_master WHERE linked_instrument_id = ?",
+            (rs, rowNum) -> (UUID) rs.getObject("id"),
+            instrumentId
+        );
+        return ids.isEmpty() ? Optional.empty() : Optional.of(ids.get(0));
+    }
 }

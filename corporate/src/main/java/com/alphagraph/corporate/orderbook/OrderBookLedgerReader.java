@@ -11,9 +11,14 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.UUID;
 
-/** Reads every ledger entry recorded for one instrument - the input to {@link OrderBookAggregationEngine}. */
+/**
+ * Reads every ledger entry recorded for one instrument - the input to {@link OrderBookAggregationEngine}.
+ * Public since Module 2.9: the AI Analyst needs individual order-lifecycle events (e.g. "a real
+ * ₹2,800 Cr order from the Ministry of Defence"), not just {@code OrderBookSnapshotReader}'s
+ * aggregated totals.
+ */
 @Component
-class OrderBookLedgerReader {
+public class OrderBookLedgerReader {
 
     static final String CONSUMER = "ORDER_BOOK_ENGINE";
 
@@ -30,7 +35,7 @@ class OrderBookLedgerReader {
         );
     }
 
-    List<OrderBookEntry> findByInstrument(UUID instrumentId) {
+    public List<OrderBookEntry> findByInstrument(UUID instrumentId) {
         return jdbcTemplate.query(
             """
             SELECT id, document_id, instrument_id, symbol, customer_entity_id, order_value_crore, business_unit,

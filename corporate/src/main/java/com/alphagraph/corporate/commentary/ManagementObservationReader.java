@@ -9,9 +9,13 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.UUID;
 
-/** Reads every observation recorded for one instrument - the input to {@link ManagementCommentaryEngine}. */
+/**
+ * Reads every observation recorded for one instrument - the input to {@link ManagementCommentaryEngine}.
+ * Public since Module 2.9: the AI Analyst needs individual guidance statements (e.g. "management
+ * raised FY27 revenue guidance to 30%"), not just {@code ManagementSnapshotReader}'s aggregated score.
+ */
 @Component
-class ManagementObservationReader {
+public class ManagementObservationReader {
 
     static final String CONSUMER = "MANAGEMENT_COMMENTARY_ENGINE";
 
@@ -28,7 +32,7 @@ class ManagementObservationReader {
         );
     }
 
-    List<ManagementObservation> findByInstrument(UUID instrumentId) {
+    public List<ManagementObservation> findByInstrument(UUID instrumentId) {
         return jdbcTemplate.query(
             """
             SELECT id, document_id, instrument_id, symbol, metric_type, guidance_value, guidance_value_numeric,
