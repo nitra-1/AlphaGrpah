@@ -19,15 +19,23 @@ import java.util.UUID;
 public class TradeJournalController {
 
     private final TradeJournalViewService viewService;
+    private final OutcomeTrackingService outcomeTrackingService;
 
-    public TradeJournalController(TradeJournalViewService viewService) {
+    public TradeJournalController(TradeJournalViewService viewService, OutcomeTrackingService outcomeTrackingService) {
         this.viewService = viewService;
+        this.outcomeTrackingService = outcomeTrackingService;
     }
 
     @Operation(summary = "List every trade", description = "Every executed buy/sell, newest first.")
     @GetMapping
     public List<TradeJournalEntryDto> list() {
         return viewService.list();
+    }
+
+    @Operation(summary = "Outcome tracking (Module 3.9)", description = "Aggregate outcomes across every closed trade - total realized P&L, win rate, average win/loss, best/worst trade, per-instrument breakdown.")
+    @GetMapping("/outcomes")
+    public OutcomeSummaryDto outcomes() {
+        return outcomeTrackingService.compute();
     }
 
     @Operation(summary = "List trades for one instrument", description = "Every executed buy/sell for one instrument, newest first.")
