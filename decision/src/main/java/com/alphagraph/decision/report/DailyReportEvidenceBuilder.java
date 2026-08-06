@@ -1,0 +1,159 @@
+package com.alphagraph.decision.report;
+
+import com.alphagraph.corporate.api.CorporateEvent;
+import com.alphagraph.corporate.api.ManagementObservation;
+import com.alphagraph.corporate.api.NewsImpactDirection;
+import com.alphagraph.corporate.api.NewsInstrumentLink;
+import com.alphagraph.corporate.commentary.ManagementObservationReader;
+import com.alphagraph.corporate.events.CorporateEventReader;
+import com.alphagraph.corporate.news.NewsLinkReader;
+import com.alphagraph.decision.api.DecisionScore;
+import com.alphagraph.decision.api.PortfolioHolding;
+import com.alphagraph.decision.api.WatchlistItem;
+import com.alphagraph.decision.engine.DecisionScoreReader;
+import com.alphagraph.decision.portfolio.PortfolioService;
+import com.alphagraph.decision.watchlist.WatchlistService;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/**
+ * Computes every deterministic fact behind one day's report - the whole "AI explains, it never
+ * calculates" discipline (Module 2.9's own rule, reused here) rests on this class doing all the
+ * arithmetic and {@link DailyReportClient} never seeing anything it could compute FROM. Rank
+ * deltas come from comparing {@code reportDate}'s whole decision_scores cohort against the prior
+ * day's (Module 3.6 added DecisionScoreReader.findAllByDate for exactly this); corporate
+ * events/guidance/news reuse the same 1-day-lookback readers Module 2.10's Dashboard already
+ * established. Watchlist/Portfolio highlights are capped to the top 3 movers by |rank delta| each,
+ * so the evidence list stays bounded even if either grows large.
+ */
+@Component
+class DailyReportEvidenceBuilder {
+
+    private static final int LOOKBACK_DAYS = 1;
+    private static final int MAX_HIGHLIGHTS = 3;
+
+    private final DecisionScoreReader decisionScoreReader;
+    private final WatchlistService watchlistService;
+    private final PortfolioService portfolioService;
+    private final CorporateEventReader corporateEventReader;
+    private final ManagementObservationReader managementObservationReader;
+    private final NewsLinkReader newsLinkReader;
+
+    DailyReportEvidenceBuilder(
+        DecisionScoreReader decisionScoreReader, WatchlistService watchlistService, PortfolioService portfolioService,
+        CorporateEventReader corporateEventReader, ManagementObservationReader managementObservationReader, NewsLinkReader newsLinkReader
+    ) {
+        this.decisionScoreReader = decisionScoreReader;
+        this.watchlistService = watchlistService;
+        this.portfolioService = portfolioService;
+        this.corporateEventReader = corporateEventReader;
+        this.managementObservationReader = managementObservationReader;
+        this.newsLinkReader = newsLinkReader;
+    }
+
+    DailyReportEvidence build(LocalDate reportDate) {
+        List<ReportFact> facts = new ArrayList<>();
+
+        List<DecisionScore> today = decisionScoreReader.findAllByDate(reportDate);
+        List<DecisionScore> yesterday = decisionScoreReader.findAllByDate(reportDate.minusDays(1));
+        Map<UUID, DecisionScore> yesterdayByInstrument = yesterday.stream()
+            .collect(Collectors.toMap(DecisionScore::instrumentId, s -> s));
+        Map<UUID, DecisionScore> todayByInstrument = today.stream()
+            .collect(Collectors.toMap(DecisionScore::instrumentId, s -> s));
+
+        Map<UUID, Integer> rankDeltaByInstrument = new HashMap<>();
+        DecisionScore topGainer = null;
+        int topGainerDelta = 0;
+        DecisionScore topDecliner = null;
+        int topDeclinerDelta = 0;
+
+        for (DecisionScore t : today) {
+            DecisionScore y = yesterdayByInstrument.get(t.instrumentId());
+            if (y == null || t.swingRank() == null || y.swingRank() == null) {
+                continue;
+            }
+            int delta = y.swingRank() - t.swingRank(); // positive = rank number went down = improved
+            rankDeltaByInstrument.put(t.instrumentId(), delta);
+            if (delta > topGainerDelta) {
+                topGainerDelta = delta;
+                topGainer = t;
+            }
+            if (delta < topDeclinerDelta) {
+                topDeclinerDelta = delta;
+                topDecliner = t;
+            }
+        }
+
+        if (topGainer != null) {
+            DecisionScore y = yesterdayByInstrument.get(topGainer.instrumentId());
+            facts.add(new ReportFact("RANK_IMPROVEMENT",
+                topGainer.symbol() + " moved from Rank " + y.swingRank() + " to Rank " + topGainer.swingRank()
+                    + " (improved by " + topGainerDelta + ")"));
+        }
+        if (topDecliner != null) {
+            DecisionScore y = yesterdayByInstrument.get(topDecliner.instrumentId());
+            facts.add(new ReportFact("RANK_DECLINE",
+                topDecliner.symbol() + " moved from Rank " + y.swingRank() + " to Rank " + topDecliner.swingRank()
+                    + " (declined by " + Math.abs(topDeclinerDelta) + ")"));
+        }
+
+        List<CorporateEvent> events = corporateEventReader.findRecentAcrossAllInstruments(LOOKBACK_DAYS);
+        for (CorporateEvent e : events) {
+            facts.add(new ReportFact("CORPORATE_EVENT",
+                e.symbol() + ": " + e.eventType().name() + " - " + e.summary()
+                    + " (Revenue impact: " + e.revenueImpact().name() + ", Signal: " + e.signal().name() + ")"));
+        }
+
+        List<ManagementObservation> guidanceChanges = managementObservationReader.findRecentAcrossAllInstruments(LOOKBACK_DAYS);
+        for (ManagementObservation g : guidanceChanges) {
+            String period = g.guidancePeriod() == null ? "" : " for " + g.guidancePeriod();
+            facts.add(new ReportFact("GUIDANCE_CHANGE",
+                g.symbol() + " revised " + g.metricType() + " guidance (" + g.direction().name() + "): " + g.guidanceValue() + period));
+        }
+
+        List<NewsInstrumentLink> positiveNews = newsLinkReader.findRecentByDirection(NewsImpactDirection.POSITIVE, LOOKBACK_DAYS);
+        for (NewsInstrumentLink n : positiveNews) {
+            facts.add(new ReportFact("POSITIVE_NEWS", n.symbol() + ": " + n.impactSummary()));
+        }
+        List<NewsInstrumentLink> negativeNews = newsLinkReader.findRecentByDirection(NewsImpactDirection.NEGATIVE, LOOKBACK_DAYS);
+        for (NewsInstrumentLink n : negativeNews) {
+            facts.add(new ReportFact("NEGATIVE_NEWS", n.symbol() + ": " + n.impactSummary()));
+        }
+
+        List<UUID> watchlistInstrumentIds = watchlistService.list().stream().map(WatchlistItem::instrumentId).toList();
+        addHighlights(facts, "WATCHLIST_MOVER", "Watchlist", watchlistInstrumentIds, rankDeltaByInstrument, todayByInstrument);
+
+        List<UUID> portfolioInstrumentIds = portfolioService.list().stream().map(PortfolioHolding::instrumentId).toList();
+        addHighlights(facts, "PORTFOLIO_MOVER", "Portfolio", portfolioInstrumentIds, rankDeltaByInstrument, todayByInstrument);
+
+        return new DailyReportEvidence(
+            facts,
+            topGainer == null ? null : topGainer.symbol(), topGainer == null ? null : topGainerDelta,
+            topDecliner == null ? null : topDecliner.symbol(), topDecliner == null ? null : Math.abs(topDeclinerDelta),
+            events.size(), guidanceChanges.size(), positiveNews.size(), negativeNews.size()
+        );
+    }
+
+    private void addHighlights(
+        List<ReportFact> facts, String factType, String label, List<UUID> instrumentIds,
+        Map<UUID, Integer> rankDeltaByInstrument, Map<UUID, DecisionScore> todayByInstrument
+    ) {
+        instrumentIds.stream()
+            .filter(id -> rankDeltaByInstrument.getOrDefault(id, 0) != 0)
+            .sorted((a, b) -> Integer.compare(Math.abs(rankDeltaByInstrument.get(b)), Math.abs(rankDeltaByInstrument.get(a))))
+            .limit(MAX_HIGHLIGHTS)
+            .forEach(id -> {
+                int delta = rankDeltaByInstrument.get(id);
+                DecisionScore score = todayByInstrument.get(id);
+                String direction = delta > 0 ? "improved by " + delta : "declined by " + Math.abs(delta);
+                facts.add(new ReportFact(factType, label + ": " + score.symbol() + " Swing Rank " + direction + " (now Rank " + score.swingRank() + ")"));
+            });
+    }
+}

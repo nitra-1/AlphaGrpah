@@ -6,6 +6,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -68,5 +70,13 @@ public class DecisionScoreReader {
             ROW_MAPPER
         );
         return rows.stream().sorted((a, b) -> Double.compare(b.swingScore(), a.swingScore())).toList();
+    }
+
+    /** Every instrument scored on exactly this date - added in Module 3.6 (Daily AI Report), which needs to diff one day's whole cohort against the previous day's rather than walking each instrument's history individually. */
+    public List<DecisionScore> findAllByDate(LocalDate date) {
+        return jdbcTemplate.query(
+            "SELECT " + SELECT_COLUMNS + " FROM decision.decision_scores WHERE as_of_date = ?",
+            ROW_MAPPER, Date.valueOf(date)
+        );
     }
 }
