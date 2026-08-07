@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { ComingSoon } from './components/ComingSoon'
 import { LoginPage } from './routes/LoginPage'
 import { RankingsPage } from './routes/RankingsPage'
+import { DashboardPage } from './routes/DashboardPage'
 
 function App() {
   return (
@@ -13,7 +14,7 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<RankingsPage />} />
-          <Route path="/dashboard" element={<ComingSoon title="Dashboard" />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/watchlist" element={<ComingSoon title="Watchlist" />} />
           <Route path="/portfolio" element={<ComingSoon title="Portfolio" />} />
           <Route path="/compare" element={<ComingSoon title="Compare" />} />
