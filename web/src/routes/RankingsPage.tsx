@@ -5,6 +5,7 @@ import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { DomainScoreBar } from '../components/DomainScoreBar'
 import { ErrorState } from '../components/ErrorState'
+import { TableSkeleton } from '../components/TableSkeleton'
 
 export function RankingsPage() {
   const { data, isLoading, error, refetch } = useQuery({
@@ -19,7 +20,7 @@ export function RankingsPage() {
         Every tracked instrument's current Swing Rank and Long-Term Rank, blending all six domain scores (Module 3.1).
       </p>
 
-      {isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {isLoading && <TableSkeleton columns={8} />}
       {error && <ErrorState message="Couldn't load rankings." onRetry={refetch} />}
 
       {data && (

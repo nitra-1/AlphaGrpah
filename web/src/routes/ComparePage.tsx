@@ -6,6 +6,7 @@ import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { DomainScoreBar } from '../components/DomainScoreBar'
 import { ErrorState } from '../components/ErrorState'
+import { TableSkeleton } from '../components/TableSkeleton'
 
 export function ComparePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -67,7 +68,9 @@ export function ComparePage() {
         <p className="mt-8 text-sm text-text-muted">Select instruments above to compare them side by side.</p>
       )}
 
-      {selectedIds.length > 0 && comparisonQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {selectedIds.length > 0 && comparisonQuery.isLoading && (
+        <TableSkeleton columns={selectedIds.length + 1} rows={14} />
+      )}
       {comparisonQuery.error && <ErrorState message="Couldn't load the comparison." onRetry={comparisonQuery.refetch} />}
 
       {orderedEntries.length > 0 && (

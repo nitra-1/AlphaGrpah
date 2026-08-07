@@ -5,6 +5,7 @@ import { WidgetCard } from '../components/WidgetCard'
 import { SignalBadge } from '../components/SignalBadge'
 import { RatingBadge } from '../components/RatingBadge'
 import { ErrorState } from '../components/ErrorState'
+import { WidgetCardSkeleton } from '../components/WidgetCardSkeleton'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -23,7 +24,13 @@ export function DashboardPage() {
         Corporate intelligence across all tracked instruments - orders, events, guidance, and news (Module 2.10).
       </p>
 
-      {isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {isLoading && (
+        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <WidgetCardSkeleton key={i} />
+          ))}
+        </div>
+      )}
       {error && <ErrorState message="Couldn't load the dashboard." onRetry={refetch} />}
 
       {data && (

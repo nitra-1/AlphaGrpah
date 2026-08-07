@@ -5,6 +5,7 @@ import type { RankingEntry } from '../types/rankings'
 import type { AnalystExplanation } from '../types/analyst'
 import { RatingBadge } from '../components/RatingBadge'
 import { ErrorState } from '../components/ErrorState'
+import { Skeleton } from '../components/Skeleton'
 
 function DomainScore({ label, value }: { label: string; value: number | null }) {
   return (
@@ -85,7 +86,35 @@ export function InstrumentDetailPage() {
   const entry = rankingsQuery.data?.find((e) => e.instrumentId === instrumentId)
 
   if (rankingsQuery.isLoading) {
-    return <p className="text-sm text-text-muted">Loading…</p>
+    return (
+      <div>
+        <Skeleton className="h-4 w-32" />
+        <div className="mt-3 flex items-baseline justify-between">
+          <Skeleton className="h-7 w-24" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-border bg-surface p-5">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-3 h-8 w-40" />
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 rounded-2xl border border-border bg-surface p-5">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="mt-2 h-3 w-64" />
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-xl border border-border bg-bg px-4 py-3">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="mt-2 h-5 w-10" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (rankingsQuery.error) {

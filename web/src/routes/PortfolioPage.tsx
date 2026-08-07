@@ -7,6 +7,8 @@ import { RatingBadge } from '../components/RatingBadge'
 import { LevelBadge } from '../components/LevelBadge'
 import { WidgetCard } from '../components/WidgetCard'
 import { ErrorState } from '../components/ErrorState'
+import { TableSkeleton } from '../components/TableSkeleton'
+import { WidgetCardSkeleton } from '../components/WidgetCardSkeleton'
 
 function formatMoney(value: number | null) {
   if (value == null) return '—'
@@ -151,7 +153,7 @@ export function PortfolioPage() {
         {buyMutation.isError && <p className="mt-2 text-sm text-loss">Couldn't complete that buy.</p>}
       </div>
 
-      {portfolioQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {portfolioQuery.isLoading && <TableSkeleton columns={10} />}
       {portfolioQuery.error && <ErrorState message="Couldn't load the portfolio." onRetry={portfolioQuery.refetch} />}
 
       {portfolioQuery.data && portfolioQuery.data.length === 0 && (
@@ -254,6 +256,12 @@ export function PortfolioPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {riskQuery.isLoading && (
+        <div className="mt-6">
+          <WidgetCardSkeleton />
         </div>
       )}
 

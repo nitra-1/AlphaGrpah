@@ -4,6 +4,8 @@ import type { OutcomeSummary, TradeJournalEntry } from '../types/tradeJournal'
 import { StatTile } from '../components/StatTile'
 import { WidgetCard } from '../components/WidgetCard'
 import { ErrorState } from '../components/ErrorState'
+import { WidgetCardSkeleton } from '../components/WidgetCardSkeleton'
+import { TableSkeleton } from '../components/TableSkeleton'
 
 function formatMoney(value: number | null) {
   if (value == null) return '—'
@@ -34,6 +36,12 @@ export function TradeJournalPage() {
       <p className="mt-1 text-sm text-text-muted">
         Every buy/sell auto-recorded from the Portfolio (Module 3.8), plus aggregate outcome tracking across closed trades (Module 3.9).
       </p>
+
+      {outcomesQuery.isLoading && (
+        <div className="mt-6">
+          <WidgetCardSkeleton />
+        </div>
+      )}
 
       {outcomesQuery.error && (
         <ErrorState message="Couldn't load outcome tracking." onRetry={outcomesQuery.refetch} />
@@ -106,7 +114,7 @@ export function TradeJournalPage() {
         </div>
       )}
 
-      {journalQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {journalQuery.isLoading && <TableSkeleton columns={9} />}
       {journalQuery.error && <ErrorState message="Couldn't load the trade journal." onRetry={journalQuery.refetch} />}
 
       {journalQuery.data && journalQuery.data.length === 0 && (

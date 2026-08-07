@@ -4,6 +4,8 @@ import { apiFetch, ApiError } from '../lib/api'
 import type { DailyReport } from '../types/dailyReport'
 import { StatTile } from '../components/StatTile'
 import { ErrorState } from '../components/ErrorState'
+import { Skeleton } from '../components/Skeleton'
+import { StatTilesSkeleton } from '../components/StatTilesSkeleton'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -60,7 +62,22 @@ export function DailyReportPage() {
         )}
       </div>
 
-      {reportQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {reportQuery.isLoading && (
+        <div className="mt-6 rounded-2xl border border-border bg-surface p-6">
+          <div className="flex items-baseline justify-between">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+          <div className="mt-6">
+            <StatTilesSkeleton />
+          </div>
+        </div>
+      )}
 
       {notFound && (
         <p className="mt-8 text-sm text-text-muted">

@@ -5,6 +5,7 @@ import type { WatchlistEntry } from '../types/watchlist'
 import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { ErrorState } from '../components/ErrorState'
+import { TableSkeleton } from '../components/TableSkeleton'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -71,7 +72,7 @@ export function WatchlistPage() {
         {addMutation.isError && <span className="text-sm text-loss">Couldn't add that instrument.</span>}
       </div>
 
-      {watchlistQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
+      {watchlistQuery.isLoading && <TableSkeleton columns={9} />}
       {watchlistQuery.error && <ErrorState message="Couldn't load the watchlist." onRetry={watchlistQuery.refetch} />}
 
       {watchlistQuery.data && watchlistQuery.data.length === 0 && (
