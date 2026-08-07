@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch, ApiError } from '../lib/api'
 import type { DailyReport } from '../types/dailyReport'
 import { StatTile } from '../components/StatTile'
+import { ErrorState } from '../components/ErrorState'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -67,7 +68,7 @@ export function DailyReportPage() {
         </p>
       )}
 
-      {otherError && <p className="mt-8 text-sm text-loss">Couldn't load the daily report.</p>}
+      {otherError && <ErrorState message="Couldn't load the daily report." onRetry={reportQuery.refetch} />}
 
       {reportQuery.data && (
         <div className="mt-6 rounded-2xl border border-border bg-surface p-6">

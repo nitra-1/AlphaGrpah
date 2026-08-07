@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import type { RankingEntry } from '../types/rankings'
 import type { AnalystExplanation } from '../types/analyst'
 import { RatingBadge } from '../components/RatingBadge'
+import { ErrorState } from '../components/ErrorState'
 
 function DomainScore({ label, value }: { label: string; value: number | null }) {
   return (
@@ -85,6 +86,15 @@ export function InstrumentDetailPage() {
 
   if (rankingsQuery.isLoading) {
     return <p className="text-sm text-text-muted">Loading…</p>
+  }
+
+  if (rankingsQuery.error) {
+    return (
+      <div>
+        <Link to="/" className="text-sm font-semibold text-accent hover:underline">← Back to Rankings</Link>
+        <ErrorState message="Couldn't load this instrument." onRetry={rankingsQuery.refetch} />
+      </div>
+    )
   }
 
   if (!entry) {

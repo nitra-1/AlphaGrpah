@@ -3,6 +3,7 @@ import { apiFetch } from '../lib/api'
 import type { OutcomeSummary, TradeJournalEntry } from '../types/tradeJournal'
 import { StatTile } from '../components/StatTile'
 import { WidgetCard } from '../components/WidgetCard'
+import { ErrorState } from '../components/ErrorState'
 
 function formatMoney(value: number | null) {
   if (value == null) return '—'
@@ -33,6 +34,10 @@ export function TradeJournalPage() {
       <p className="mt-1 text-sm text-text-muted">
         Every buy/sell auto-recorded from the Portfolio (Module 3.8), plus aggregate outcome tracking across closed trades (Module 3.9).
       </p>
+
+      {outcomesQuery.error && (
+        <ErrorState message="Couldn't load outcome tracking." onRetry={outcomesQuery.refetch} />
+      )}
 
       {outcomes && (
         <div className="mt-6">
@@ -102,7 +107,7 @@ export function TradeJournalPage() {
       )}
 
       {journalQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
-      {journalQuery.error && <p className="mt-8 text-sm text-loss">Couldn't load the trade journal.</p>}
+      {journalQuery.error && <ErrorState message="Couldn't load the trade journal." onRetry={journalQuery.refetch} />}
 
       {journalQuery.data && journalQuery.data.length === 0 && (
         <p className="mt-8 text-sm text-text-muted">No trades recorded yet - buy or sell a position in Portfolio to see it here.</p>

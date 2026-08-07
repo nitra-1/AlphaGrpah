@@ -4,9 +4,10 @@ import { apiFetch } from '../lib/api'
 import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { DomainScoreBar } from '../components/DomainScoreBar'
+import { ErrorState } from '../components/ErrorState'
 
 export function RankingsPage() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['rankings'],
     queryFn: () => apiFetch<RankingEntry[]>('/rankings'),
   })
@@ -19,7 +20,7 @@ export function RankingsPage() {
       </p>
 
       {isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
-      {error && <p className="mt-8 text-sm text-loss">Couldn't load rankings.</p>}
+      {error && <ErrorState message="Couldn't load rankings." onRetry={refetch} />}
 
       {data && (
         <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">

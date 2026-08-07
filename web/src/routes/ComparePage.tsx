@@ -5,6 +5,7 @@ import type { ComparisonEntry } from '../types/comparison'
 import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { DomainScoreBar } from '../components/DomainScoreBar'
+import { ErrorState } from '../components/ErrorState'
 
 export function ComparePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -67,7 +68,7 @@ export function ComparePage() {
       )}
 
       {selectedIds.length > 0 && comparisonQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
-      {comparisonQuery.error && <p className="mt-8 text-sm text-loss">Couldn't load the comparison.</p>}
+      {comparisonQuery.error && <ErrorState message="Couldn't load the comparison." onRetry={comparisonQuery.refetch} />}
 
       {orderedEntries.length > 0 && (
         <div className="mt-6 overflow-x-auto rounded-2xl border border-border bg-surface">

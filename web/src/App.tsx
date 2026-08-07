@@ -10,6 +10,7 @@ import { ComparePage } from './routes/ComparePage'
 import { DailyReportPage } from './routes/DailyReportPage'
 import { TradeJournalPage } from './routes/TradeJournalPage'
 import { InstrumentDetailPage } from './routes/InstrumentDetailPage'
+import { NotFoundPage } from './routes/NotFoundPage'
 
 function App() {
   return (
@@ -28,6 +29,8 @@ function App() {
           <Route path="/instruments/:instrumentId" element={<InstrumentDetailPage />} />
         </Route>
       </Route>
+
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }

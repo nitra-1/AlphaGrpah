@@ -6,6 +6,7 @@ import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { LevelBadge } from '../components/LevelBadge'
 import { WidgetCard } from '../components/WidgetCard'
+import { ErrorState } from '../components/ErrorState'
 
 function formatMoney(value: number | null) {
   if (value == null) return '—'
@@ -151,7 +152,7 @@ export function PortfolioPage() {
       </div>
 
       {portfolioQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
-      {portfolioQuery.error && <p className="mt-8 text-sm text-loss">Couldn't load the portfolio.</p>}
+      {portfolioQuery.error && <ErrorState message="Couldn't load the portfolio." onRetry={portfolioQuery.refetch} />}
 
       {portfolioQuery.data && portfolioQuery.data.length === 0 && (
         <p className="mt-8 text-sm text-text-muted">No holdings yet - buy an instrument above.</p>
@@ -254,6 +255,10 @@ export function PortfolioPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {riskQuery.error && (
+        <ErrorState message="Couldn't load portfolio risk." onRetry={riskQuery.refetch} />
       )}
 
       {risk && (

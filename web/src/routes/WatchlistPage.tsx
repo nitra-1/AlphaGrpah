@@ -4,6 +4,7 @@ import { apiFetch } from '../lib/api'
 import type { WatchlistEntry } from '../types/watchlist'
 import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
+import { ErrorState } from '../components/ErrorState'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -71,7 +72,7 @@ export function WatchlistPage() {
       </div>
 
       {watchlistQuery.isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
-      {watchlistQuery.error && <p className="mt-8 text-sm text-loss">Couldn't load the watchlist.</p>}
+      {watchlistQuery.error && <ErrorState message="Couldn't load the watchlist." onRetry={watchlistQuery.refetch} />}
 
       {watchlistQuery.data && watchlistQuery.data.length === 0 && (
         <p className="mt-8 text-sm text-text-muted">Nothing on the watchlist yet - add an instrument above.</p>

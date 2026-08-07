@@ -4,13 +4,14 @@ import type { DashboardSummary } from '../types/dashboard'
 import { WidgetCard } from '../components/WidgetCard'
 import { SignalBadge } from '../components/SignalBadge'
 import { RatingBadge } from '../components/RatingBadge'
+import { ErrorState } from '../components/ErrorState'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export function DashboardPage() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => apiFetch<DashboardSummary>('/dashboard'),
   })
@@ -23,7 +24,7 @@ export function DashboardPage() {
       </p>
 
       {isLoading && <p className="mt-8 text-sm text-text-muted">Loading…</p>}
-      {error && <p className="mt-8 text-sm text-loss">Couldn't load the dashboard.</p>}
+      {error && <ErrorState message="Couldn't load the dashboard." onRetry={refetch} />}
 
       {data && (
         <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
