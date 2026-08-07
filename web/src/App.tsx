@@ -1,7 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { ComingSoon } from './components/ComingSoon'
 import { LoginPage } from './routes/LoginPage'
 import { RankingsPage } from './routes/RankingsPage'
 import { DashboardPage } from './routes/DashboardPage'
@@ -10,6 +9,7 @@ import { PortfolioPage } from './routes/PortfolioPage'
 import { ComparePage } from './routes/ComparePage'
 import { DailyReportPage } from './routes/DailyReportPage'
 import { TradeJournalPage } from './routes/TradeJournalPage'
+import { InstrumentDetailPage } from './routes/InstrumentDetailPage'
 
 function App() {
   return (
@@ -25,6 +25,7 @@ function App() {
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/daily-report" element={<DailyReportPage />} />
           <Route path="/trade-journal" element={<TradeJournalPage />} />
+          <Route path="/instruments/:instrumentId" element={<InstrumentDetailPage />} />
         </Route>
       </Route>
     </Routes>

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
 import type { RankingEntry } from '../types/rankings'
@@ -39,7 +40,11 @@ export function RankingsPage() {
               {data.map((entry) => (
                 <tr key={entry.instrumentId} className="border-b border-border last:border-0 hover:bg-bg">
                   <td className="px-4 py-3 font-semibold text-text">{entry.swingRank ?? '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-text">{entry.symbol}</td>
+                  <td className="px-4 py-3">
+                    <Link to={`/instruments/${entry.instrumentId}`} className="font-semibold text-accent hover:underline">
+                      {entry.symbol}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-text">{entry.swingScore?.toFixed(2) ?? '—'}</td>
                   <td className="px-4 py-3">
                     <RatingBadge rating={entry.swingRating} />
