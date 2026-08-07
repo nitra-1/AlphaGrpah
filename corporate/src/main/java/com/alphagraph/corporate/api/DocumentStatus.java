@@ -20,6 +20,13 @@ package com.alphagraph.corporate.api;
  * {@code corporate.document_consumer_checkpoints}, not via this status. This replaces Module 2.3's
  * original EVENTS_EXTRACTED value, which implied a single specific consumer and stopped fitting
  * once a second engine (Order Book, Module 2.4) needed to read the same documents independently.
+ *
+ * <p>PENDING_REVIEW and DISCARDED (Module 2.6 pre-filter retrofit) are specific to RSS-collected
+ * news: {@code corporate.newsfeed.NewsRelevanceFilter} runs a cheap keyword check before a
+ * collected article reaches PROCESSED; a non-match lands in PENDING_REVIEW instead, invisible to
+ * {@code KnowledgeExtractionOrchestrator}'s normal PROCESSED-only query, and stays there until an
+ * admin either promotes it (PROCESSED, then immediately extracted) or rejects it (DISCARDED,
+ * terminal - never extracted).
  */
 public enum DocumentStatus {
     PENDING,
@@ -27,5 +34,7 @@ public enum DocumentStatus {
     PROCESSED,
     NEEDS_OCR,
     FAILED,
-    KNOWLEDGE_EXTRACTED
+    KNOWLEDGE_EXTRACTED,
+    PENDING_REVIEW,
+    DISCARDED
 }

@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Runs the full three-stage pipeline over every document {@link PendingKnowledgeDocumentReader}
@@ -64,6 +65,18 @@ public class KnowledgeExtractionOrchestrator {
         relationshipBuilder.expandCompetitorGroups();
 
         log.info("Knowledge extraction: {} documents processed, {} failed (of {})", succeeded, failed, pending.size());
+    }
+
+    /**
+     * Extracts a single document immediately, regardless of its current status - used by the admin
+     * news-review "keep" decision (Module 2.6 pre-filter retrofit): an admin promoting a
+     * PENDING_REVIEW article should see it extracted right away, not wait for the next scheduled
+     * PROCESSED-only {@link #extractAllPending()} run.
+     */
+    public void extractDocument(UUID documentId) {
+        PendingKnowledgeDocument document = documentReader.findById(documentId)
+            .orElseThrow(() -> new IllegalArgumentException("No document with id " + documentId));
+        extractOne(document);
     }
 
     private void extractOne(PendingKnowledgeDocument document) {

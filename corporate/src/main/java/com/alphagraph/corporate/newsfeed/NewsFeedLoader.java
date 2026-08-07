@@ -14,11 +14,13 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Upserts a news article directly as a PROCESSED {@code corporate.documents} row -
- * {@code instrument_id}/{@code symbol} NULL (Module 2.6's whole premise: which companies this
- * affects is determined later, not at collection). No download/OCR stage exists for RSS-sourced
- * text (see {@code corporate.newsfeed} package-info), so this goes straight past PENDING/
- * DOWNLOADED.
+ * Upserts a news article as a {@code corporate.documents} row - {@code instrument_id}/
+ * {@code symbol} NULL (Module 2.6's whole premise: which companies this affects is determined
+ * later, not at collection). No download/OCR stage exists for RSS-sourced text (see
+ * {@code corporate.newsfeed} package-info), so this goes straight past PENDING/DOWNLOADED to
+ * either PROCESSED (ready for tonight's automatic extraction) or PENDING_REVIEW (held for an
+ * admin decision), decided by {@link NewsRelevanceFilter} - see that class and
+ * {@code corporate.api.DocumentStatus} for the full rationale.
  *
  * <p>Two dedup layers: (1) {@code (source, external_id)} - the same outlet republishing the same
  * link is a natural no-op, same as every prior Loader; (2) a real, disclosed, deliberately simple
@@ -38,9 +40,11 @@ public class NewsFeedLoader implements Loader<NewsArticleDocument> {
     private static final long DEDUP_WINDOW_HOURS = 48;
 
     private final JdbcTemplate jdbcTemplate;
+    private final NewsRelevanceFilter relevanceFilter;
 
-    public NewsFeedLoader(JdbcTemplate jdbcTemplate) {
+    public NewsFeedLoader(JdbcTemplate jdbcTemplate, NewsRelevanceFilter relevanceFilter) {
         this.jdbcTemplate = jdbcTemplate;
+        this.relevanceFilter = relevanceFilter;
     }
 
     @Override
@@ -50,21 +54,25 @@ public class NewsFeedLoader implements Loader<NewsArticleDocument> {
             return;
         }
 
+        String status = relevanceFilter.isRelevant(document.extractedText()) ? "PROCESSED" : "PENDING_REVIEW";
+
         List<UUID> inserted = jdbcTemplate.query(
             """
             INSERT INTO corporate.documents
                 (id, instrument_id, symbol, source, external_id, category, title, source_url, announced_at, extracted_text, status)
-            VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, 'PROCESSED')
+            VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (source, external_id) DO NOTHING
             RETURNING id
             """,
             (rs, rowNum) -> (UUID) rs.getObject("id"),
             UUID.randomUUID(), document.source().name(), document.externalId(), document.category(),
-            document.title(), document.sourceUrl(), Timestamp.from(document.announcedAt()), document.extractedText()
+            document.title(), document.sourceUrl(), Timestamp.from(document.announcedAt()), document.extractedText(), status
         );
 
         if (inserted.isEmpty()) {
             log.debug("News article already collected, skipping: source={} externalId={}", document.source(), document.externalId());
+        } else if ("PENDING_REVIEW".equals(status)) {
+            log.debug("News article filtered out (no tracked-instrument match), held for admin review: {}", document.title());
         }
     }
 
