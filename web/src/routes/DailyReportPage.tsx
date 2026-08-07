@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch, ApiError } from '../lib/api'
 import type { DailyReport } from '../types/dailyReport'
+import { StatTile } from '../components/StatTile'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -9,15 +10,6 @@ function formatDate(iso: string) {
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-function StatTile({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-border bg-bg px-4 py-3">
-      <p className="text-xs text-text-muted">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-text">{value}</p>
-    </div>
-  )
 }
 
 export function DailyReportPage() {
