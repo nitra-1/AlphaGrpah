@@ -13,6 +13,7 @@ import { InstrumentDetailPage } from './routes/InstrumentDetailPage'
 import { NotFoundPage } from './routes/NotFoundPage'
 import { NewsReviewPage } from './routes/NewsReviewPage'
 import { AddInstrumentPage } from './routes/AddInstrumentPage'
+import { AddFinancialDataPage } from './routes/AddFinancialDataPage'
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
           <Route path="/instruments/:instrumentId" element={<InstrumentDetailPage />} />
           <Route path="/admin/news-review" element={<NewsReviewPage />} />
           <Route path="/admin/add-instrument" element={<AddInstrumentPage />} />
+          <Route path="/admin/add-financial-data" element={<AddFinancialDataPage />} />
         </Route>
       </Route>
 

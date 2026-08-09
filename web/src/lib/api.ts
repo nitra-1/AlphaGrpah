@@ -46,8 +46,14 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     throw new ApiError(response.status, body?.message ?? `Request failed (${response.status})`)
   }
 
-  if (response.status === 204) {
+  // Some 2xx responses genuinely have no body (204, or a 201 that doesn't echo the created
+  // resource) - checking status codes alone missed this once already (a 201-with-empty-body
+  // endpoint threw "Unexpected end of JSON input" on response.json(), silently turning a
+  // successful write into an apparent failure). Reading the text first and checking for
+  // emptiness is robust regardless of which status code carries no body.
+  const text = await response.text()
+  if (text.length === 0) {
     return undefined as T
   }
-  return response.json() as Promise<T>
+  return JSON.parse(text) as T
 }
