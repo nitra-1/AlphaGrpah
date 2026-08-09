@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/daily-report', label: 'Daily Report' },
   { to: '/trade-journal', label: 'Trade Journal' },
   { to: '/admin/news-review', label: 'News Review' },
+  { to: '/admin/add-instrument', label: 'Add Instrument' },
 ]
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
