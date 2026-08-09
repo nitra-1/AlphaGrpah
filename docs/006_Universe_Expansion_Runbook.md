@@ -84,6 +84,43 @@ Verify by querying `financial.financial_results` / `ownership.shareholding_patte
 
 ## 4. CSV formats (exact column contracts)
 
+### Price history backfill — NSE's raw bhavdata format
+
+Unlike financial results and shareholding, price backfill data is never hand-entered — it's fetched directly from NSE's live archive and written straight into a Flyway migration as `VALUES` rows, not staged as a checked-in CSV. There is a bundled sample at `market/src/main/resources/market-data/sample-bhavdata.csv` (used by the local-profile `BhavdataCollector`), but that's a small fixed single-day snapshot for dev/test, not something to hand-extend for a real backfill.
+
+The raw format returned by `https://archives.nseindia.com/products/content/sec_bhavdata_full_<DDMMYYYY>.csv` (comma-space separated):
+
+```
+SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, NO_OF_TRADES, DELIV_QTY, DELIV_PER
+```
+
+Filter to rows matching `^<SYMBOL>, EQ,` (anchored — see §3 Step 3) across every trading day in the target window, then map each matched row into the migration's `market.daily_prices` VALUES tuple:
+
+| Source column (NSE raw) | Target column (`market.daily_prices`) | Notes |
+|---|---|---|
+| `SYMBOL` | `symbol` (join key, not stored directly) | Resolved to `instrument_id` via `JOIN reference.instruments i ON i.symbol = v.symbol` |
+| `DATE1` (`DD-Mon-YYYY`, e.g. `09-Apr-2026`) | `trade_date` | Convert to `YYYY-MM-DD` before writing the migration |
+| `OPEN_PRICE` | `open_price` | |
+| `HIGH_PRICE` | `high_price` | |
+| `LOW_PRICE` | `low_price` | |
+| `CLOSE_PRICE` | `close_price` | Use the official close, **not** `LAST_PRICE` |
+| `TTL_TRD_QNTY` | `volume` | |
+| `DELIV_PER` | `delivery_percentage` | Trim leading/trailing whitespace — NSE pads this field |
+| `PREV_CLOSE`, `AVG_PRICE`, `TURNOVER_LACS`, `NO_OF_TRADES`, `DELIV_QTY` | — | Not stored; `market.daily_prices` doesn't have columns for these |
+
+Resulting migration shape (see `V3__backfill_universe_batch1_prices.sql` for the full pattern):
+
+```sql
+INSERT INTO market.daily_prices (id, instrument_id, trade_date, open_price, high_price, low_price, close_price, volume, delivery_percentage)
+SELECT gen_random_uuid(), i.id, v.trade_date, v.open_price, v.high_price, v.low_price, v.close_price, v.volume, v.delivery_percentage
+FROM (VALUES
+    ('SYMBOL', DATE '2026-04-09', 3179.90, 3199.90, 3131.00, 3166.80, 3039565, 43.84),
+    ...
+) AS v(symbol, trade_date, open_price, high_price, low_price, close_price, volume, delivery_percentage)
+JOIN reference.instruments i ON i.symbol = v.symbol
+ON CONFLICT (instrument_id, trade_date) DO NOTHING;
+```
+
 ### `financial/src/main/resources/financial-data/sample-financial-results.csv`
 
 ```
