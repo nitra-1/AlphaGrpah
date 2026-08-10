@@ -3,9 +3,69 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch, ApiError } from '../lib/api'
 import type { RankingEntry } from '../types/rankings'
 import type { AnalystExplanation } from '../types/analyst'
+import type { FinancialHistoryEntry } from '../types/financialHistory'
 import { RatingBadge } from '../components/RatingBadge'
 import { ErrorState } from '../components/ErrorState'
 import { Skeleton } from '../components/Skeleton'
+
+function formatCrore(value: number | null): string {
+  if (value == null) return '—'
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 2 })
+}
+
+function FinancialHistoryCard({ instrumentId }: { instrumentId: string }) {
+  const query = useQuery({
+    queryKey: ['financial-history', instrumentId],
+    queryFn: () => apiFetch<FinancialHistoryEntry[]>(`/financial-results/${instrumentId}`),
+  })
+
+  return (
+    <div className="mt-5 rounded-2xl border border-border bg-surface p-5">
+      <h2 className="text-sm font-semibold text-text">Financial History</h2>
+      <p className="mt-0.5 text-xs text-text-muted">
+        Every reported period's Sales/PAT/EPS (₹ in crores) - the raw figures behind the Fundamental Score above, newest first.
+      </p>
+
+      {query.isLoading && <Skeleton className="mt-4 h-24 w-full" />}
+      {query.error && <ErrorState message="Couldn't load financial history." onRetry={query.refetch} />}
+      {query.data && query.data.length === 0 && (
+        <p className="mt-4 text-sm text-text-muted">No financial results reported yet for this instrument.</p>
+      )}
+      {query.data && query.data.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-text-muted">
+                <th className="py-2 pr-4 font-medium">Period</th>
+                <th className="py-2 pr-4 font-medium">Type</th>
+                <th className="py-2 pr-4 font-medium">Sales</th>
+                <th className="py-2 pr-4 font-medium">PAT</th>
+                <th className="py-2 pr-4 font-medium">EPS</th>
+                <th className="py-2 pr-4 font-medium">ROE %</th>
+                <th className="py-2 pr-4 font-medium">ROCE %</th>
+                <th className="py-2 font-medium">Net Margin %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {query.data.map((row) => (
+                <tr key={`${row.periodEnd}-${row.periodType}`} className="border-b border-border last:border-b-0">
+                  <td className="py-2 pr-4 text-text">{row.periodEnd}</td>
+                  <td className="py-2 pr-4 text-text-muted">{row.periodType}</td>
+                  <td className="py-2 pr-4 text-text">{formatCrore(row.sales)}</td>
+                  <td className="py-2 pr-4 text-text">{formatCrore(row.pat)}</td>
+                  <td className="py-2 pr-4 text-text">{row.eps ?? '—'}</td>
+                  <td className="py-2 pr-4 text-text-muted">{row.roePercentage ?? '—'}</td>
+                  <td className="py-2 pr-4 text-text-muted">{row.rocePercentage ?? '—'}</td>
+                  <td className="py-2 text-text-muted">{row.netMarginPercentage ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function DomainScore({ label, value }: { label: string; value: number | null }) {
   return (
@@ -178,6 +238,8 @@ export function InstrumentDetailPage() {
           <p className="mt-3 text-xs text-text-muted">Confidence: {entry.confidence.toFixed(0)}%</p>
         )}
       </div>
+
+      <FinancialHistoryCard instrumentId={instrumentId!} />
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <AnalystCard
