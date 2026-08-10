@@ -34,7 +34,7 @@ import java.util.Map;
 public class DocumentIntelligenceEngine {
 
     /** Bumped whenever the classification prompt/schema changes meaningfully - carried onto every {@link com.alphagraph.corporate.api.DocumentSummary}. */
-    static final int PROMPT_VERSION = 2;
+    static final int PROMPT_VERSION = 3;
 
     // Sonnet 5, matching every other extractor's cost/quality call - classification is a bounded
     // structured-extraction task (fixed field set, enumerable sentiment), not open-ended reasoning.
@@ -147,7 +147,11 @@ public class DocumentIntelligenceEngine {
               win, order execution update, order cancellation, or order completion. Use
               "MANAGEMENT" if the document contains forward-looking management commentary such as
               revenue/margin guidance, demand outlook, pricing, competition, capex plans, or risk
-              commentary. Use "NEWS" if this is a general news item, government notification, or
+              commentary. Use "FINANCIAL_RESULTS" if the document reports the company's own
+              quarterly or annual Financial Results - a table of Revenue/Sales, Profit, and EPS
+              figures (typically a Board Meeting Outcome filed under SEBI Regulation 33) - not
+              merely a mention of financial performance in prose, an actual results table. Use
+              "NEWS" if this is a general news item, government notification, or
               policy announcement (not a company's own filing) that names or materially affects
               one or more companies - e.g. a sector policy change, a government scheme, an
               industry-wide development. If none applies, or another kind of specialized
