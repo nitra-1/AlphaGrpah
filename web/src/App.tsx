@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { AdminRoute } from './components/AdminRoute'
 import { LoginPage } from './routes/LoginPage'
 import { RankingsPage } from './routes/RankingsPage'
 import { DashboardPage } from './routes/DashboardPage'
@@ -31,10 +32,13 @@ function App() {
           <Route path="/daily-report" element={<DailyReportPage />} />
           <Route path="/trade-journal" element={<TradeJournalPage />} />
           <Route path="/instruments/:instrumentId" element={<InstrumentDetailPage />} />
-          <Route path="/admin/news-review" element={<NewsReviewPage />} />
-          <Route path="/admin/add-instrument" element={<AddInstrumentPage />} />
-          <Route path="/admin/add-financial-data" element={<AddFinancialDataPage />} />
-          <Route path="/admin/users" element={<AddUserPage />} />
+
+          <Route element={<AdminRoute />}>
+            <Route path="/admin/news-review" element={<NewsReviewPage />} />
+            <Route path="/admin/add-instrument" element={<AddInstrumentPage />} />
+            <Route path="/admin/add-financial-data" element={<AddFinancialDataPage />} />
+            <Route path="/admin/users" element={<AddUserPage />} />
+          </Route>
         </Route>
       </Route>
 
