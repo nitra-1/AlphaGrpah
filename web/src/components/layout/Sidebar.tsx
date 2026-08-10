@@ -2,21 +2,22 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Rankings', end: true },
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/watchlist', label: 'Watchlist' },
-  { to: '/portfolio', label: 'Portfolio' },
-  { to: '/compare', label: 'Compare' },
-  { to: '/daily-report', label: 'Daily Report' },
-  { to: '/trade-journal', label: 'Trade Journal' },
-  { to: '/admin/news-review', label: 'News Review' },
-  { to: '/admin/add-instrument', label: 'Add Instrument' },
-  { to: '/admin/add-financial-data', label: 'Add Financial Data' },
-  { to: '/admin/users', label: 'Add User' },
+  { to: '/', label: 'Rankings', end: true, adminOnly: false },
+  { to: '/dashboard', label: 'Dashboard', adminOnly: false },
+  { to: '/watchlist', label: 'Watchlist', adminOnly: false },
+  { to: '/portfolio', label: 'Portfolio', adminOnly: false },
+  { to: '/compare', label: 'Compare', adminOnly: false },
+  { to: '/daily-report', label: 'Daily Report', adminOnly: false },
+  { to: '/trade-journal', label: 'Trade Journal', adminOnly: false },
+  { to: '/admin/news-review', label: 'News Review', adminOnly: true },
+  { to: '/admin/add-instrument', label: 'Add Instrument', adminOnly: true },
+  { to: '/admin/add-financial-data', label: 'Add Financial Data', adminOnly: true },
+  { to: '/admin/users', label: 'Add User', adminOnly: true },
 ]
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { logout } = useAuth()
+  const { logout, role } = useAuth()
+  const visibleItems = NAV_ITEMS.filter((item) => !item.adminOnly || role === 'ADMIN')
 
   return (
     <>
@@ -34,7 +35,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </span>
         </div>
         <nav className="flex-1 space-y-1 px-3">
-          {NAV_ITEMS.map((item) => (
+          {visibleItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
