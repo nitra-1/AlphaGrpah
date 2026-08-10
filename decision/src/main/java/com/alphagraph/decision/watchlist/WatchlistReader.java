@@ -17,25 +17,26 @@ class WatchlistReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /** Every watched instrument, most recently added first. */
-    List<WatchlistItem> findAll() {
+    /** Every watched instrument for this user, most recently added first. */
+    List<WatchlistItem> findAll(UUID userId) {
         return jdbcTemplate.query(
-            "SELECT id, instrument_id, symbol, added_at FROM decision.watchlist_items ORDER BY added_at DESC",
-            (rs, rowNum) -> new WatchlistItem(
-                (UUID) rs.getObject("id"), (UUID) rs.getObject("instrument_id"),
-                rs.getString("symbol"), rs.getTimestamp("added_at").toInstant()
-            )
-        );
-    }
-
-    Optional<WatchlistItem> findByInstrument(UUID instrumentId) {
-        List<WatchlistItem> rows = jdbcTemplate.query(
-            "SELECT id, instrument_id, symbol, added_at FROM decision.watchlist_items WHERE instrument_id = ?",
+            "SELECT id, instrument_id, symbol, added_at FROM decision.watchlist_items WHERE user_id = ? ORDER BY added_at DESC",
             (rs, rowNum) -> new WatchlistItem(
                 (UUID) rs.getObject("id"), (UUID) rs.getObject("instrument_id"),
                 rs.getString("symbol"), rs.getTimestamp("added_at").toInstant()
             ),
-            instrumentId
+            userId
+        );
+    }
+
+    Optional<WatchlistItem> findByInstrument(UUID userId, UUID instrumentId) {
+        List<WatchlistItem> rows = jdbcTemplate.query(
+            "SELECT id, instrument_id, symbol, added_at FROM decision.watchlist_items WHERE user_id = ? AND instrument_id = ?",
+            (rs, rowNum) -> new WatchlistItem(
+                (UUID) rs.getObject("id"), (UUID) rs.getObject("instrument_id"),
+                rs.getString("symbol"), rs.getTimestamp("added_at").toInstant()
+            ),
+            userId, instrumentId
         );
         return rows.stream().findFirst();
     }

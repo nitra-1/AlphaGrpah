@@ -31,7 +31,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring("Bearer ".length());
             jwtService.validate(token).ifPresent(principal -> {
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + principal.role()));
-                var authentication = new UsernamePasswordAuthenticationToken(principal.email(), null, authorities);
+                // The principal object is the full AuthenticatedPrincipal (not just the email) so
+                // controllers can pull userId out via CurrentUser - every Portfolio/Watchlist/
+                // Trade Journal endpoint needs it to scope reads/writes to the right account.
+                var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             });
         }

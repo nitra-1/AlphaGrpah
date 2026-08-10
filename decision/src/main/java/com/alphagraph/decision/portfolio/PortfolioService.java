@@ -44,7 +44,7 @@ public class PortfolioService {
      *
      * @return empty if instrumentId doesn't exist in reference.instruments at all
      */
-    public Optional<PortfolioHolding> buy(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
+    public Optional<PortfolioHolding> buy(UUID userId, UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
         if (quantity.signum() <= 0) {
             throw new IllegalArgumentException("Buy quantity must be positive");
         }
@@ -59,7 +59,7 @@ public class PortfolioService {
             return Optional.empty();
         }
 
-        Optional<PortfolioHolding> existing = reader.findByInstrument(instrumentId);
+        Optional<PortfolioHolding> existing = reader.findByInstrument(userId, instrumentId);
         BigDecimal newQuantity;
         BigDecimal newAvgPrice;
         if (existing.isPresent()) {
@@ -73,9 +73,9 @@ public class PortfolioService {
             newAvgPrice = price;
         }
 
-        store.upsert(instrumentId, symbol, newQuantity, newAvgPrice);
-        tradeJournalService.recordBuy(instrumentId, symbol, quantity, price, rationale);
-        return reader.findByInstrument(instrumentId);
+        store.upsert(userId, instrumentId, symbol, newQuantity, newAvgPrice);
+        tradeJournalService.recordBuy(userId, instrumentId, symbol, quantity, price, rationale);
+        return reader.findByInstrument(userId, instrumentId);
     }
 
     /**
@@ -88,7 +88,7 @@ public class PortfolioService {
      * @return empty if there's no holding at all for this instrument
      * @throws IllegalArgumentException if quantity exceeds what's held, or price isn't positive
      */
-    public Optional<PortfolioHolding> sell(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
+    public Optional<PortfolioHolding> sell(UUID userId, UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
         if (quantity.signum() <= 0) {
             throw new IllegalArgumentException("Sell quantity must be positive");
         }
@@ -96,7 +96,7 @@ public class PortfolioService {
             throw new IllegalArgumentException("Sell price must be positive");
         }
 
-        Optional<PortfolioHolding> existing = reader.findByInstrument(instrumentId);
+        Optional<PortfolioHolding> existing = reader.findByInstrument(userId, instrumentId);
         if (existing.isEmpty()) {
             return Optional.empty();
         }
@@ -113,20 +113,20 @@ public class PortfolioService {
         BigDecimal remaining = holding.quantity().subtract(quantity);
         Optional<PortfolioHolding> result;
         if (remaining.signum() == 0) {
-            store.delete(instrumentId);
+            store.delete(userId, instrumentId);
             // Transient confirmation value only - quantity=0 is never actually persisted (the
             // CHECK constraint on portfolio_holdings.quantity forbids it), the row is deleted.
             result = Optional.of(new PortfolioHolding(holding.id(), instrumentId, holding.symbol(), BigDecimal.ZERO, holding.avgBuyPrice(), holding.updatedAt()));
         } else {
-            store.upsert(instrumentId, holding.symbol(), remaining, holding.avgBuyPrice());
-            result = reader.findByInstrument(instrumentId);
+            store.upsert(userId, instrumentId, holding.symbol(), remaining, holding.avgBuyPrice());
+            result = reader.findByInstrument(userId, instrumentId);
         }
 
-        tradeJournalService.recordSell(instrumentId, holding.symbol(), quantity, price, costBasisAtSale, realizedPnl, rationale);
+        tradeJournalService.recordSell(userId, instrumentId, holding.symbol(), quantity, price, costBasisAtSale, realizedPnl, rationale);
         return result;
     }
 
-    public List<PortfolioHolding> list() {
-        return reader.findAll();
+    public List<PortfolioHolding> list(UUID userId) {
+        return reader.findAll(userId);
     }
 }

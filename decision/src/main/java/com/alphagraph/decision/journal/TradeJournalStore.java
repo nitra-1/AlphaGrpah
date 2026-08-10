@@ -18,16 +18,16 @@ class TradeJournalStore {
     }
 
     void insert(
-        UUID instrumentId, String symbol, TradeAction action, BigDecimal quantity, BigDecimal price,
+        UUID userId, UUID instrumentId, String symbol, TradeAction action, BigDecimal quantity, BigDecimal price,
         BigDecimal costBasisPrice, BigDecimal realizedPnl, String rationale
     ) {
         jdbcTemplate.update(
             """
             INSERT INTO decision.trade_journal_entries (
-                id, instrument_id, symbol, action, quantity, price, cost_basis_price, realized_pnl, rationale
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, user_id, instrument_id, symbol, action, quantity, price, cost_basis_price, realized_pnl, rationale
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            UUID.randomUUID(), instrumentId, symbol, action.name(), quantity, price, costBasisPrice, realizedPnl, rationale
+            UUID.randomUUID(), userId, instrumentId, symbol, action.name(), quantity, price, costBasisPrice, realizedPnl, rationale
         );
     }
 }

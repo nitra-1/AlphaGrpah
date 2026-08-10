@@ -1,6 +1,8 @@
 package com.alphagraph.api.journal;
 
+import com.alphagraph.api.security.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,19 +30,21 @@ public class TradeJournalController {
 
     @Operation(summary = "List every trade", description = "Every executed buy/sell, newest first.")
     @GetMapping
-    public List<TradeJournalEntryDto> list() {
-        return viewService.list();
+    public List<TradeJournalEntryDto> list(@AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal) {
+        return viewService.list(principal.userId());
     }
 
     @Operation(summary = "Outcome tracking (Module 3.9)", description = "Aggregate outcomes across every closed trade - total realized P&L, win rate, average win/loss, best/worst trade, per-instrument breakdown.")
     @GetMapping("/outcomes")
-    public OutcomeSummaryDto outcomes() {
-        return outcomeTrackingService.compute();
+    public OutcomeSummaryDto outcomes(@AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal) {
+        return outcomeTrackingService.compute(principal.userId());
     }
 
     @Operation(summary = "List trades for one instrument", description = "Every executed buy/sell for one instrument, newest first.")
     @GetMapping("/{instrumentId}")
-    public List<TradeJournalEntryDto> byInstrument(@PathVariable UUID instrumentId) {
-        return viewService.listByInstrument(instrumentId);
+    public List<TradeJournalEntryDto> byInstrument(
+        @AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal, @PathVariable UUID instrumentId
+    ) {
+        return viewService.listByInstrument(principal.userId(), instrumentId);
     }
 }

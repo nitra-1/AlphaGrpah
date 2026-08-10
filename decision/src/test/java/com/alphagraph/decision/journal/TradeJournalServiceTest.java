@@ -16,30 +16,31 @@ class TradeJournalServiceTest {
     private final TradeJournalService service = new TradeJournalService(store, reader);
 
     private final UUID instrumentId = UUID.randomUUID();
+    private final UUID userId = UUID.randomUUID();
 
     @Test
     void recordBuyInsertsABuyRowWithNoCostBasisOrRealizedPnl() {
-        service.recordBuy(instrumentId, "TCS", new BigDecimal("10"), new BigDecimal("100"), "Initial position");
+        service.recordBuy(userId, instrumentId, "TCS", new BigDecimal("10"), new BigDecimal("100"), "Initial position");
 
-        verify(store).insert(instrumentId, "TCS", TradeAction.BUY, new BigDecimal("10"), new BigDecimal("100"), null, null, "Initial position");
+        verify(store).insert(userId, instrumentId, "TCS", TradeAction.BUY, new BigDecimal("10"), new BigDecimal("100"), null, null, "Initial position");
     }
 
     @Test
     void recordSellInsertsASellRowCarryingCostBasisAndRealizedPnl() {
-        service.recordSell(instrumentId, "TCS", new BigDecimal("6"), new BigDecimal("120"), new BigDecimal("100"), new BigDecimal("120"), null);
+        service.recordSell(userId, instrumentId, "TCS", new BigDecimal("6"), new BigDecimal("120"), new BigDecimal("100"), new BigDecimal("120"), null);
 
-        verify(store).insert(instrumentId, "TCS", TradeAction.SELL, new BigDecimal("6"), new BigDecimal("120"), new BigDecimal("100"), new BigDecimal("120"), null);
+        verify(store).insert(userId, instrumentId, "TCS", TradeAction.SELL, new BigDecimal("6"), new BigDecimal("120"), new BigDecimal("100"), new BigDecimal("120"), null);
     }
 
     @Test
     void listDelegatesToTheReader() {
-        service.list();
-        verify(reader).findAll();
+        service.list(userId);
+        verify(reader).findAll(userId);
     }
 
     @Test
     void listByInstrumentDelegatesToTheReader() {
-        service.listByInstrument(instrumentId);
-        verify(reader).findByInstrument(instrumentId);
+        service.listByInstrument(userId, instrumentId);
+        verify(reader).findByInstrument(userId, instrumentId);
     }
 }

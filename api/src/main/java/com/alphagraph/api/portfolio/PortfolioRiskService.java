@@ -41,8 +41,8 @@ public class PortfolioRiskService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public PortfolioRiskDto compute() {
-        List<PortfolioEntryDto> priced = portfolioViewService.list().stream()
+    public PortfolioRiskDto compute(UUID userId) {
+        List<PortfolioEntryDto> priced = portfolioViewService.list(userId).stream()
             .filter(e -> e.marketValue() != null)
             .toList();
 

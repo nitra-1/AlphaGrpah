@@ -30,22 +30,22 @@ public class WatchlistService {
         this.reader = reader;
     }
 
-    public Optional<WatchlistItem> add(UUID instrumentId) {
+    public Optional<WatchlistItem> add(UUID userId, UUID instrumentId) {
         String symbol;
         try {
             symbol = jdbcTemplate.queryForObject("SELECT symbol FROM reference.instruments WHERE id = ?", String.class, instrumentId);
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
-        store.insert(instrumentId, symbol);
-        return reader.findByInstrument(instrumentId);
+        store.insert(userId, instrumentId, symbol);
+        return reader.findByInstrument(userId, instrumentId);
     }
 
-    public boolean remove(UUID instrumentId) {
-        return store.delete(instrumentId);
+    public boolean remove(UUID userId, UUID instrumentId) {
+        return store.delete(userId, instrumentId);
     }
 
-    public List<WatchlistItem> list() {
-        return reader.findAll();
+    public List<WatchlistItem> list(UUID userId) {
+        return reader.findAll(userId);
     }
 }

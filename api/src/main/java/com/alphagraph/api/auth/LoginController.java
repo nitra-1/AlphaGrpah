@@ -40,7 +40,7 @@ public class LoginController {
             throw new BadCredentialsException("Invalid email or password");
         }
 
-        String token = jwtService.issueToken(user.email(), user.role());
+        String token = jwtService.issueToken(user.id(), user.email(), user.role());
         return new LoginResponse(token, "Bearer", expiryMinutes * 60);
     }
 }

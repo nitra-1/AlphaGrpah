@@ -41,16 +41,16 @@ public class PortfolioViewService {
         this.riskScoreReader = riskScoreReader;
     }
 
-    public List<PortfolioEntryDto> list() {
-        return portfolioService.list().stream().map(this::toDto).toList();
+    public List<PortfolioEntryDto> list(UUID userId) {
+        return portfolioService.list(userId).stream().map(this::toDto).toList();
     }
 
-    public Optional<PortfolioEntryDto> buy(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
-        return portfolioService.buy(instrumentId, quantity, price, rationale).map(this::toDto);
+    public Optional<PortfolioEntryDto> buy(UUID userId, UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
+        return portfolioService.buy(userId, instrumentId, quantity, price, rationale).map(this::toDto);
     }
 
-    public Optional<PortfolioEntryDto> sell(UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
-        return portfolioService.sell(instrumentId, quantity, price, rationale).map(this::toDto);
+    public Optional<PortfolioEntryDto> sell(UUID userId, UUID instrumentId, BigDecimal quantity, BigDecimal price, String rationale) {
+        return portfolioService.sell(userId, instrumentId, quantity, price, rationale).map(this::toDto);
     }
 
     private PortfolioEntryDto toDto(PortfolioHolding holding) {

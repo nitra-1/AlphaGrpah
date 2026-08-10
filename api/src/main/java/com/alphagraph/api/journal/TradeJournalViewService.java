@@ -16,12 +16,12 @@ public class TradeJournalViewService {
         this.tradeJournalService = tradeJournalService;
     }
 
-    public List<TradeJournalEntryDto> list() {
-        return tradeJournalService.list().stream().map(TradeJournalViewService::toDto).toList();
+    public List<TradeJournalEntryDto> list(UUID userId) {
+        return tradeJournalService.list(userId).stream().map(TradeJournalViewService::toDto).toList();
     }
 
-    public List<TradeJournalEntryDto> listByInstrument(UUID instrumentId) {
-        return tradeJournalService.listByInstrument(instrumentId).stream().map(TradeJournalViewService::toDto).toList();
+    public List<TradeJournalEntryDto> listByInstrument(UUID userId, UUID instrumentId) {
+        return tradeJournalService.listByInstrument(userId, instrumentId).stream().map(TradeJournalViewService::toDto).toList();
     }
 
     private static TradeJournalEntryDto toDto(TradeJournalEntry e) {

@@ -99,7 +99,7 @@ export function PortfolioPage() {
     <div>
       <h1 className="text-2xl font-bold text-text">Portfolio</h1>
       <p className="mt-1 text-sm text-text-muted">
-        The shared portfolio - current holdings, live P&L, and Score/Rank/Risk (Module 3.3), plus aggregate portfolio risk (Module 3.4).
+        Your portfolio - current holdings, live P&L, and Score/Rank/Risk (Module 3.3), plus aggregate portfolio risk (Module 3.4).
       </p>
 
       <div className="mt-6 rounded-2xl border border-border bg-surface p-5">

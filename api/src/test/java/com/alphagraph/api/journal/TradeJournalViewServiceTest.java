@@ -20,6 +20,7 @@ class TradeJournalViewServiceTest {
     private final TradeJournalViewService viewService = new TradeJournalViewService(tradeJournalService);
 
     private final UUID instrumentId = UUID.randomUUID();
+    private final UUID userId = UUID.randomUUID();
 
     @Test
     void buyEntryHasNoCostBasisOrRealizedPnlAndComputesTradeValue() {
@@ -27,9 +28,9 @@ class TradeJournalViewServiceTest {
             UUID.randomUUID(), instrumentId, "TCS", TradeAction.BUY,
             new BigDecimal("10"), new BigDecimal("100"), null, null, "Initial position", Instant.now()
         );
-        when(tradeJournalService.list()).thenReturn(List.of(entry));
+        when(tradeJournalService.list(userId)).thenReturn(List.of(entry));
 
-        TradeJournalEntryDto dto = viewService.list().get(0);
+        TradeJournalEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.action()).isEqualTo("BUY");
         assertThat(dto.tradeValue()).isEqualByComparingTo(new BigDecimal("1000"));
@@ -44,9 +45,9 @@ class TradeJournalViewServiceTest {
             UUID.randomUUID(), instrumentId, "TCS", TradeAction.SELL,
             new BigDecimal("6"), new BigDecimal("120"), new BigDecimal("100"), new BigDecimal("120"), null, Instant.now()
         );
-        when(tradeJournalService.listByInstrument(instrumentId)).thenReturn(List.of(entry));
+        when(tradeJournalService.listByInstrument(userId, instrumentId)).thenReturn(List.of(entry));
 
-        TradeJournalEntryDto dto = viewService.listByInstrument(instrumentId).get(0);
+        TradeJournalEntryDto dto = viewService.listByInstrument(userId, instrumentId).get(0);
 
         assertThat(dto.action()).isEqualTo("SELL");
         assertThat(dto.tradeValue()).isEqualByComparingTo(new BigDecimal("720"));

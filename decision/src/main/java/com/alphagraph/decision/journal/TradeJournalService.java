@@ -27,22 +27,22 @@ public class TradeJournalService {
         this.reader = reader;
     }
 
-    public void recordBuy(UUID instrumentId, String symbol, BigDecimal quantity, BigDecimal price, String rationale) {
-        store.insert(instrumentId, symbol, TradeAction.BUY, quantity, price, null, null, rationale);
+    public void recordBuy(UUID userId, UUID instrumentId, String symbol, BigDecimal quantity, BigDecimal price, String rationale) {
+        store.insert(userId, instrumentId, symbol, TradeAction.BUY, quantity, price, null, null, rationale);
     }
 
     public void recordSell(
-        UUID instrumentId, String symbol, BigDecimal quantity, BigDecimal price,
+        UUID userId, UUID instrumentId, String symbol, BigDecimal quantity, BigDecimal price,
         BigDecimal costBasisPrice, BigDecimal realizedPnl, String rationale
     ) {
-        store.insert(instrumentId, symbol, TradeAction.SELL, quantity, price, costBasisPrice, realizedPnl, rationale);
+        store.insert(userId, instrumentId, symbol, TradeAction.SELL, quantity, price, costBasisPrice, realizedPnl, rationale);
     }
 
-    public List<TradeJournalEntry> list() {
-        return reader.findAll();
+    public List<TradeJournalEntry> list(UUID userId) {
+        return reader.findAll(userId);
     }
 
-    public List<TradeJournalEntry> listByInstrument(UUID instrumentId) {
-        return reader.findByInstrument(instrumentId);
+    public List<TradeJournalEntry> listByInstrument(UUID userId, UUID instrumentId) {
+        return reader.findByInstrument(userId, instrumentId);
     }
 }

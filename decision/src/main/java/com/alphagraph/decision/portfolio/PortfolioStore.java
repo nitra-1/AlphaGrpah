@@ -16,20 +16,20 @@ class PortfolioStore {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    void upsert(UUID instrumentId, String symbol, BigDecimal quantity, BigDecimal avgBuyPrice) {
+    void upsert(UUID userId, UUID instrumentId, String symbol, BigDecimal quantity, BigDecimal avgBuyPrice) {
         jdbcTemplate.update(
             """
-            INSERT INTO decision.portfolio_holdings (id, instrument_id, symbol, quantity, avg_buy_price)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT (instrument_id) DO UPDATE SET
+            INSERT INTO decision.portfolio_holdings (id, user_id, instrument_id, symbol, quantity, avg_buy_price)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id, instrument_id) DO UPDATE SET
                 quantity = EXCLUDED.quantity,
                 avg_buy_price = EXCLUDED.avg_buy_price
             """,
-            UUID.randomUUID(), instrumentId, symbol, quantity, avgBuyPrice
+            UUID.randomUUID(), userId, instrumentId, symbol, quantity, avgBuyPrice
         );
     }
 
-    void delete(UUID instrumentId) {
-        jdbcTemplate.update("DELETE FROM decision.portfolio_holdings WHERE instrument_id = ?", instrumentId);
+    void delete(UUID userId, UUID instrumentId) {
+        jdbcTemplate.update("DELETE FROM decision.portfolio_holdings WHERE user_id = ? AND instrument_id = ?", userId, instrumentId);
     }
 }

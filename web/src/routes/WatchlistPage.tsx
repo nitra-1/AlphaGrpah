@@ -46,7 +46,7 @@ export function WatchlistPage() {
     <div>
       <h1 className="text-2xl font-bold text-text">Watchlist</h1>
       <p className="mt-1 text-sm text-text-muted">
-        The shared watchlist, with each instrument's current Swing/Long-Term Score and Rank (Module 3.2).
+        Your watchlist, with each instrument's current Swing/Long-Term Score and Rank (Module 3.2).
       </p>
 
       <div className="mt-6 flex items-center gap-3">

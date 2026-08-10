@@ -13,12 +13,14 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Issues and validates the HS256 bearer tokens described in docs/004_API_Architecture.md §4. */
 @Component
 public class JwtService {
 
-    public record AuthenticatedPrincipal(String email, String role) {
+    /** userId is what scopes every Portfolio/Watchlist/Trade Journal read and write to its owner - see decision V7. */
+    public record AuthenticatedPrincipal(UUID userId, String email, String role) {
     }
 
     private final SecretKey key;
@@ -32,10 +34,11 @@ public class JwtService {
         this.expiryMinutes = expiryMinutes;
     }
 
-    public String issueToken(String subjectEmail, String role) {
+    public String issueToken(UUID userId, String subjectEmail, String role) {
         Instant now = Instant.now();
         return Jwts.builder()
             .subject(subjectEmail)
+            .claim("userId", userId.toString())
             .claim("role", role)
             .issuedAt(Date.from(now))
             .expiration(Date.from(now.plus(expiryMinutes, ChronoUnit.MINUTES)))
@@ -47,7 +50,8 @@ public class JwtService {
     public Optional<AuthenticatedPrincipal> validate(String token) {
         try {
             Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
-            return Optional.of(new AuthenticatedPrincipal(claims.getSubject(), claims.get("role", String.class)));
+            UUID userId = UUID.fromString(claims.get("userId", String.class));
+            return Optional.of(new AuthenticatedPrincipal(userId, claims.getSubject(), claims.get("role", String.class)));
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
         }

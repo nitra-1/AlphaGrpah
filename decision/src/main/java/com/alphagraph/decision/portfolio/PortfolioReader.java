@@ -21,18 +21,18 @@ class PortfolioReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /** Every current holding, largest position value first is an api-layer concern (needs a live price) - here, most recently updated first. */
-    List<PortfolioHolding> findAll() {
+    /** Every current holding for this user, largest position value first is an api-layer concern (needs a live price) - here, most recently updated first. */
+    List<PortfolioHolding> findAll(UUID userId) {
         return jdbcTemplate.query(
-            "SELECT " + SELECT_COLUMNS + " FROM decision.portfolio_holdings ORDER BY updated_at DESC",
-            PortfolioReader::mapRow
+            "SELECT " + SELECT_COLUMNS + " FROM decision.portfolio_holdings WHERE user_id = ? ORDER BY updated_at DESC",
+            PortfolioReader::mapRow, userId
         );
     }
 
-    Optional<PortfolioHolding> findByInstrument(UUID instrumentId) {
+    Optional<PortfolioHolding> findByInstrument(UUID userId, UUID instrumentId) {
         List<PortfolioHolding> rows = jdbcTemplate.query(
-            "SELECT " + SELECT_COLUMNS + " FROM decision.portfolio_holdings WHERE instrument_id = ?",
-            PortfolioReader::mapRow, instrumentId
+            "SELECT " + SELECT_COLUMNS + " FROM decision.portfolio_holdings WHERE user_id = ? AND instrument_id = ?",
+            PortfolioReader::mapRow, userId, instrumentId
         );
         return rows.stream().findFirst();
     }

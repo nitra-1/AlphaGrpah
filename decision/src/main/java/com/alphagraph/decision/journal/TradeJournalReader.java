@@ -29,19 +29,19 @@ class TradeJournalReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /** Every trade ever recorded, newest first. */
-    List<TradeJournalEntry> findAll() {
+    /** Every trade ever recorded for this user, newest first. */
+    List<TradeJournalEntry> findAll(UUID userId) {
         return jdbcTemplate.query(
-            "SELECT " + SELECT_COLUMNS + " FROM decision.trade_journal_entries ORDER BY created_at DESC",
-            ROW_MAPPER
+            "SELECT " + SELECT_COLUMNS + " FROM decision.trade_journal_entries WHERE user_id = ? ORDER BY created_at DESC",
+            ROW_MAPPER, userId
         );
     }
 
-    /** Every trade recorded for one instrument, newest first. */
-    List<TradeJournalEntry> findByInstrument(UUID instrumentId) {
+    /** Every trade recorded for one instrument by this user, newest first. */
+    List<TradeJournalEntry> findByInstrument(UUID userId, UUID instrumentId) {
         return jdbcTemplate.query(
-            "SELECT " + SELECT_COLUMNS + " FROM decision.trade_journal_entries WHERE instrument_id = ? ORDER BY created_at DESC",
-            ROW_MAPPER, instrumentId
+            "SELECT " + SELECT_COLUMNS + " FROM decision.trade_journal_entries WHERE user_id = ? AND instrument_id = ? ORDER BY created_at DESC",
+            ROW_MAPPER, userId, instrumentId
         );
     }
 }

@@ -19,12 +19,13 @@ class PortfolioRiskServiceTest {
     private final PortfolioViewService viewService = mock(PortfolioViewService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final PortfolioRiskService riskService = new PortfolioRiskService(viewService, jdbcTemplate);
+    private final UUID userId = UUID.randomUUID();
 
     @Test
     void emptyPortfolioProducesAnAllNullResultRatherThanDividingByZero() {
-        when(viewService.list()).thenReturn(List.of());
+        when(viewService.list(userId)).thenReturn(List.of());
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.totalMarketValue()).isNull();
         assertThat(dto.weightedRiskScore()).isNull();
@@ -35,9 +36,9 @@ class PortfolioRiskServiceTest {
     @Test
     void unpricedHoldingsAreExcludedEntirely() {
         UUID id = UUID.randomUUID();
-        when(viewService.list()).thenReturn(List.of(entry(id, "NEWCO", null, null)));
+        when(viewService.list(userId)).thenReturn(List.of(entry(id, "NEWCO", null, null)));
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.totalMarketValue()).isNull();
     }
@@ -45,10 +46,10 @@ class PortfolioRiskServiceTest {
     @Test
     void aSingleHoldingIsOneHundredPercentConcentratedAndVeryHighBand() {
         UUID id = UUID.randomUUID();
-        when(viewService.list()).thenReturn(List.of(entry(id, "TCS", new BigDecimal("10000"), 75.0)));
+        when(viewService.list(userId)).thenReturn(List.of(entry(id, "TCS", new BigDecimal("10000"), 75.0)));
         stubSector(id, "Information Technology");
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.totalMarketValue()).isEqualByComparingTo(new BigDecimal("10000"));
         assertThat(dto.topHoldingSymbol()).isEqualTo("TCS");
@@ -66,14 +67,14 @@ class PortfolioRiskServiceTest {
         UUID big = UUID.randomUUID();
         UUID small = UUID.randomUUID();
         // Big position (9000, risk 90) should dominate a naive average of (90+10)/2=50.
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             entry(big, "TCS", new BigDecimal("9000"), 90.0),
             entry(small, "BEML", new BigDecimal("1000"), 10.0)
         ));
         stubSector(big, "Information Technology");
         stubSector(small, "Industrials");
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         // (9000*90 + 1000*10) / 10000 = 82.0
         assertThat(dto.weightedRiskScore()).isEqualTo(82.0);
@@ -85,14 +86,14 @@ class PortfolioRiskServiceTest {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
         // (1000*10 + 2000*15) / 3000 = 40000/3000 = 13.3333... - deliberately not a clean decimal.
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             entry(a, "INFY", new BigDecimal("1000"), 10.0),
             entry(b, "RELIANCE", new BigDecimal("2000"), 15.0)
         ));
         stubSector(a, "Information Technology");
         stubSector(b, "Energy");
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.weightedRiskScore()).isEqualTo(13.33);
     }
@@ -101,14 +102,14 @@ class PortfolioRiskServiceTest {
     void holdingsWithNoRiskScoreAreExcludedFromTheWeightedAverageButCountTowardConcentration() {
         UUID scored = UUID.randomUUID();
         UUID unscored = UUID.randomUUID();
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             entry(scored, "TCS", new BigDecimal("5000"), 80.0),
             entry(unscored, "NEWCO", new BigDecimal("5000"), null)
         ));
         stubSector(scored, "Information Technology");
         stubSector(unscored, "Information Technology");
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.totalMarketValue()).isEqualByComparingTo(new BigDecimal("10000")); // both count toward total
         assertThat(dto.weightedRiskScore()).isEqualTo(80.0); // only the scored one contributes
@@ -119,14 +120,14 @@ class PortfolioRiskServiceTest {
     void sectorExposureAggregatesAcrossMultipleHoldingsInTheSameSector() {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             entry(a, "TCS", new BigDecimal("6000"), 80.0),
             entry(b, "INFY", new BigDecimal("4000"), 70.0)
         ));
         stubSector(a, "Information Technology");
         stubSector(b, "Information Technology");
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.sectorBreakdown()).hasSize(1);
         assertThat(dto.sectorBreakdown().get(0).sectorName()).isEqualTo("Information Technology");
@@ -137,10 +138,10 @@ class PortfolioRiskServiceTest {
     @Test
     void anInstrumentWithNoSectorAssignedFallsBackToUnclassifiedRatherThanBeingDropped() {
         UUID id = UUID.randomUUID();
-        when(viewService.list()).thenReturn(List.of(entry(id, "NEWCO", new BigDecimal("1000"), 50.0)));
+        when(viewService.list(userId)).thenReturn(List.of(entry(id, "NEWCO", new BigDecimal("1000"), 50.0)));
         when(jdbcTemplate.query(any(String.class), any(RowMapper.class), eq(id))).thenReturn(List.of());
 
-        PortfolioRiskDto dto = riskService.compute();
+        PortfolioRiskDto dto = riskService.compute(userId);
 
         assertThat(dto.topSectorName()).isEqualTo("Unclassified");
     }

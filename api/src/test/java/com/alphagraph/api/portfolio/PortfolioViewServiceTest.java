@@ -33,16 +33,17 @@ class PortfolioViewServiceTest {
         new PortfolioViewService(portfolioService, dailyPriceReader, decisionScoreReader, riskScoreReader);
 
     private final UUID instrumentId = UUID.randomUUID();
+    private final UUID userId = UUID.randomUUID();
 
     @Test
     void computesMarketValueAndUnrealizedPnlAgainstTheLatestClose() {
         PortfolioHolding holding = new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", new BigDecimal("10"), new BigDecimal("100"), Instant.now());
-        when(portfolioService.list()).thenReturn(List.of(holding));
+        when(portfolioService.list(userId)).thenReturn(List.of(holding));
         when(dailyPriceReader.findLatest(instrumentId)).thenReturn(Optional.of(priceOf(new BigDecimal("120"))));
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(riskScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        PortfolioEntryDto dto = viewService.list().get(0);
+        PortfolioEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.currentPrice()).isEqualByComparingTo(new BigDecimal("120"));
         assertThat(dto.marketValue()).isEqualByComparingTo(new BigDecimal("1200")); // 10 * 120
@@ -53,12 +54,12 @@ class PortfolioViewServiceTest {
     @Test
     void unrealizedPnlIsNegativeWhenThePriceHasFallenBelowCostBasis() {
         PortfolioHolding holding = new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", new BigDecimal("10"), new BigDecimal("100"), Instant.now());
-        when(portfolioService.list()).thenReturn(List.of(holding));
+        when(portfolioService.list(userId)).thenReturn(List.of(holding));
         when(dailyPriceReader.findLatest(instrumentId)).thenReturn(Optional.of(priceOf(new BigDecimal("80"))));
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(riskScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        PortfolioEntryDto dto = viewService.list().get(0);
+        PortfolioEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.unrealizedPnl()).isEqualByComparingTo(new BigDecimal("-200"));
         assertThat(dto.unrealizedPnlPercent()).isEqualByComparingTo(new BigDecimal("-20"));
@@ -67,12 +68,12 @@ class PortfolioViewServiceTest {
     @Test
     void priceAndPnlFieldsAreNullWithoutAnyMarketDataYet() {
         PortfolioHolding holding = new PortfolioHolding(UUID.randomUUID(), instrumentId, "NEWCO", new BigDecimal("5"), new BigDecimal("50"), Instant.now());
-        when(portfolioService.list()).thenReturn(List.of(holding));
+        when(portfolioService.list(userId)).thenReturn(List.of(holding));
         when(dailyPriceReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(riskScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        PortfolioEntryDto dto = viewService.list().get(0);
+        PortfolioEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.currentPrice()).isNull();
         assertThat(dto.marketValue()).isNull();
@@ -84,12 +85,12 @@ class PortfolioViewServiceTest {
     void aFullyClosedPositionHasNoMarketValueOrPnlRatherThanDividingByZero() {
         // What PortfolioService.sell returns for a full sell - quantity is the transient zero confirmation value.
         PortfolioHolding closedHolding = new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", BigDecimal.ZERO, new BigDecimal("100"), Instant.now());
-        when(portfolioService.sell(instrumentId, new BigDecimal("10"), new BigDecimal("120"), null)).thenReturn(Optional.of(closedHolding));
+        when(portfolioService.sell(userId, instrumentId, new BigDecimal("10"), new BigDecimal("120"), null)).thenReturn(Optional.of(closedHolding));
         when(dailyPriceReader.findLatest(instrumentId)).thenReturn(Optional.of(priceOf(new BigDecimal("120"))));
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(riskScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        PortfolioEntryDto dto = viewService.sell(instrumentId, new BigDecimal("10"), new BigDecimal("120"), null).orElseThrow();
+        PortfolioEntryDto dto = viewService.sell(userId, instrumentId, new BigDecimal("10"), new BigDecimal("120"), null).orElseThrow();
 
         assertThat(dto.quantity()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(dto.marketValue()).isNull();
@@ -100,12 +101,12 @@ class PortfolioViewServiceTest {
     @Test
     void enrichesWithCurrentScoreRankAndRiskLevelWhenAvailable() {
         PortfolioHolding holding = new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", new BigDecimal("10"), new BigDecimal("100"), Instant.now());
-        when(portfolioService.list()).thenReturn(List.of(holding));
+        when(portfolioService.list(userId)).thenReturn(List.of(holding));
         when(dailyPriceReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.of(scoreOf()));
         when(riskScoreReader.findLatest(instrumentId)).thenReturn(Optional.of(riskOf()));
 
-        PortfolioEntryDto dto = viewService.list().get(0);
+        PortfolioEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.swingScore()).isEqualTo(85.16);
         assertThat(dto.swingRating()).isEqualTo("STRONG_BUY");
@@ -116,14 +117,14 @@ class PortfolioViewServiceTest {
     @Test
     void buyAndSellDelegateToTheDomainServiceAndEnrichTheResult() {
         PortfolioHolding holding = new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", new BigDecimal("10"), new BigDecimal("100"), Instant.now());
-        when(portfolioService.buy(instrumentId, new BigDecimal("10"), new BigDecimal("100"), "rationale")).thenReturn(Optional.of(holding));
-        when(portfolioService.sell(instrumentId, new BigDecimal("5"), new BigDecimal("110"), null)).thenReturn(Optional.of(holding));
+        when(portfolioService.buy(userId, instrumentId, new BigDecimal("10"), new BigDecimal("100"), "rationale")).thenReturn(Optional.of(holding));
+        when(portfolioService.sell(userId, instrumentId, new BigDecimal("5"), new BigDecimal("110"), null)).thenReturn(Optional.of(holding));
         when(dailyPriceReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
         when(riskScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        assertThat(viewService.buy(instrumentId, new BigDecimal("10"), new BigDecimal("100"), "rationale")).isPresent();
-        assertThat(viewService.sell(instrumentId, new BigDecimal("5"), new BigDecimal("110"), null)).isPresent();
+        assertThat(viewService.buy(userId, instrumentId, new BigDecimal("10"), new BigDecimal("100"), "rationale")).isPresent();
+        assertThat(viewService.sell(userId, instrumentId, new BigDecimal("5"), new BigDecimal("110"), null)).isPresent();
     }
 
     private DailyPrice priceOf(BigDecimal close) {

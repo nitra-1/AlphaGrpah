@@ -20,6 +20,7 @@ import com.alphagraph.decision.engine.DecisionScoreReader;
 import com.alphagraph.decision.portfolio.PortfolioService;
 import com.alphagraph.decision.watchlist.WatchlistService;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,6 +29,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,20 +42,23 @@ class DailyReportEvidenceBuilderTest {
     private final CorporateEventReader corporateEventReader = mock(CorporateEventReader.class);
     private final ManagementObservationReader managementObservationReader = mock(ManagementObservationReader.class);
     private final NewsLinkReader newsLinkReader = mock(NewsLinkReader.class);
+    private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final DailyReportEvidenceBuilder builder = new DailyReportEvidenceBuilder(
-        decisionScoreReader, watchlistService, portfolioService, corporateEventReader, managementObservationReader, newsLinkReader
+        decisionScoreReader, watchlistService, portfolioService, corporateEventReader, managementObservationReader, newsLinkReader, jdbcTemplate
     );
 
+    private final UUID adminUserId = UUID.randomUUID();
     private final LocalDate today = LocalDate.of(2026, 6, 2);
     private final LocalDate yesterday = LocalDate.of(2026, 6, 1);
 
     private void stubEmptyCorporateFacts() {
+        when(jdbcTemplate.queryForObject(any(String.class), eq(UUID.class), eq("admin@alphagraph.local"))).thenReturn(adminUserId);
         when(corporateEventReader.findRecentAcrossAllInstruments(1)).thenReturn(List.of());
         when(managementObservationReader.findRecentAcrossAllInstruments(1)).thenReturn(List.of());
         when(newsLinkReader.findRecentByDirection(NewsImpactDirection.POSITIVE, 1)).thenReturn(List.of());
         when(newsLinkReader.findRecentByDirection(NewsImpactDirection.NEGATIVE, 1)).thenReturn(List.of());
-        when(watchlistService.list()).thenReturn(List.of());
-        when(portfolioService.list()).thenReturn(List.of());
+        when(watchlistService.list(adminUserId)).thenReturn(List.of());
+        when(portfolioService.list(adminUserId)).thenReturn(List.of());
     }
 
     @Test
@@ -104,8 +110,9 @@ class DailyReportEvidenceBuilderTest {
                 "Signal", "Won a marquee client", 85.0, Instant.now())
         ));
         when(newsLinkReader.findRecentByDirection(NewsImpactDirection.NEGATIVE, 1)).thenReturn(List.of());
-        when(watchlistService.list()).thenReturn(List.of());
-        when(portfolioService.list()).thenReturn(List.of());
+        when(jdbcTemplate.queryForObject(any(String.class), eq(UUID.class), eq("admin@alphagraph.local"))).thenReturn(adminUserId);
+        when(watchlistService.list(adminUserId)).thenReturn(List.of());
+        when(portfolioService.list(adminUserId)).thenReturn(List.of());
 
         DailyReportEvidence evidence = builder.build(today);
 
@@ -134,10 +141,10 @@ class DailyReportEvidenceBuilderTest {
             score(a, "A", 5), score(b, "B", 5), score(c, "C", 5), score(d, "D", 5), score(unchanged, "E", 5)
         ));
         stubCorporateFactsOnly();
-        when(watchlistService.list()).thenReturn(List.of(
+        when(watchlistService.list(adminUserId)).thenReturn(List.of(
             watchlistItem(a), watchlistItem(b), watchlistItem(c), watchlistItem(d), watchlistItem(unchanged)
         ));
-        when(portfolioService.list()).thenReturn(List.of());
+        when(portfolioService.list(adminUserId)).thenReturn(List.of());
 
         DailyReportEvidence evidence = builder.build(today);
 
@@ -153,8 +160,8 @@ class DailyReportEvidenceBuilderTest {
         when(decisionScoreReader.findAllByDate(today)).thenReturn(List.of(score(heldInstrument, "TCS", 1)));
         when(decisionScoreReader.findAllByDate(yesterday)).thenReturn(List.of(score(heldInstrument, "TCS", 3)));
         stubCorporateFactsOnly();
-        when(watchlistService.list()).thenReturn(List.of());
-        when(portfolioService.list()).thenReturn(List.of(holding(heldInstrument)));
+        when(watchlistService.list(adminUserId)).thenReturn(List.of());
+        when(portfolioService.list(adminUserId)).thenReturn(List.of(holding(heldInstrument)));
 
         DailyReportEvidence evidence = builder.build(today);
 
@@ -163,6 +170,7 @@ class DailyReportEvidenceBuilderTest {
     }
 
     private void stubCorporateFactsOnly() {
+        when(jdbcTemplate.queryForObject(any(String.class), eq(UUID.class), eq("admin@alphagraph.local"))).thenReturn(adminUserId);
         when(corporateEventReader.findRecentAcrossAllInstruments(1)).thenReturn(List.of());
         when(managementObservationReader.findRecentAcrossAllInstruments(1)).thenReturn(List.of());
         when(newsLinkReader.findRecentByDirection(NewsImpactDirection.POSITIVE, 1)).thenReturn(List.of());

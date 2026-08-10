@@ -3,21 +3,24 @@ package com.alphagraph.api.security;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JwtServiceTest {
 
     private static final String SECRET = "unit-test-secret-at-least-32-bytes-long-xxxx";
+    private static final UUID USER_ID = UUID.randomUUID();
 
     @Test
     void issuedTokenValidatesBackToTheSamePrincipal() {
         JwtService service = new JwtService(SECRET, 60);
 
-        String token = service.issueToken("admin@alphagraph.local", "ADMIN");
+        String token = service.issueToken(USER_ID, "admin@alphagraph.local", "ADMIN");
         Optional<JwtService.AuthenticatedPrincipal> principal = service.validate(token);
 
         assertThat(principal).isPresent();
+        assertThat(principal.get().userId()).isEqualTo(USER_ID);
         assertThat(principal.get().email()).isEqualTo("admin@alphagraph.local");
         assertThat(principal.get().role()).isEqualTo("ADMIN");
     }
@@ -25,7 +28,7 @@ class JwtServiceTest {
     @Test
     void tamperedTokenFailsValidationWithoutThrowing() {
         JwtService service = new JwtService(SECRET, 60);
-        String token = service.issueToken("admin@alphagraph.local", "ADMIN");
+        String token = service.issueToken(USER_ID, "admin@alphagraph.local", "ADMIN");
 
         // Flip a character safely inside the payload segment (a few characters past the first
         // '.'), not the last character of the whole token - a base64 segment's final character
@@ -44,7 +47,7 @@ class JwtServiceTest {
         JwtService issuer = new JwtService(SECRET, 60);
         JwtService verifier = new JwtService("a-completely-different-secret-32-bytes-min", 60);
 
-        String token = issuer.issueToken("admin@alphagraph.local", "ADMIN");
+        String token = issuer.issueToken(USER_ID, "admin@alphagraph.local", "ADMIN");
 
         assertThat(verifier.validate(token)).isEmpty();
     }
@@ -53,7 +56,7 @@ class JwtServiceTest {
     void expiredTokenIsRejected() throws InterruptedException {
         // 0-minute expiry plus a short sleep is enough to push "now" past the expiration instant.
         JwtService service = new JwtService(SECRET, 0);
-        String token = service.issueToken("admin@alphagraph.local", "ADMIN");
+        String token = service.issueToken(USER_ID, "admin@alphagraph.local", "ADMIN");
 
         Thread.sleep(1000);
 

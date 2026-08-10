@@ -23,14 +23,16 @@ class WatchlistViewServiceTest {
     private final DecisionScoreReader decisionScoreReader = mock(DecisionScoreReader.class);
     private final WatchlistViewService viewService = new WatchlistViewService(watchlistService, decisionScoreReader);
 
+    private final UUID userId = UUID.randomUUID();
+
     @Test
     void listEnrichesEveryItemWithItsLatestScore() {
         UUID instrumentId = UUID.randomUUID();
         WatchlistItem item = new WatchlistItem(UUID.randomUUID(), instrumentId, "TCS", Instant.parse("2026-06-01T00:00:00Z"));
-        when(watchlistService.list()).thenReturn(List.of(item));
+        when(watchlistService.list(userId)).thenReturn(List.of(item));
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.of(scoreFor(instrumentId)));
 
-        WatchlistEntryDto dto = viewService.list().get(0);
+        WatchlistEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.symbol()).isEqualTo("TCS");
         assertThat(dto.swingScore()).isEqualTo(85.16);
@@ -45,10 +47,10 @@ class WatchlistViewServiceTest {
     void listLeavesScoreFieldsNullForAnInstrumentNotYetScored() {
         UUID instrumentId = UUID.randomUUID();
         WatchlistItem item = new WatchlistItem(UUID.randomUUID(), instrumentId, "NEWCO", Instant.now());
-        when(watchlistService.list()).thenReturn(List.of(item));
+        when(watchlistService.list(userId)).thenReturn(List.of(item));
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        WatchlistEntryDto dto = viewService.list().get(0);
+        WatchlistEntryDto dto = viewService.list(userId).get(0);
 
         assertThat(dto.swingScore()).isNull();
         assertThat(dto.swingRating()).isNull();
@@ -59,10 +61,10 @@ class WatchlistViewServiceTest {
     void addDelegatesToTheDomainServiceAndEnrichesTheResult() {
         UUID instrumentId = UUID.randomUUID();
         WatchlistItem item = new WatchlistItem(UUID.randomUUID(), instrumentId, "INFY", Instant.now());
-        when(watchlistService.add(instrumentId)).thenReturn(Optional.of(item));
+        when(watchlistService.add(userId, instrumentId)).thenReturn(Optional.of(item));
         when(decisionScoreReader.findLatest(instrumentId)).thenReturn(Optional.empty());
 
-        Optional<WatchlistEntryDto> result = viewService.add(instrumentId);
+        Optional<WatchlistEntryDto> result = viewService.add(userId, instrumentId);
 
         assertThat(result).isPresent();
         assertThat(result.get().symbol()).isEqualTo("INFY");
@@ -71,17 +73,17 @@ class WatchlistViewServiceTest {
     @Test
     void addReturnsEmptyWhenTheDomainServiceCouldNotResolveTheInstrument() {
         UUID instrumentId = UUID.randomUUID();
-        when(watchlistService.add(instrumentId)).thenReturn(Optional.empty());
+        when(watchlistService.add(userId, instrumentId)).thenReturn(Optional.empty());
 
-        assertThat(viewService.add(instrumentId)).isEmpty();
+        assertThat(viewService.add(userId, instrumentId)).isEmpty();
     }
 
     @Test
     void removeDelegatesDirectlyToTheDomainService() {
         UUID instrumentId = UUID.randomUUID();
-        when(watchlistService.remove(instrumentId)).thenReturn(true);
+        when(watchlistService.remove(userId, instrumentId)).thenReturn(true);
 
-        assertThat(viewService.remove(instrumentId)).isTrue();
+        assertThat(viewService.remove(userId, instrumentId)).isTrue();
     }
 
     private static DecisionScore scoreFor(UUID instrumentId) {

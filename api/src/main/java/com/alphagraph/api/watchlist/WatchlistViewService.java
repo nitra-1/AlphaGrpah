@@ -27,16 +27,16 @@ public class WatchlistViewService {
         this.decisionScoreReader = decisionScoreReader;
     }
 
-    public List<WatchlistEntryDto> list() {
-        return watchlistService.list().stream().map(this::toDto).toList();
+    public List<WatchlistEntryDto> list(UUID userId) {
+        return watchlistService.list(userId).stream().map(this::toDto).toList();
     }
 
-    public Optional<WatchlistEntryDto> add(UUID instrumentId) {
-        return watchlistService.add(instrumentId).map(this::toDto);
+    public Optional<WatchlistEntryDto> add(UUID userId, UUID instrumentId) {
+        return watchlistService.add(userId, instrumentId).map(this::toDto);
     }
 
-    public boolean remove(UUID instrumentId) {
-        return watchlistService.remove(instrumentId);
+    public boolean remove(UUID userId, UUID instrumentId) {
+        return watchlistService.remove(userId, instrumentId);
     }
 
     private WatchlistEntryDto toDto(WatchlistItem item) {

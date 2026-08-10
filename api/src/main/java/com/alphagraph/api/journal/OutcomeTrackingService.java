@@ -29,8 +29,8 @@ public class OutcomeTrackingService {
         this.viewService = viewService;
     }
 
-    public OutcomeSummaryDto compute() {
-        List<TradeJournalEntryDto> sells = viewService.list().stream()
+    public OutcomeSummaryDto compute(UUID userId) {
+        List<TradeJournalEntryDto> sells = viewService.list(userId).stream()
             .filter(e -> "SELL".equals(e.action()))
             .toList();
 

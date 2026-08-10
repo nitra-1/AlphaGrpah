@@ -1,11 +1,12 @@
 package com.alphagraph.api.watchlist;
 
 import com.alphagraph.api.error.NotFoundException;
+import com.alphagraph.api.security.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,7 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-/** Module 3.2: the single global watchlist. GET needs no role beyond a valid JWT, matching every other read endpoint; mutations require ADMIN, matching api.rule.RuleController's convention. */
+/**
+ * Module 3.2, retrofitted for multi-tenancy (decision V7): each caller's own watchlist. Every
+ * endpoint here just needs a valid JWT - add/remove are NOT ADMIN-gated, matching
+ * api.portfolio.PortfolioController's own retrofit for the same reason: a USER account's whole
+ * point is a personal Watchlist, so gating mutations behind ADMIN would defeat it. (Same bug,
+ * caught the same way - live two-user E2E testing.)
+ */
 @RestController
 @RequestMapping("/api/v1/watchlist")
 public class WatchlistController {
@@ -30,24 +37,26 @@ public class WatchlistController {
 
     @Operation(summary = "List the watchlist", description = "Every watched instrument with its current Swing/Long-Term Score and Rank, if computed yet.")
     @GetMapping
-    public List<WatchlistEntryDto> list() {
-        return viewService.list();
+    public List<WatchlistEntryDto> list(@AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal) {
+        return viewService.list(principal.userId());
     }
 
     @Operation(summary = "Add an instrument to the watchlist", description = "No-op if already on the list.")
-    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<WatchlistEntryDto> add(@Valid @RequestBody AddWatchlistItemRequest request) {
-        WatchlistEntryDto entry = viewService.add(request.instrumentId())
+    public ResponseEntity<WatchlistEntryDto> add(
+        @AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal, @Valid @RequestBody AddWatchlistItemRequest request
+    ) {
+        WatchlistEntryDto entry = viewService.add(principal.userId(), request.instrumentId())
             .orElseThrow(() -> new NotFoundException("No instrument with id " + request.instrumentId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(entry);
     }
 
     @Operation(summary = "Remove an instrument from the watchlist")
-    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{instrumentId}")
-    public ResponseEntity<Void> remove(@PathVariable UUID instrumentId) {
-        if (!viewService.remove(instrumentId)) {
+    public ResponseEntity<Void> remove(
+        @AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal, @PathVariable UUID instrumentId
+    ) {
+        if (!viewService.remove(principal.userId(), instrumentId)) {
             throw new NotFoundException("Instrument " + instrumentId + " is not on the watchlist");
         }
         return ResponseEntity.noContent().build();

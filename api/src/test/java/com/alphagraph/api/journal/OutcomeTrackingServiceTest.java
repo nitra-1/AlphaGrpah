@@ -18,12 +18,13 @@ class OutcomeTrackingServiceTest {
 
     private final UUID tcs = UUID.randomUUID();
     private final UUID infy = UUID.randomUUID();
+    private final UUID userId = UUID.randomUUID();
 
     @Test
     void emptyJournalProducesAnAllNullEmptySummary() {
-        when(viewService.list()).thenReturn(List.of());
+        when(viewService.list(userId)).thenReturn(List.of());
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.totalRealizedPnl()).isNull();
         assertThat(summary.closedTradeCount()).isZero();
@@ -34,9 +35,9 @@ class OutcomeTrackingServiceTest {
 
     @Test
     void openPositionsWithOnlyBuysProduceNoOutcomesYet() {
-        when(viewService.list()).thenReturn(List.of(buy(tcs, "TCS")));
+        when(viewService.list(userId)).thenReturn(List.of(buy(tcs, "TCS")));
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.closedTradeCount()).isZero();
         assertThat(summary.totalRealizedPnl()).isNull();
@@ -44,13 +45,13 @@ class OutcomeTrackingServiceTest {
 
     @Test
     void computesWinRateTotalPnlAndSeparateAverageWinAndLoss() {
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             sell(tcs, "TCS", new BigDecimal("100")),  // win
             sell(tcs, "TCS", new BigDecimal("200")),  // win
             sell(infy, "INFY", new BigDecimal("-50")) // loss
         ));
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.closedTradeCount()).isEqualTo(3);
         assertThat(summary.winCount()).isEqualTo(2);
@@ -64,12 +65,12 @@ class OutcomeTrackingServiceTest {
 
     @Test
     void breakEvenTradesAreCountedSeparatelyButStillCountTowardTheWinRateDenominator() {
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             sell(tcs, "TCS", new BigDecimal("100")), // win
             sell(tcs, "TCS", BigDecimal.ZERO)        // break-even
         ));
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.winCount()).isEqualTo(1);
         assertThat(summary.breakEvenCount()).isEqualTo(1);
@@ -78,9 +79,9 @@ class OutcomeTrackingServiceTest {
 
     @Test
     void allWinsLeavesAverageLossNull() {
-        when(viewService.list()).thenReturn(List.of(sell(tcs, "TCS", new BigDecimal("100"))));
+        when(viewService.list(userId)).thenReturn(List.of(sell(tcs, "TCS", new BigDecimal("100"))));
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.averageLoss()).isNull();
         assertThat(summary.lossCount()).isZero();
@@ -91,9 +92,9 @@ class OutcomeTrackingServiceTest {
         var mid = sell(tcs, "TCS", new BigDecimal("50"));
         var best = sell(tcs, "TCS", new BigDecimal("500"));
         var worst = sell(infy, "INFY", new BigDecimal("-300"));
-        when(viewService.list()).thenReturn(List.of(mid, best, worst));
+        when(viewService.list(userId)).thenReturn(List.of(mid, best, worst));
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.bestTrade()).isEqualTo(best);
         assertThat(summary.worstTrade()).isEqualTo(worst);
@@ -101,13 +102,13 @@ class OutcomeTrackingServiceTest {
 
     @Test
     void groupsByInstrumentSortedByRealizedPnlDescending() {
-        when(viewService.list()).thenReturn(List.of(
+        when(viewService.list(userId)).thenReturn(List.of(
             sell(tcs, "TCS", new BigDecimal("100")),
             sell(tcs, "TCS", new BigDecimal("50")),
             sell(infy, "INFY", new BigDecimal("300"))
         ));
 
-        OutcomeSummaryDto summary = service.compute();
+        OutcomeSummaryDto summary = service.compute(userId);
 
         assertThat(summary.byInstrument()).hasSize(2);
         assertThat(summary.byInstrument().get(0).symbol()).isEqualTo("INFY"); // 300 > 150

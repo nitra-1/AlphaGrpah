@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/admin/news-review', label: 'News Review' },
   { to: '/admin/add-instrument', label: 'Add Instrument' },
   { to: '/admin/add-financial-data', label: 'Add Financial Data' },
+  { to: '/admin/users', label: 'Add User' },
 ]
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
