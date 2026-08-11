@@ -28,7 +28,7 @@ export function RankingsPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-text-muted">
-                <th className="px-4 py-3 font-medium">Rank</th>
+                <th className="px-4 py-3 font-medium">Swing Rank</th>
                 <th className="px-4 py-3 font-medium">Symbol</th>
                 <th className="px-4 py-3 font-medium">Swing Score</th>
                 <th className="px-4 py-3 font-medium">Rating</th>

@@ -127,6 +127,13 @@ class PortfolioViewServiceTest {
         assertThat(viewService.sell(userId, instrumentId, new BigDecimal("5"), new BigDecimal("110"), null)).isPresent();
     }
 
+    @Test
+    void removeDelegatesDirectlyToTheDomainService() {
+        when(portfolioService.remove(userId, instrumentId)).thenReturn(true);
+
+        assertThat(viewService.remove(userId, instrumentId)).isTrue();
+    }
+
     private DailyPrice priceOf(BigDecimal close) {
         return new DailyPrice(instrumentId, "TCS", LocalDate.of(2026, 6, 1), close, close, close, close, 1000L, null);
     }

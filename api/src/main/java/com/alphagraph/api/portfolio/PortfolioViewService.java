@@ -53,6 +53,10 @@ public class PortfolioViewService {
         return portfolioService.sell(userId, instrumentId, quantity, price, rationale).map(this::toDto);
     }
 
+    public boolean remove(UUID userId, UUID instrumentId) {
+        return portfolioService.remove(userId, instrumentId);
+    }
+
     private PortfolioEntryDto toDto(PortfolioHolding holding) {
         Optional<DailyPrice> latestPrice = dailyPriceReader.findLatest(holding.instrumentId());
         Optional<DecisionScore> score = decisionScoreReader.findLatest(holding.instrumentId());

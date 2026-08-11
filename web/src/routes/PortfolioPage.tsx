@@ -93,6 +93,17 @@ export function PortfolioPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (instrumentId: string) => apiFetch<void>(`/portfolio/${instrumentId}`, { method: 'DELETE' }),
+    onSuccess: refreshPortfolio,
+  })
+
+  function handleDelete(symbol: string, instrumentId: string) {
+    if (window.confirm(`Delete ${symbol} from your portfolio? This removes the holding without recording a trade - it will not appear in Trade Journal. Use Sell instead if this is a real exit.`)) {
+      deleteMutation.mutate(instrumentId)
+    }
+  }
+
   const risk = riskQuery.data
 
   return (
@@ -160,6 +171,8 @@ export function PortfolioPage() {
         <p className="mt-8 text-sm text-text-muted">No holdings yet - buy an instrument above.</p>
       )}
 
+      {deleteMutation.isError && <p className="mt-2 text-sm text-loss">Couldn't delete that holding.</p>}
+
       {portfolioQuery.data && portfolioQuery.data.length > 0 && (
         <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
           <table className="w-full text-left text-sm">
@@ -203,12 +216,21 @@ export function PortfolioPage() {
                     </td>
                     <td className="px-4 py-3"><LevelBadge level={entry.riskLevel} /></td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        className="text-xs font-semibold text-accent hover:underline"
-                        onClick={() => setSellingId(sellingId === entry.instrumentId ? null : entry.instrumentId)}
-                      >
-                        Sell
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          className="text-xs font-semibold text-accent hover:underline"
+                          onClick={() => setSellingId(sellingId === entry.instrumentId ? null : entry.instrumentId)}
+                        >
+                          Sell
+                        </button>
+                        <button
+                          className="text-xs font-semibold text-loss hover:underline disabled:opacity-50"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => handleDelete(entry.symbol, entry.instrumentId)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   {sellingId === entry.instrumentId && (

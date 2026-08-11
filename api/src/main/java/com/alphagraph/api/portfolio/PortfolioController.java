@@ -7,13 +7,16 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Module 3.3, retrofitted for multi-tenancy (decision V7): each caller's own portfolio - current
@@ -66,5 +69,19 @@ public class PortfolioController {
     ) {
         return viewService.sell(principal.userId(), request.instrumentId(), request.quantity(), request.price(), request.rationale())
             .orElseThrow(() -> new NotFoundException("No holding for instrument " + request.instrumentId()));
+    }
+
+    @Operation(
+        summary = "Delete a holding",
+        description = "Removes the holding entirely without recording a trade - for correcting placeholder/test data, not a real exit. No P&L is computed and no Trade Journal entry is written. To record an actual sale, use POST /sell instead."
+    )
+    @DeleteMapping("/{instrumentId}")
+    public ResponseEntity<Void> remove(
+        @AuthenticationPrincipal JwtService.AuthenticatedPrincipal principal, @PathVariable UUID instrumentId
+    ) {
+        if (!viewService.remove(principal.userId(), instrumentId)) {
+            throw new NotFoundException("No holding for instrument " + instrumentId);
+        }
+        return ResponseEntity.noContent().build();
     }
 }

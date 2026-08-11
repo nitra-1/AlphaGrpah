@@ -129,4 +129,21 @@ public class PortfolioService {
     public List<PortfolioHolding> list(UUID userId) {
         return reader.findAll(userId);
     }
+
+    /**
+     * Deletes a holding entirely - NOT a sale. No journal entry, no realized P&L, no price
+     * required. For correcting placeholder/test data (e.g. clearing out holdings entered while
+     * exploring the platform before starting to track real trades), where recording a fake
+     * {@link #sell} would pollute the Trade Journal with a transaction that never actually
+     * happened. A real exit should still go through {@link #sell}.
+     *
+     * @return false if there's no holding at all for this instrument
+     */
+    public boolean remove(UUID userId, UUID instrumentId) {
+        if (reader.findByInstrument(userId, instrumentId).isEmpty()) {
+            return false;
+        }
+        store.delete(userId, instrumentId);
+        return true;
+    }
 }

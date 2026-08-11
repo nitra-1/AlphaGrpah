@@ -172,6 +172,26 @@ class PortfolioServiceTest {
         assertThatIllegalArgumentException().isThrownBy(() -> service.sell(userId, instrumentId, new BigDecimal("1"), BigDecimal.ZERO, null));
     }
 
+    @Test
+    void removeDeletesTheHoldingWithoutTouchingTheJournal() {
+        when(reader.findByInstrument(userId, instrumentId)).thenReturn(Optional.of(holding(new BigDecimal("10"), new BigDecimal("100"))));
+
+        boolean result = service.remove(userId, instrumentId);
+
+        assertThat(result).isTrue();
+        verify(store).delete(userId, instrumentId);
+        verifyNoInteractions(tradeJournalService);
+    }
+
+    @Test
+    void removeReturnsFalseWhenNoHoldingExists() {
+        when(reader.findByInstrument(userId, instrumentId)).thenReturn(Optional.empty());
+
+        assertThat(service.remove(userId, instrumentId)).isFalse();
+        verify(store, never()).delete(any(), any());
+        verifyNoInteractions(tradeJournalService);
+    }
+
     private PortfolioHolding holding(BigDecimal quantity, BigDecimal avgPrice) {
         return new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", quantity, avgPrice, Instant.now());
     }
