@@ -2,6 +2,8 @@ export interface TrackedInstrument {
   id: string
   symbol: string
   name: string
+  sectorId: string | null
+  sectorName: string | null
 }
 
 export interface AddFinancialResultRequest {

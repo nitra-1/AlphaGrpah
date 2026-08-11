@@ -19,8 +19,16 @@ public class InstrumentReader {
 
     public List<TrackedInstrumentSummary> listAll() {
         return jdbcTemplate.query(
-            "SELECT id, symbol, name FROM reference.instruments ORDER BY symbol",
-            (rs, rowNum) -> new TrackedInstrumentSummary((UUID) rs.getObject("id"), rs.getString("symbol"), rs.getString("name"))
+            """
+            SELECT i.id, i.symbol, i.name, i.sector_id, s.name AS sector_name
+            FROM reference.instruments i
+            LEFT JOIN reference.sectors s ON s.id = i.sector_id
+            ORDER BY i.symbol
+            """,
+            (rs, rowNum) -> new TrackedInstrumentSummary(
+                (UUID) rs.getObject("id"), rs.getString("symbol"), rs.getString("name"),
+                (UUID) rs.getObject("sector_id"), rs.getString("sector_name")
+            )
         );
     }
 }

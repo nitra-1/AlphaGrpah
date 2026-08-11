@@ -41,6 +41,30 @@ public class InstrumentWriter {
         return Optional.of(id);
     }
 
+    /**
+     * Reassigns an already-tracked instrument to a different sector (or clears it, if
+     * {@code sectorId} is null - the column has always been nullable). Exists specifically so a
+     * sector blocked from deletion by {@code SectorService.delete} (instruments still assigned)
+     * can actually be resolved from the admin UI, not just diagnosed.
+     *
+     * @return false if no instrument exists with this id
+     * @throws IllegalArgumentException if sectorId is given but no sector exists with that id
+     */
+    public boolean updateSector(UUID instrumentId, UUID sectorId) {
+        Long instrumentCount = jdbcTemplate.queryForObject("SELECT count(*) FROM reference.instruments WHERE id = ?", Long.class, instrumentId);
+        if (instrumentCount == null || instrumentCount == 0) {
+            return false;
+        }
+        if (sectorId != null) {
+            Long sectorCount = jdbcTemplate.queryForObject("SELECT count(*) FROM reference.sectors WHERE id = ?", Long.class, sectorId);
+            if (sectorCount == null || sectorCount == 0) {
+                throw new IllegalArgumentException("No sector with id " + sectorId);
+            }
+        }
+        jdbcTemplate.update("UPDATE reference.instruments SET sector_id = ? WHERE id = ?", sectorId, instrumentId);
+        return true;
+    }
+
     private boolean isAlreadyTracked(String symbol) {
         try {
             jdbcTemplate.queryForObject(

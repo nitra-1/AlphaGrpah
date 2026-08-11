@@ -2,10 +2,12 @@ import { Fragment, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
 import type { Sector } from '../types/instrument'
+import type { TrackedInstrument } from '../types/financialData'
 import { ErrorState } from '../components/ErrorState'
 import { TableSkeleton } from '../components/TableSkeleton'
 
 const NO_PARENT = ''
+const UNASSIGNED = ''
 
 export function SectorsPage() {
   const queryClient = useQueryClient()
@@ -19,14 +21,26 @@ export function SectorsPage() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  const [pendingReassignment, setPendingReassignment] = useState<Record<string, string>>({})
+
   const sectorsQuery = useQuery({
     queryKey: ['admin-sectors'],
     queryFn: () => apiFetch<Sector[]>('/admin/sectors'),
   })
 
+  const instrumentsQuery = useQuery({
+    queryKey: ['admin-instruments'],
+    queryFn: () => apiFetch<TrackedInstrument[]>('/admin/instruments'),
+  })
+
   function refreshSectors() {
     queryClient.invalidateQueries({ queryKey: ['admin-sectors'] })
     queryClient.invalidateQueries({ queryKey: ['sectors'] }) // Add Instrument's dropdown reads the same data
+  }
+
+  function refreshInstruments() {
+    queryClient.invalidateQueries({ queryKey: ['admin-instruments'] })
+    refreshSectors() // instrumentCount per sector changed
   }
 
   const createMutation = useMutation({
@@ -62,6 +76,22 @@ export function SectorsPage() {
     },
   })
 
+  const reassignMutation = useMutation({
+    mutationFn: ({ instrumentId, sectorId }: { instrumentId: string; sectorId: string }) =>
+      apiFetch<void>(`/admin/instruments/${instrumentId}/sector`, {
+        method: 'PUT',
+        body: JSON.stringify({ sectorId: sectorId || null }),
+      }),
+    onSuccess: (_data, { instrumentId }) => {
+      setPendingReassignment((prev) => {
+        const next = { ...prev }
+        delete next[instrumentId]
+        return next
+      })
+      refreshInstruments()
+    },
+  })
+
   function startEditing(sector: Sector) {
     setDeletingId(null)
     setEditingId(sector.id)
@@ -70,6 +100,7 @@ export function SectorsPage() {
   }
 
   const sectors = sectorsQuery.data ?? []
+  const instruments = instrumentsQuery.data ?? []
   const canCreate = newName.trim().length > 0 && !createMutation.isPending
   const canSaveEdit = editName.trim().length > 0 && !updateMutation.isPending
 
@@ -232,6 +263,69 @@ export function SectorsPage() {
           </table>
         </div>
       )}
+
+      <h2 className="mt-10 text-lg font-semibold text-text">Instrument Sector Assignments</h2>
+      <p className="mt-1 text-sm text-text-muted">
+        Move an instrument to a different sector - also how to clear a sector blocked from deletion above.
+      </p>
+
+      {instrumentsQuery.isLoading && <TableSkeleton columns={3} />}
+      {instrumentsQuery.error && <ErrorState message="Couldn't load instruments." onRetry={instrumentsQuery.refetch} />}
+
+      {instruments.length > 0 && (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs text-text-muted">
+                <th className="px-4 py-3 font-medium">Symbol</th>
+                <th className="px-4 py-3 font-medium">Company</th>
+                <th className="px-4 py-3 font-medium">Sector</th>
+                <th className="px-4 py-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {instruments.map((instrument) => {
+                const currentSectorId = instrument.sectorId ?? UNASSIGNED
+                const selectedSectorId = pendingReassignment[instrument.id] ?? currentSectorId
+                const isDirty = selectedSectorId !== currentSectorId
+                const isSaving = reassignMutation.isPending && reassignMutation.variables?.instrumentId === instrument.id
+                return (
+                  <tr key={instrument.id} className="border-b border-border last:border-0 hover:bg-bg">
+                    <td className="px-4 py-3 font-semibold text-text">{instrument.symbol}</td>
+                    <td className="px-4 py-3 text-text-muted">{instrument.name}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        className="rounded-lg border border-border bg-bg px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+                        value={selectedSectorId}
+                        onChange={(e) =>
+                          setPendingReassignment((prev) => ({ ...prev, [instrument.id]: e.target.value }))
+                        }
+                      >
+                        <option value={UNASSIGNED}>Unassigned</option>
+                        {sectors.map((sector) => (
+                          <option key={sector.id} value={sector.id}>
+                            {sector.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        className="text-xs font-semibold text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={!isDirty || isSaving}
+                        onClick={() => reassignMutation.mutate({ instrumentId: instrument.id, sectorId: selectedSectorId })}
+                      >
+                        {isSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {reassignMutation.isError && <p className="mt-2 text-sm text-loss">{(reassignMutation.error as Error).message}</p>}
     </div>
   )
 }
