@@ -20,8 +20,9 @@ import java.util.function.Function;
 /**
  * Module 1.1: registers the daily NSE OHLC/volume/delivery pipeline for the scheduler to
  * discover. Depends on the Collector interface, not a concrete implementation, so the bundled
- * sample (BhavdataCollector, local/test) and the real HTTP fetch (HttpBhavdataCollector,
- * docker/prod) can coexist — exactly one is active per Spring profile.
+ * sample (BhavdataCollector, only active where no live source is configured) and the real HTTP
+ * fetch (HttpBhavdataCollector, local/docker/prod) can coexist — exactly one is active per Spring
+ * profile.
  *
  * The @Qualifier("market") is load-bearing, not decorative: without it, any other module's
  * Collector<List<String>> bean (e.g. ownership's ShareholdingCollector) is an equally valid

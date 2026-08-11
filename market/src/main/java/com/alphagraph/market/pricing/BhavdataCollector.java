@@ -16,8 +16,11 @@ import java.util.List;
 
 /**
  * Reads the bundled sample CSV named by {@code sourceConfig}'s "resourcePath" property.
- * Deterministic and offline-safe, so this is what local dev/CI use — {@link HttpBhavdataCollector}
- * takes over in docker/prod.
+ * Deterministic and offline-safe — now only the fallback for a profile that isn't wired to a real
+ * feed. {@code local} used to fall back to this bean too, but that meant the user's own real
+ * running instance never saw a live price update; {@link HttpBhavdataCollector} now covers
+ * {@code local} as well as docker/prod, so this bean only remains active where no live source is
+ * configured at all (e.g. a bare/default profile).
  *
  * {@code @Qualifier("market")} matters: any other module's Collector<List<String>> bean (e.g.
  * ownership's ShareholdingCollector) is otherwise a false-positive candidate for the exact same
@@ -25,7 +28,7 @@ import java.util.List;
  * (NoUniqueBeanDefinitionException once a second module introduced its own such collector).
  */
 @Component
-@Profile("!docker & !prod")
+@Profile("!docker & !prod & !local")
 @Qualifier("market")
 public class BhavdataCollector implements Collector<List<String>> {
 

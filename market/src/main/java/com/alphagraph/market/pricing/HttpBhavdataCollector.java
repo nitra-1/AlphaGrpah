@@ -28,9 +28,17 @@ import java.util.List;
  * The URL template is configurable (alphagraph.market.nse-bhavdata-url-template) so a change to
  * NSE's URL path is a config update, not a redeploy. A change to the file's actual format would
  * still need code changes to BhavdataParser.
+ *
+ * Active in {@code local} as well as {@code docker}/{@code prod}: {@code local} is what the user
+ * actually runs this app under day to day, so it needs the real daily price to stay current the
+ * same way docker/prod would - a bundled sample dated once and never refreshed defeats the point
+ * of a "daily" pipeline for whoever is actually using the app. Parses whatever the live file
+ * contains for every symbol currently in reference.instruments (BhavdataNormalizer looks each one
+ * up dynamically), so this automatically covers every tracked instrument, not a fixed list -
+ * newly-added instruments are picked up the next run with no code change.
  */
 @Component
-@Profile({"docker", "prod"})
+@Profile({"docker", "prod", "local"})
 @Qualifier("market")
 public class HttpBhavdataCollector implements Collector<List<String>> {
 
