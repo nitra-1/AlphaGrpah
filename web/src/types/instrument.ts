@@ -10,6 +10,9 @@ export interface SecurityMasterEntry {
 export interface Sector {
   id: string
   name: string
+  parentSectorId: string | null
+  parentName: string | null
+  instrumentCount: number
 }
 
 export interface Instrument {

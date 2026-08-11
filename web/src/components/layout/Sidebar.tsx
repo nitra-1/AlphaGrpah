@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/trade-journal', label: 'Trade Journal', adminOnly: false },
   { to: '/admin/news-review', label: 'News Review', adminOnly: true },
   { to: '/admin/add-instrument', label: 'Add Instrument', adminOnly: true },
+  { to: '/admin/sectors', label: 'Sectors', adminOnly: true },
   { to: '/admin/add-financial-data', label: 'Add Financial Data', adminOnly: true },
   { to: '/admin/users', label: 'Add User', adminOnly: true },
 ]

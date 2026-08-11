@@ -14,6 +14,7 @@ import { InstrumentDetailPage } from './routes/InstrumentDetailPage'
 import { NotFoundPage } from './routes/NotFoundPage'
 import { NewsReviewPage } from './routes/NewsReviewPage'
 import { AddInstrumentPage } from './routes/AddInstrumentPage'
+import { SectorsPage } from './routes/SectorsPage'
 import { AddFinancialDataPage } from './routes/AddFinancialDataPage'
 import { AddUserPage } from './routes/AddUserPage'
 
@@ -36,6 +37,7 @@ function App() {
           <Route element={<AdminRoute />}>
             <Route path="/admin/news-review" element={<NewsReviewPage />} />
             <Route path="/admin/add-instrument" element={<AddInstrumentPage />} />
+            <Route path="/admin/sectors" element={<SectorsPage />} />
             <Route path="/admin/add-financial-data" element={<AddFinancialDataPage />} />
             <Route path="/admin/users" element={<AddUserPage />} />
           </Route>
