@@ -33,6 +33,8 @@ export function PortfolioPage() {
   const [sellPrice, setSellPrice] = useState('')
   const [sellRationale, setSellRationale] = useState('')
 
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
   const portfolioQuery = useQuery({
     queryKey: ['portfolio'],
     queryFn: () => apiFetch<PortfolioEntry[]>('/portfolio'),
@@ -95,14 +97,11 @@ export function PortfolioPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (instrumentId: string) => apiFetch<void>(`/portfolio/${instrumentId}`, { method: 'DELETE' }),
-    onSuccess: refreshPortfolio,
+    onSuccess: () => {
+      refreshPortfolio()
+      setDeletingId(null)
+    },
   })
-
-  function handleDelete(symbol: string, instrumentId: string) {
-    if (window.confirm(`Delete ${symbol} from your portfolio? This removes the holding without recording a trade - it will not appear in Trade Journal. Use Sell instead if this is a real exit.`)) {
-      deleteMutation.mutate(instrumentId)
-    }
-  }
 
   const risk = riskQuery.data
 
@@ -171,8 +170,6 @@ export function PortfolioPage() {
         <p className="mt-8 text-sm text-text-muted">No holdings yet - buy an instrument above.</p>
       )}
 
-      {deleteMutation.isError && <p className="mt-2 text-sm text-loss">Couldn't delete that holding.</p>}
-
       {portfolioQuery.data && portfolioQuery.data.length > 0 && (
         <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
           <table className="w-full text-left text-sm">
@@ -219,14 +216,19 @@ export function PortfolioPage() {
                       <div className="flex items-center justify-end gap-3">
                         <button
                           className="text-xs font-semibold text-accent hover:underline"
-                          onClick={() => setSellingId(sellingId === entry.instrumentId ? null : entry.instrumentId)}
+                          onClick={() => {
+                            setDeletingId(null)
+                            setSellingId(sellingId === entry.instrumentId ? null : entry.instrumentId)
+                          }}
                         >
                           Sell
                         </button>
                         <button
-                          className="text-xs font-semibold text-loss hover:underline disabled:opacity-50"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => handleDelete(entry.symbol, entry.instrumentId)}
+                          className="text-xs font-semibold text-loss hover:underline"
+                          onClick={() => {
+                            setSellingId(null)
+                            setDeletingId(deletingId === entry.instrumentId ? null : entry.instrumentId)
+                          }}
                         >
                           Delete
                         </button>
@@ -271,6 +273,34 @@ export function PortfolioPage() {
                           </button>
                         </div>
                         {sellMutation.isError && <p className="mt-2 text-sm text-loss">Couldn't complete that sell.</p>}
+                      </td>
+                    </tr>
+                  )}
+                  {deletingId === entry.instrumentId && (
+                    <tr className="border-b border-border bg-bg">
+                      <td colSpan={10} className="px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-sm text-text">
+                            Delete {entry.symbol} from your portfolio? This removes the holding without recording a trade
+                            - it will not appear in Trade Journal. Use Sell instead if this is a real exit.
+                          </p>
+                          <div className="flex items-center gap-3">
+                            <button
+                              className="text-xs font-semibold text-text-muted hover:underline"
+                              onClick={() => setDeletingId(null)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="rounded-lg bg-loss px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => deleteMutation.mutate(entry.instrumentId)}
+                            >
+                              Confirm Delete
+                            </button>
+                          </div>
+                        </div>
+                        {deleteMutation.isError && <p className="mt-2 text-sm text-loss">Couldn't delete that holding.</p>}
                       </td>
                     </tr>
                   )}

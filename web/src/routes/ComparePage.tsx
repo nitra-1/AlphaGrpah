@@ -134,37 +134,37 @@ export function ComparePage() {
               <tr className="border-b border-border">
                 <th className="px-4 py-3 text-xs font-medium text-text-muted">Technical</th>
                 {orderedEntries.map((entry) => (
-                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="T" value={entry.technicalScore} /></td>
+                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="T" fullLabel="Technical" value={entry.technicalScore} /></td>
                 ))}
               </tr>
               <tr className="border-b border-border">
                 <th className="px-4 py-3 text-xs font-medium text-text-muted">Fundamental</th>
                 {orderedEntries.map((entry) => (
-                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="F" value={entry.fundamentalScore} /></td>
+                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="F" fullLabel="Fundamental" value={entry.fundamentalScore} /></td>
                 ))}
               </tr>
               <tr className="border-b border-border">
                 <th className="px-4 py-3 text-xs font-medium text-text-muted">Institutional</th>
                 {orderedEntries.map((entry) => (
-                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="I" value={entry.institutionalScore} /></td>
+                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="I" fullLabel="Institutional" value={entry.institutionalScore} /></td>
                 ))}
               </tr>
               <tr className="border-b border-border">
                 <th className="px-4 py-3 text-xs font-medium text-text-muted">Sector</th>
                 {orderedEntries.map((entry) => (
-                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="S" value={entry.sectorScore} /></td>
+                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="S" fullLabel="Sector" value={entry.sectorScore} /></td>
                 ))}
               </tr>
               <tr className="border-b border-border">
                 <th className="px-4 py-3 text-xs font-medium text-text-muted">Risk</th>
                 {orderedEntries.map((entry) => (
-                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="R" value={entry.riskScore} /></td>
+                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="R" fullLabel="Risk" value={entry.riskScore} /></td>
                 ))}
               </tr>
               <tr className="last:border-0">
                 <th className="px-4 py-3 text-xs font-medium text-text-muted">Corporate</th>
                 {orderedEntries.map((entry) => (
-                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="C" value={entry.corporateScore} /></td>
+                  <td key={entry.instrumentId} className="px-4 py-3"><DomainScoreBar label="C" fullLabel="Corporate" value={entry.corporateScore} /></td>
                 ))}
               </tr>
             </tbody>

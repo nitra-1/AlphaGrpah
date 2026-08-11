@@ -58,12 +58,12 @@ export function RankingsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="grid grid-cols-3 gap-x-3 gap-y-1">
-                      <DomainScoreBar label="T" value={entry.technicalScore} />
-                      <DomainScoreBar label="F" value={entry.fundamentalScore} />
-                      <DomainScoreBar label="I" value={entry.institutionalScore} />
-                      <DomainScoreBar label="S" value={entry.sectorScore} />
-                      <DomainScoreBar label="R" value={entry.riskScore} />
-                      <DomainScoreBar label="C" value={entry.corporateScore} />
+                      <DomainScoreBar label="T" fullLabel="Technical" value={entry.technicalScore} />
+                      <DomainScoreBar label="F" fullLabel="Fundamental" value={entry.fundamentalScore} />
+                      <DomainScoreBar label="I" fullLabel="Institutional" value={entry.institutionalScore} />
+                      <DomainScoreBar label="S" fullLabel="Sector" value={entry.sectorScore} />
+                      <DomainScoreBar label="R" fullLabel="Risk" value={entry.riskScore} />
+                      <DomainScoreBar label="C" fullLabel="Corporate" value={entry.corporateScore} />
                     </div>
                   </td>
                 </tr>

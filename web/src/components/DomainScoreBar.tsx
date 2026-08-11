@@ -5,9 +5,9 @@ function colorFor(value: number): string {
 }
 
 /** A single domain sub-score (0-100) as a compact labeled bar - null renders as an empty slot rather than a fabricated zero. */
-export function DomainScoreBar({ label, value }: { label: string; value: number | null }) {
+export function DomainScoreBar({ label, fullLabel, value }: { label: string; fullLabel: string; value: number | null }) {
   return (
-    <div className="flex items-center gap-1.5" title={value === null ? `${label}: not available` : `${label}: ${value.toFixed(1)}`}>
+    <div className="flex items-center gap-1.5" title={value === null ? `${fullLabel}: not available` : `${fullLabel}: ${value.toFixed(1)}`}>
       <span className="w-3 text-[10px] font-medium text-text-muted">{label}</span>
       <div className="h-1.5 w-8 overflow-hidden rounded-full bg-border">
         {value !== null && (
