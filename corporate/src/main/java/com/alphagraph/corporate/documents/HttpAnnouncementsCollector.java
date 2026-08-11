@@ -31,9 +31,16 @@ import java.util.stream.Collectors;
  * with no session cookie. The fix (confirmed live) is a real two-step handshake: GET a normal
  * page first to receive Set-Cookie headers, then replay those cookies on the API call. No CAPTCHA
  * or JS challenge was encountered in practice - a plain cookie jar is sufficient.
+ *
+ * Active in {@code local} as well as {@code docker}/{@code prod}, same reasoning and same fix as
+ * {@code market.pricing.HttpBhavdataCollector}: {@code local} is what this app is actually run
+ * under day to day. The bundled fallback ({@link AnnouncementsCollector}) is a fixed dated
+ * snapshot covering only the original 8/9 tracked instruments - every downstream extractor
+ * (Financial Results, Order Book, Management Commentary, Corporate Events, Corporate Signal) was
+ * silently starved of any new real document in local dev, for every instrument added since.
  */
 @Component
-@Profile({"docker", "prod"})
+@Profile({"docker", "prod", "local"})
 @Qualifier("corporate-announcements")
 public class HttpAnnouncementsCollector implements Collector<String> {
 

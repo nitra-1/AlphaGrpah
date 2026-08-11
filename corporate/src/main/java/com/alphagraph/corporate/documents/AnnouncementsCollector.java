@@ -20,9 +20,15 @@ import java.nio.charset.StandardCharsets;
  * dual-collector module's does (Modules 1.1/1.2/1.7): {@link HttpAnnouncementsCollector} needs
  * runtime swapping via {@code @Profile}, and without a qualifier any other module's
  * {@code Collector<String>} bean is an equally valid candidate for the same generic type.
+ *
+ * Only the fallback for a profile with no live source wired - {@code local} used to fall back to
+ * this bean too, but a fixed 2026-07-25/30 snapshot for 9 instruments meant local dev's document
+ * intelligence pipeline (Financial Results, Order Book, Management Commentary, Corporate Events,
+ * Corporate Signal) never saw a genuinely new document. {@link HttpAnnouncementsCollector} now
+ * covers {@code local} as well as docker/prod.
  */
 @Component
-@Profile("!docker & !prod")
+@Profile("!docker & !prod & !local")
 @Qualifier("corporate-announcements")
 public class AnnouncementsCollector implements Collector<String> {
 

@@ -20,9 +20,16 @@ import java.util.List;
  * serve the current day's deals, so there is no historical archive to request against; this
  * collector only ever captures "today". A day with zero block deals returns a body that's just
  * "NO RECORDS,,,,,,\n" after the header - a real, valid empty state, not an error.
+ *
+ * Active in {@code local} as well as {@code docker}/{@code prod}, same reasoning and same fix as
+ * {@code market.pricing.HttpBhavdataCollector}: {@code local} is what this app is actually run
+ * under day to day, and the bundled fallback ({@link BulkDealsCollector}) turned out to be worse
+ * than merely stale - its sample data covers symbols this project has never tracked (AASTHA,
+ * AGARIND, AQYLON), so every row was silently rejected as "Unknown instrument" on every run,
+ * 100% of the time, for as long as this pipeline has existed in local dev.
  */
 @Component
-@Profile({"docker", "prod"})
+@Profile({"docker", "prod", "local"})
 @Qualifier("ownership-bulk-deals")
 public class HttpBulkDealsCollector implements Collector<List<String>> {
 

@@ -27,9 +27,14 @@ import java.util.List;
  * runtime swapping with this class via {@code @Profile}, and without a qualifier any other
  * module's {@code Collector<List<String>>} bean is an equally valid candidate for the exact same
  * generic type as far as Spring's concerned.
+ *
+ * Only the fallback for a profile with no live source wired - {@code local} used to fall back to
+ * this bean too, but its sample data (real NSE bulk deals, just never for a tracked instrument)
+ * meant every local run rejected 100% of rows as unknown symbols. {@link HttpBulkDealsCollector}
+ * now covers {@code local} as well as docker/prod.
  */
 @Component
-@Profile("!docker & !prod")
+@Profile("!docker & !prod & !local")
 @Qualifier("ownership-bulk-deals")
 public class BulkDealsCollector implements Collector<List<String>> {
 

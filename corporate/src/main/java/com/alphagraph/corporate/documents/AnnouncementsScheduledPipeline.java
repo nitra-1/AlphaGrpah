@@ -26,9 +26,9 @@ import java.util.function.Function;
  *
  * Depends on the generic {@code Collector<String>} interface (not a concrete type) since this
  * genuinely needs runtime swapping between the bundled real snapshot
- * ({@link AnnouncementsCollector}, local/test) and the live NSE fetch
- * ({@link HttpAnnouncementsCollector}, docker/prod) - same reason market's daily pipeline and
- * ownership's bulk/block deals pipeline do. {@code @Qualifier("corporate-announcements")} is
+ * ({@link AnnouncementsCollector}, only active where no live source is configured) and the live
+ * NSE fetch ({@link HttpAnnouncementsCollector}, local/docker/prod) - same reason market's daily
+ * pipeline and ownership's bulk/block deals pipeline do. {@code @Qualifier("corporate-announcements")} is
  * load-bearing: without it, any other module's {@code Collector<String>} bean is an equally valid
  * candidate for this exact generic type.
  */

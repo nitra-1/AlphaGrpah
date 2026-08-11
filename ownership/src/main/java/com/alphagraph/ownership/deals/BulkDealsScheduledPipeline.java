@@ -21,9 +21,9 @@ import java.util.function.Function;
  *
  * Depends on the generic {@code Collector<List<String>>} interface, not a concrete type - unlike
  * ownership's other pipelines (shareholding, financial's, corporate's), this one genuinely needs
- * runtime swapping between the bundled real snapshot ({@link BulkDealsCollector}, local/test) and
- * the live NSE fetch ({@link HttpBulkDealsCollector}, docker/prod), same reason market's daily
- * pipeline does. {@code @Qualifier("ownership-bulk-deals")} is load-bearing: without it, any other
+ * runtime swapping between the bundled real snapshot ({@link BulkDealsCollector}, only active
+ * where no live source is configured) and the live NSE fetch ({@link HttpBulkDealsCollector},
+ * local/docker/prod), same reason market's daily pipeline does. {@code @Qualifier("ownership-bulk-deals")} is load-bearing: without it, any other
  * module's {@code Collector<List<String>>} bean (market's, for instance) is an equally valid
  * candidate for this exact generic type - confirmed the hard way in Module 1.2.
  *
