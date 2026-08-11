@@ -7,7 +7,12 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** Raw insert for decision.trade_journal_entries - append-only, no update/delete, matching the table's immutable design. */
+/**
+ * Raw insert/delete for decision.trade_journal_entries - append-only in the ordinary course of
+ * trading (no update, no delete of an individual entry), except for
+ * {@link #deleteByInstrument}, which exists solely so {@code PortfolioService.remove} can purge a
+ * placeholder position's entries along with it.
+ */
 @Component
 class TradeJournalStore {
 
@@ -28,6 +33,12 @@ class TradeJournalStore {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             UUID.randomUUID(), userId, instrumentId, symbol, action.name(), quantity, price, costBasisPrice, realizedPnl, rationale
+        );
+    }
+
+    void deleteByInstrument(UUID userId, UUID instrumentId) {
+        jdbcTemplate.update(
+            "DELETE FROM decision.trade_journal_entries WHERE user_id = ? AND instrument_id = ?", userId, instrumentId
         );
     }
 }

@@ -173,14 +173,14 @@ class PortfolioServiceTest {
     }
 
     @Test
-    void removeDeletesTheHoldingWithoutTouchingTheJournal() {
+    void removeDeletesTheHoldingAndPurgesItsJournalEntries() {
         when(reader.findByInstrument(userId, instrumentId)).thenReturn(Optional.of(holding(new BigDecimal("10"), new BigDecimal("100"))));
 
         boolean result = service.remove(userId, instrumentId);
 
         assertThat(result).isTrue();
         verify(store).delete(userId, instrumentId);
-        verifyNoInteractions(tradeJournalService);
+        verify(tradeJournalService).deleteAllForInstrument(userId, instrumentId);
     }
 
     @Test

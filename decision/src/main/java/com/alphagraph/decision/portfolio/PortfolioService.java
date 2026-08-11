@@ -131,11 +131,13 @@ public class PortfolioService {
     }
 
     /**
-     * Deletes a holding entirely - NOT a sale. No journal entry, no realized P&L, no price
+     * Deletes a holding entirely - NOT a sale. No new journal entry, no realized P&L, no price
      * required. For correcting placeholder/test data (e.g. clearing out holdings entered while
-     * exploring the platform before starting to track real trades), where recording a fake
-     * {@link #sell} would pollute the Trade Journal with a transaction that never actually
-     * happened. A real exit should still go through {@link #sell}.
+     * exploring the platform before starting to track real trades) - since this position never
+     * represented a real trade to begin with, every existing Trade Journal entry for this
+     * instrument (the BUY(s) that created it, and any SELLs against it) is purged along with it,
+     * so a deleted holding doesn't linger as orphaned journal history. A real exit that should
+     * stay on the record must go through {@link #sell} instead, never this method.
      *
      * @return false if there's no holding at all for this instrument
      */
@@ -144,6 +146,7 @@ public class PortfolioService {
             return false;
         }
         store.delete(userId, instrumentId);
+        tradeJournalService.deleteAllForInstrument(userId, instrumentId);
         return true;
     }
 }

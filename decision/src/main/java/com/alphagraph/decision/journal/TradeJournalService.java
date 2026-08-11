@@ -45,4 +45,13 @@ public class TradeJournalService {
     public List<TradeJournalEntry> listByInstrument(UUID userId, UUID instrumentId) {
         return reader.findByInstrument(userId, instrumentId);
     }
+
+    /**
+     * The one exception to "append-only": called only by {@code decision.portfolio.PortfolioService.remove}
+     * when a placeholder/test holding (never a real trade) is deleted outright, so its journal
+     * entries don't linger for a position that no longer exists.
+     */
+    public void deleteAllForInstrument(UUID userId, UUID instrumentId) {
+        store.deleteByInstrument(userId, instrumentId);
+    }
 }
