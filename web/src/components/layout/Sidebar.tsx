@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/admin/sectors', label: 'Sectors', adminOnly: true },
   { to: '/admin/add-financial-data', label: 'Add Financial Data', adminOnly: true },
   { to: '/admin/users', label: 'Add User', adminOnly: true },
+  { to: '/admin/monitoring', label: 'Monitoring', adminOnly: true },
 ]
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {

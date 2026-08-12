@@ -17,6 +17,7 @@ import { AddInstrumentPage } from './routes/AddInstrumentPage'
 import { SectorsPage } from './routes/SectorsPage'
 import { AddFinancialDataPage } from './routes/AddFinancialDataPage'
 import { AddUserPage } from './routes/AddUserPage'
+import { MonitoringPage } from './routes/MonitoringPage'
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
             <Route path="/admin/sectors" element={<SectorsPage />} />
             <Route path="/admin/add-financial-data" element={<AddFinancialDataPage />} />
             <Route path="/admin/users" element={<AddUserPage />} />
+            <Route path="/admin/monitoring" element={<MonitoringPage />} />
           </Route>
         </Route>
       </Route>
