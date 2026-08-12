@@ -54,7 +54,10 @@ public class CronMonitoringRepository {
     public List<CronStatusDto> findAll() {
         List<CronStatusDto> merged = new ArrayList<>(findPipelineStatuses());
         merged.addAll(findJobStatuses());
-        merged.sort(Comparator.comparing(CronStatusDto::name));
+        // schedule is always zero-padded "HH:mm IST daily" and every cron in this system fires
+        // between 00:00-23:59 with no midnight wraparound, so a plain string sort on it is
+        // already chronological - name is just the tiebreaker for crons sharing the same slot.
+        merged.sort(Comparator.comparing(CronStatusDto::schedule).thenComparing(CronStatusDto::name));
         return merged;
     }
 
