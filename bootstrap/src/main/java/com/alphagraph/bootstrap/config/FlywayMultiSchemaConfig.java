@@ -23,7 +23,7 @@ import java.util.List;
 public class FlywayMultiSchemaConfig {
 
     private static final List<String> MODULES_WITH_MIGRATIONS = List.of(
-        "common", "reference", "scheduler", "api", "market", "ownership", "financial", "corporate", "technical", "sector", "risk", "decision"
+        "common", "reference", "scheduler", "api", "market", "ownership", "financial", "corporate", "technical", "sector", "risk", "decision", "learning"
     );
 
     @Bean
