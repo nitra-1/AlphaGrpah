@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.commentary;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,15 +13,18 @@ import org.springframework.stereotype.Component;
 public class ManagementCommentaryScheduler {
 
     private static final String CRON_915PM_IST = "0 15 19 * * *";
+    private static final String JOB_NAME = "management-commentary";
 
     private final ManagementCommentaryOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public ManagementCommentaryScheduler(ManagementCommentaryOrchestrator orchestrator) {
+    public ManagementCommentaryScheduler(ManagementCommentaryOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_915PM_IST, zone = "Asia/Kolkata")
     public void runManagementCommentaryUpdate() {
-        orchestrator.runManagementCommentaryUpdate();
+        tracker.run(JOB_NAME, orchestrator::runManagementCommentaryUpdate, "corporate.management_commentary_snapshots", "computed_at");
     }
 }

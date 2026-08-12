@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.news;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,15 +14,18 @@ import org.springframework.stereotype.Component;
 public class NewsCatalystScheduler {
 
     private static final String CRON_930PM_IST = "0 30 19 * * *";
+    private static final String JOB_NAME = "news-catalyst";
 
     private final NewsCatalystOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public NewsCatalystScheduler(NewsCatalystOrchestrator orchestrator) {
+    public NewsCatalystScheduler(NewsCatalystOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_930PM_IST, zone = "Asia/Kolkata")
     public void runNewsCatalystUpdate() {
-        orchestrator.runNewsCatalystUpdate();
+        tracker.run(JOB_NAME, orchestrator::runNewsCatalystUpdate, "corporate.news_catalyst_scores", "computed_at");
     }
 }

@@ -1,5 +1,6 @@
 package com.alphagraph.intelligence.technical;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,15 +16,18 @@ import org.springframework.stereotype.Component;
 public class TechnicalAnalysisScheduler {
 
     private static final String CRON_630PM_IST = "0 30 18 * * *";
+    private static final String JOB_NAME = "technical-analysis";
 
     private final TechnicalAnalysisOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public TechnicalAnalysisScheduler(TechnicalAnalysisOrchestrator orchestrator) {
+    public TechnicalAnalysisScheduler(TechnicalAnalysisOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_630PM_IST, zone = "Asia/Kolkata")
     public void runDailyTechnicalAnalysis() {
-        orchestrator.runForAllInstruments();
+        tracker.run(JOB_NAME, orchestrator::runForAllInstruments, "technical.technical_scores", "computed_at");
     }
 }

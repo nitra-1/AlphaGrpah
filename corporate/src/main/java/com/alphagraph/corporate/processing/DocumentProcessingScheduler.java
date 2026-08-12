@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.processing;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -14,15 +15,18 @@ import org.springframework.stereotype.Component;
 public class DocumentProcessingScheduler {
 
     private static final String CRON_615PM_IST = "0 15 18 * * *";
+    private static final String JOB_NAME = "document-processing";
 
     private final DocumentProcessingOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public DocumentProcessingScheduler(DocumentProcessingOrchestrator orchestrator) {
+    public DocumentProcessingScheduler(DocumentProcessingOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_615PM_IST, zone = "Asia/Kolkata")
     public void runDocumentProcessing() {
-        orchestrator.processAllPending();
+        tracker.run(JOB_NAME, orchestrator::processAllPending, "corporate.document_chunks", "created_at");
     }
 }

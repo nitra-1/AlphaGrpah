@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.orderbook;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -12,15 +13,18 @@ import org.springframework.stereotype.Component;
 public class OrderBookScheduler {
 
     private static final String CRON_7PM_IST = "0 0 19 * * *";
+    private static final String JOB_NAME = "order-book";
 
     private final OrderBookOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public OrderBookScheduler(OrderBookOrchestrator orchestrator) {
+    public OrderBookScheduler(OrderBookOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_7PM_IST, zone = "Asia/Kolkata")
     public void runOrderBookUpdate() {
-        orchestrator.runOrderBookUpdate();
+        tracker.run(JOB_NAME, orchestrator::runOrderBookUpdate, "corporate.order_book_snapshots", "computed_at");
     }
 }

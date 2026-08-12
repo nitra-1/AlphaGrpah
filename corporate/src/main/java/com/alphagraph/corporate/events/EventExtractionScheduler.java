@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.events;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,15 +14,18 @@ import org.springframework.stereotype.Component;
 public class EventExtractionScheduler {
 
     private static final String CRON_645PM_IST = "0 45 18 * * *";
+    private static final String JOB_NAME = "corporate-event-extraction";
 
     private final EventExtractionOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public EventExtractionScheduler(EventExtractionOrchestrator orchestrator) {
+    public EventExtractionScheduler(EventExtractionOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_645PM_IST, zone = "Asia/Kolkata")
     public void runEventExtraction() {
-        orchestrator.extractAllPending();
+        tracker.run(JOB_NAME, orchestrator::extractAllPending, "corporate.corporate_events", "extracted_at");
     }
 }

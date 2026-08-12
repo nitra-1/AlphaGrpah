@@ -1,5 +1,6 @@
 package com.alphagraph.decision.report;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -8,15 +9,18 @@ import org.springframework.stereotype.Component;
 public class DailyReportScheduler {
 
     private static final String CRON_10PM_IST = "0 0 22 * * *";
+    private static final String JOB_NAME = "daily-ai-report";
 
     private final DailyReportOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public DailyReportScheduler(DailyReportOrchestrator orchestrator) {
+    public DailyReportScheduler(DailyReportOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_10PM_IST, zone = "Asia/Kolkata")
     public void runDailyReportGeneration() {
-        orchestrator.generateForToday();
+        tracker.run(JOB_NAME, orchestrator::generateForToday, "decision.daily_reports", "generated_at");
     }
 }

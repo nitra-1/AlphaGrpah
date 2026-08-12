@@ -1,5 +1,6 @@
 package com.alphagraph.corporate.knowledge;
 
+import com.alphagraph.common.monitoring.JobRunTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,15 +14,18 @@ import org.springframework.stereotype.Component;
 public class KnowledgeExtractionScheduler {
 
     private static final String CRON_630PM_IST = "0 30 18 * * *";
+    private static final String JOB_NAME = "knowledge-extraction";
 
     private final KnowledgeExtractionOrchestrator orchestrator;
+    private final JobRunTracker tracker;
 
-    public KnowledgeExtractionScheduler(KnowledgeExtractionOrchestrator orchestrator) {
+    public KnowledgeExtractionScheduler(KnowledgeExtractionOrchestrator orchestrator, JobRunTracker tracker) {
         this.orchestrator = orchestrator;
+        this.tracker = tracker;
     }
 
     @Scheduled(cron = CRON_630PM_IST, zone = "Asia/Kolkata")
     public void runKnowledgeExtraction() {
-        orchestrator.extractAllPending();
+        tracker.run(JOB_NAME, orchestrator::extractAllPending, "corporate.document_facts", "created_at");
     }
 }
