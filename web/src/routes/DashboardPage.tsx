@@ -26,7 +26,7 @@ export function DashboardPage() {
 
       {isLoading && (
         <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: 9 }).map((_, i) => (
             <WidgetCardSkeleton key={i} />
           ))}
         </div>
@@ -220,6 +220,28 @@ export function DashboardPage() {
                     <span className="text-text-muted">{formatDate(row.announcedAt)}</span>
                   </div>
                   <p className="mt-1 text-text-muted">{row.impactSummary}</p>
+                </li>
+              ))}
+            </ul>
+          </WidgetCard>
+
+          <WidgetCard
+            title="Price Adjustments"
+            subtitle="Bonus/split actions - historical prices for these instruments are now back-adjusted"
+            isEmpty={data.priceAdjustments.length === 0}
+            emptyLabel="No bonus or split actions in the lookback window - no price history has been adjusted."
+          >
+            <ul className="space-y-3">
+              {data.priceAdjustments.map((row, i) => (
+                <li key={i} className="border-t border-border pt-3 first:border-0 first:pt-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-text">{row.symbol}</span>
+                    <SignalBadge signal={row.actionType} />
+                  </div>
+                  <p className="mt-1 text-text-muted">
+                    {row.ratioNumerator != null && row.ratioDenominator != null && `${row.ratioNumerator}:${row.ratioDenominator} · `}
+                    ex-date {formatDate(row.exDate)} · prices before this date scaled by {row.adjustmentFactor.toFixed(4)}x
+                  </p>
                 </li>
               ))}
             </ul>

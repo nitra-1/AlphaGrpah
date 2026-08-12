@@ -1,6 +1,7 @@
 package com.alphagraph.api.dashboard;
 
 import com.alphagraph.corporate.api.CommitmentLevel;
+import com.alphagraph.corporate.api.CorporateAction;
 import com.alphagraph.corporate.api.CorporateEvent;
 import com.alphagraph.corporate.api.CorporateRating;
 import com.alphagraph.corporate.api.CorporateScore;
@@ -26,8 +27,11 @@ import com.alphagraph.corporate.news.NewsLinkReader;
 import com.alphagraph.corporate.orderbook.OrderBookLedgerReader;
 import com.alphagraph.corporate.relationships.EntityReader;
 import com.alphagraph.corporate.signal.CorporateScoreReader;
+import com.alphagraph.intelligence.priceadjustment.PriceAdjustmentEngine;
+import com.alphagraph.intelligence.priceadjustment.PriceAdjustmentService;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -50,10 +54,13 @@ class DashboardServiceTest {
     private final ManagementSnapshotReader managementSnapshotReader = mock(ManagementSnapshotReader.class);
     private final CorporateScoreReader corporateScoreReader = mock(CorporateScoreReader.class);
     private final EntityReader entityReader = mock(EntityReader.class);
+    private final PriceAdjustmentService priceAdjustmentService = mock(PriceAdjustmentService.class);
+    private final PriceAdjustmentEngine priceAdjustmentEngine = mock(PriceAdjustmentEngine.class);
 
     private final DashboardService service = new DashboardService(
         orderBookLedgerReader, corporateEventReader, managementObservationReader, newsLinkReader,
-        newsCatalystSnapshotReader, managementSnapshotReader, corporateScoreReader, entityReader
+        newsCatalystSnapshotReader, managementSnapshotReader, corporateScoreReader, entityReader,
+        priceAdjustmentService, priceAdjustmentEngine
     );
 
     @Test
@@ -164,6 +171,20 @@ class DashboardServiceTest {
     }
 
     @Test
+    void priceAdjustmentsComputesFactorForEachRecentAction() {
+        UUID instrumentId = UUID.randomUUID();
+        CorporateAction bonus = new CorporateAction(instrumentId, "TCS", "BONUS", LocalDate.of(2026, 6, 1), null, null, null, 1, 1, null);
+        when(priceAdjustmentService.recentPriceAffectingActions(7)).thenReturn(List.of(bonus));
+        when(priceAdjustmentEngine.factorFor(bonus)).thenReturn(new BigDecimal("0.500000"));
+
+        PriceAdjustmentDto dto = service.priceAdjustments(7).get(0);
+
+        assertThat(dto.symbol()).isEqualTo("TCS");
+        assertThat(dto.actionType()).isEqualTo("BONUS");
+        assertThat(dto.adjustmentFactor()).isEqualByComparingTo("0.5");
+    }
+
+    @Test
     void summaryAssemblesAllWidgetsWithDefaultWindows() {
         when(orderBookLedgerReader.findRecentAcrossAllInstruments(1)).thenReturn(List.of());
         when(corporateEventReader.findRecentAcrossAllInstruments(7)).thenReturn(List.of());
@@ -173,11 +194,13 @@ class DashboardServiceTest {
         when(newsCatalystSnapshotReader.findAllLatest()).thenReturn(List.of());
         when(managementSnapshotReader.findAllLatest()).thenReturn(List.of());
         when(corporateScoreReader.findAllLatest()).thenReturn(List.of());
+        when(priceAdjustmentService.recentPriceAffectingActions(7)).thenReturn(List.of());
 
         DashboardSummaryDto summary = service.summary();
 
         assertThat(summary.biggestOrders()).isEmpty();
         assertThat(summary.corporateScores()).isEmpty();
+        assertThat(summary.priceAdjustments()).isEmpty();
         verify(orderBookLedgerReader).findRecentAcrossAllInstruments(1);
         verify(corporateEventReader).findRecentAcrossAllInstruments(7);
     }

@@ -6,6 +6,7 @@ import java.util.List;
 public record DashboardSummaryDto(
     List<BiggestOrderDto> biggestOrders, List<CorporateEventDto> corporateEvents, List<GuidanceChangeDto> guidanceChanges,
     List<NewsItemDto> positiveNews, List<NewsItemDto> negativeNews, List<TopCatalystDto> topCatalysts,
-    List<GrowthVisibilityDto> growthVisibility, List<CorporateScoreDto> corporateScores
+    List<GrowthVisibilityDto> growthVisibility, List<CorporateScoreDto> corporateScores,
+    List<PriceAdjustmentDto> priceAdjustments
 ) {
 }

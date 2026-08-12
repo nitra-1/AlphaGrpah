@@ -72,6 +72,12 @@ public class DashboardController {
         return service.corporateScores();
     }
 
+    @Operation(summary = "Price Adjustments", description = "BONUS/SPLIT corporate actions in the last N days and the price-adjustment factor each one produces - the explicit disclosure for any instrument whose historical price chart is now back-adjusted.")
+    @GetMapping("/price-adjustments")
+    public List<PriceAdjustmentDto> priceAdjustments(@RequestParam(defaultValue = "7") int days) {
+        return service.priceAdjustments(days);
+    }
+
     @Operation(summary = "Full dashboard summary", description = "All widgets in one call, using each widget's default lookback window.")
     @GetMapping
     public DashboardSummaryDto summary() {

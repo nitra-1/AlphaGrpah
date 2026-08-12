@@ -8,7 +8,10 @@ import com.alphagraph.corporate.news.NewsCatalystSnapshotReader;
 import com.alphagraph.corporate.news.NewsLinkReader;
 import com.alphagraph.corporate.orderbook.OrderBookLedgerReader;
 import com.alphagraph.corporate.relationships.EntityReader;
+import com.alphagraph.corporate.api.CorporateAction;
 import com.alphagraph.corporate.signal.CorporateScoreReader;
+import com.alphagraph.intelligence.priceadjustment.PriceAdjustmentEngine;
+import com.alphagraph.intelligence.priceadjustment.PriceAdjustmentService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -33,12 +36,15 @@ public class DashboardService {
     private final ManagementSnapshotReader managementSnapshotReader;
     private final CorporateScoreReader corporateScoreReader;
     private final EntityReader entityReader;
+    private final PriceAdjustmentService priceAdjustmentService;
+    private final PriceAdjustmentEngine priceAdjustmentEngine;
 
     public DashboardService(
         OrderBookLedgerReader orderBookLedgerReader, CorporateEventReader corporateEventReader,
         ManagementObservationReader managementObservationReader, NewsLinkReader newsLinkReader,
         NewsCatalystSnapshotReader newsCatalystSnapshotReader, ManagementSnapshotReader managementSnapshotReader,
-        CorporateScoreReader corporateScoreReader, EntityReader entityReader
+        CorporateScoreReader corporateScoreReader, EntityReader entityReader,
+        PriceAdjustmentService priceAdjustmentService, PriceAdjustmentEngine priceAdjustmentEngine
     ) {
         this.orderBookLedgerReader = orderBookLedgerReader;
         this.corporateEventReader = corporateEventReader;
@@ -48,6 +54,8 @@ public class DashboardService {
         this.managementSnapshotReader = managementSnapshotReader;
         this.corporateScoreReader = corporateScoreReader;
         this.entityReader = entityReader;
+        this.priceAdjustmentService = priceAdjustmentService;
+        this.priceAdjustmentEngine = priceAdjustmentEngine;
     }
 
     public List<BiggestOrderDto> biggestOrders(int lookbackDays) {
@@ -104,11 +112,29 @@ public class DashboardService {
             .toList();
     }
 
+    /**
+     * BONUS/SPLIT actions in the last N days and the price-adjustment factor each one produces -
+     * the explicit "announce" surface: a user sees exactly which instruments' historical prices
+     * are now back-adjusted and why, rather than a chart silently changing shape underneath them.
+     */
+    public List<PriceAdjustmentDto> priceAdjustments(int lookbackDays) {
+        return priceAdjustmentService.recentPriceAffectingActions(lookbackDays).stream()
+            .map(this::toPriceAdjustmentDto)
+            .toList();
+    }
+
+    private PriceAdjustmentDto toPriceAdjustmentDto(CorporateAction action) {
+        return new PriceAdjustmentDto(
+            action.symbol(), action.actionType(), action.exDate(),
+            action.ratioNumerator(), action.ratioDenominator(), priceAdjustmentEngine.factorFor(action)
+        );
+    }
+
     public DashboardSummaryDto summary() {
         return new DashboardSummaryDto(
             biggestOrders(1), corporateEvents(DEFAULT_LOOKBACK_DAYS), guidanceChanges(DEFAULT_LOOKBACK_DAYS),
             positiveNews(DEFAULT_LOOKBACK_DAYS), negativeNews(DEFAULT_LOOKBACK_DAYS),
-            topCatalysts(), growthVisibility(), corporateScores()
+            topCatalysts(), growthVisibility(), corporateScores(), priceAdjustments(DEFAULT_LOOKBACK_DAYS)
         );
     }
 }

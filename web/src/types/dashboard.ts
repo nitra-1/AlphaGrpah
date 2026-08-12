@@ -58,6 +58,15 @@ export interface CorporateScore {
   eventNetSignal: number
 }
 
+export interface PriceAdjustment {
+  symbol: string
+  actionType: string
+  exDate: string
+  ratioNumerator: number | null
+  ratioDenominator: number | null
+  adjustmentFactor: number
+}
+
 export interface DashboardSummary {
   biggestOrders: BiggestOrder[]
   corporateEvents: CorporateEvent[]
@@ -67,4 +76,5 @@ export interface DashboardSummary {
   topCatalysts: TopCatalyst[]
   growthVisibility: GrowthVisibility[]
   corporateScores: CorporateScore[]
+  priceAdjustments: PriceAdjustment[]
 }
