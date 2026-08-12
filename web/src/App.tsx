@@ -18,6 +18,7 @@ import { SectorsPage } from './routes/SectorsPage'
 import { AddFinancialDataPage } from './routes/AddFinancialDataPage'
 import { AddUserPage } from './routes/AddUserPage'
 import { MonitoringPage } from './routes/MonitoringPage'
+import { LearningPage } from './routes/LearningPage'
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
           <Route path="/daily-report" element={<DailyReportPage />} />
           <Route path="/trade-journal" element={<TradeJournalPage />} />
           <Route path="/instruments/:instrumentId" element={<InstrumentDetailPage />} />
+          <Route path="/learning" element={<LearningPage />} />
 
           <Route element={<AdminRoute />}>
             <Route path="/admin/news-review" element={<NewsReviewPage />} />
