@@ -28,12 +28,29 @@ if (Test-PortOpen $pgPort) {
     Write-Host "[postgres]    already running on port $pgPort" -ForegroundColor Yellow
 } else {
     Write-Host "[postgres]    starting..." -ForegroundColor Green
-    & "$pgBin\pg_ctl.exe" -D $pgData -o "-p $pgPort" -l "$pgData\startup.log" start | Out-Null
-    Start-Sleep -Seconds 3
+    # pg_ctl.exe itself wedges indefinitely on this machine - confirmed directly: the wrapper
+    # process becomes un-killable (even "Stop-Process -Force" returns Access Denied) even after
+    # postgres.exe has already logged "ready to accept connections", and even with -W (which
+    # stops pg_ctl waiting on its own readiness check - not enough, since the wrapper process
+    # itself was still hanging, not just its wait logic). Almost certainly antivirus real-time
+    # scanning locking the -l logfile while pg_ctl writes to it, a symptom this setup has hit
+    # before. Fix that actually worked when tested live: skip pg_ctl.exe entirely and launch
+    # postgres.exe directly the same way pg_ctl would - this started cleanly in ~3s every time,
+    # with no wrapper process to wedge. Logs go to postgres.log via redirection instead of -l.
+    Start-Process -FilePath "$pgBin\postgres.exe" -ArgumentList @("-D", $pgData, "-p", $pgPort) `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput "$pgData\postgres.log" -RedirectStandardError "$pgData\postgres-err.log"
+
+    $elapsed = 0
+    $timeout = 60
+    while (-not (Test-PortOpen $pgPort) -and $elapsed -lt $timeout) {
+        Start-Sleep -Seconds 2
+        $elapsed += 2
+    }
     if (Test-PortOpen $pgPort) {
         Write-Host "[postgres]    up on port $pgPort" -ForegroundColor Green
     } else {
-        Write-Host "[postgres]    did not come up - check $pgData\startup.log" -ForegroundColor Red
+        Write-Host "[postgres]    did not come up within ${timeout}s - check $pgData\postgres-err.log" -ForegroundColor Red
     }
 }
 
