@@ -173,7 +173,7 @@ class DashboardServiceTest {
     @Test
     void priceAdjustmentsComputesFactorForEachRecentAction() {
         UUID instrumentId = UUID.randomUUID();
-        CorporateAction bonus = new CorporateAction(instrumentId, "TCS", "BONUS", LocalDate.of(2026, 6, 1), null, null, null, 1, 1, null);
+        CorporateAction bonus = new CorporateAction(instrumentId, "TCS", "BONUS", LocalDate.of(2026, 6, 1), null, null, null, 1, 1, null, null);
         when(priceAdjustmentService.recentPriceAffectingActions(7)).thenReturn(List.of(bonus));
         when(priceAdjustmentEngine.factorFor(bonus)).thenReturn(new BigDecimal("0.500000"));
 

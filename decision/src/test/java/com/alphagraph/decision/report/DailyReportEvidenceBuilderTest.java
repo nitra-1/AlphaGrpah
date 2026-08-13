@@ -183,7 +183,9 @@ class DailyReportEvidenceBuilderTest {
             80.0, DecisionRating.BUY, swingRank,
             70.0, DecisionRating.BUY, swingRank,
             80.0, 80.0, 80.0, 80.0, 80.0, 80.0,
-            100.0, 1, Instant.now()
+            100.0, 1, Instant.now(),
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null
         );
     }
 

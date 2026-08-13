@@ -6,8 +6,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,20 +31,29 @@ public class RiskScoreReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    private static final String SELECT_COLUMNS = """
+        SELECT rs.instrument_id, i.symbol, rs.as_of_date, rs.business_risk, rs.technical_risk,
+               rs.ownership_risk, rs.valuation_risk, rs.overall_risk, rs.risk_score, rs.confidence,
+               rs.pe_ratio, rs.pb_ratio, rs.debt_to_equity, rs.rule_set_version, rs.computed_at
+        FROM risk.risk_scores rs
+        JOIN reference.instruments i ON i.id = rs.instrument_id
+        """;
+
     public Optional<RiskScore> findLatest(UUID instrumentId) {
         List<RiskScore> rows = jdbcTemplate.query(
-            """
-            SELECT rs.instrument_id, i.symbol, rs.as_of_date, rs.business_risk, rs.technical_risk,
-                   rs.ownership_risk, rs.valuation_risk, rs.overall_risk, rs.risk_score, rs.confidence,
-                   rs.pe_ratio, rs.pb_ratio, rs.debt_to_equity, rs.rule_set_version, rs.computed_at
-            FROM risk.risk_scores rs
-            JOIN reference.instruments i ON i.id = rs.instrument_id
-            WHERE rs.instrument_id = ?
-            ORDER BY rs.as_of_date DESC
-            LIMIT 1
-            """,
+            SELECT_COLUMNS + " WHERE rs.instrument_id = ? ORDER BY rs.as_of_date DESC LIMIT 1",
             this::mapRow,
             instrumentId
+        );
+        return rows.stream().findFirst();
+    }
+
+    /** Latest score with as_of_date on or before {@code asOfDate} - used to resolve what a decision made on that date could actually have known, rather than always pulling whatever's newest today. */
+    public Optional<RiskScore> findAsOf(UUID instrumentId, LocalDate asOfDate) {
+        List<RiskScore> rows = jdbcTemplate.query(
+            SELECT_COLUMNS + " WHERE rs.instrument_id = ? AND rs.as_of_date <= ? ORDER BY rs.as_of_date DESC LIMIT 1",
+            this::mapRow,
+            instrumentId, Date.valueOf(asOfDate)
         );
         return rows.stream().findFirst();
     }

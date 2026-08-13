@@ -21,7 +21,8 @@ public class JdbcCorporateActionsReader implements CorporateActionsReader {
         rs.getBigDecimal("dividend_amount"),
         rs.getObject("ratio_numerator") == null ? null : rs.getInt("ratio_numerator"),
         rs.getObject("ratio_denominator") == null ? null : rs.getInt("ratio_denominator"),
-        rs.getBigDecimal("price")
+        rs.getBigDecimal("price"),
+        rs.getTimestamp("created_at").toInstant()
     );
 
     private final JdbcTemplate jdbcTemplate;
@@ -35,7 +36,8 @@ public class JdbcCorporateActionsReader implements CorporateActionsReader {
         return jdbcTemplate.query(
             """
             SELECT ca.instrument_id, i.symbol, ca.action_type, ca.ex_date, ca.record_date,
-                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price
+                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price,
+                   ca.created_at
             FROM corporate.corporate_actions ca
             JOIN reference.instruments i ON i.id = ca.instrument_id
             WHERE ca.instrument_id = ? AND ca.action_type IN ('BONUS', 'SPLIT')
@@ -50,7 +52,8 @@ public class JdbcCorporateActionsReader implements CorporateActionsReader {
         return jdbcTemplate.query(
             """
             SELECT ca.instrument_id, i.symbol, ca.action_type, ca.ex_date, ca.record_date,
-                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price
+                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price,
+                   ca.created_at
             FROM corporate.corporate_actions ca
             JOIN reference.instruments i ON i.id = ca.instrument_id
             WHERE ca.action_type IN ('BONUS', 'SPLIT')
@@ -66,7 +69,8 @@ public class JdbcCorporateActionsReader implements CorporateActionsReader {
         return jdbcTemplate.query(
             """
             SELECT ca.instrument_id, i.symbol, ca.action_type, ca.ex_date, ca.record_date,
-                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price
+                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price,
+                   ca.created_at
             FROM corporate.corporate_actions ca
             JOIN reference.instruments i ON i.id = ca.instrument_id
             WHERE ca.action_type IN ('BONUS', 'SPLIT') AND ca.ex_date >= ?

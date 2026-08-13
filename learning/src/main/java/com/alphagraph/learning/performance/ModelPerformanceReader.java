@@ -37,7 +37,7 @@ public class ModelPerformanceReader {
             "SELECT count(DISTINCT as_of_date) FROM learning.decision_snapshots", Integer.class
         );
         Long snapshotCount = jdbcTemplate.queryForObject("SELECT count(*) FROM learning.decision_snapshots", Long.class);
-        Long outcomeCount = jdbcTemplate.queryForObject("SELECT count(*) FROM learning.forward_outcomes", Long.class);
+        Long outcomeCount = jdbcTemplate.queryForObject("SELECT count(*) FROM learning.forward_outcomes WHERE status = 'CURRENT'", Long.class);
         return new EvidenceSummary(daysOfHistory == null ? 0 : daysOfHistory, snapshotCount == null ? 0 : snapshotCount, outcomeCount == null ? 0 : outcomeCount);
     }
 
@@ -56,6 +56,7 @@ public class ModelPerformanceReader {
                    count(*) FILTER (WHERE %s IS NOT NULL) AS sample_size,
                    count(*) FILTER (WHERE %s = true) AS correct_count
             FROM learning.forward_outcomes
+            WHERE status = 'CURRENT'
             GROUP BY %s, horizon_days
             ORDER BY %s, horizon_days
             """.formatted(ratingColumn, correctColumn, correctColumn, ratingColumn, ratingColumn),

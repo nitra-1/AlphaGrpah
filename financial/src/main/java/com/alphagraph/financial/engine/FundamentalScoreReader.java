@@ -9,8 +9,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,23 +31,32 @@ public class FundamentalScoreReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    private static final String SELECT_COLUMNS = """
+        SELECT fs.instrument_id, i.symbol, fs.as_of_date, fs.business_growth, fs.profitability,
+               fs.capital_efficiency, fs.financial_quality, fs.financial_score, fs.confidence,
+               fs.revenue_growth_percentage, fs.pat_growth_percentage, fs.eps_growth_percentage,
+               fs.roe_percentage, fs.roce_percentage, fs.operating_margin_percentage,
+               fs.net_margin_percentage, fs.asset_turnover, fs.working_capital, fs.cash_conversion_ratio,
+               fs.debt_to_equity, fs.interest_coverage, fs.rule_set_version, fs.computed_at
+        FROM financial.fundamental_scores fs
+        JOIN reference.instruments i ON i.id = fs.instrument_id
+        """;
+
     public Optional<FundamentalScore> findLatest(UUID instrumentId) {
         List<FundamentalScore> rows = jdbcTemplate.query(
-            """
-            SELECT fs.instrument_id, i.symbol, fs.as_of_date, fs.business_growth, fs.profitability,
-                   fs.capital_efficiency, fs.financial_quality, fs.financial_score, fs.confidence,
-                   fs.revenue_growth_percentage, fs.pat_growth_percentage, fs.eps_growth_percentage,
-                   fs.roe_percentage, fs.roce_percentage, fs.operating_margin_percentage,
-                   fs.net_margin_percentage, fs.asset_turnover, fs.working_capital, fs.cash_conversion_ratio,
-                   fs.debt_to_equity, fs.interest_coverage, fs.rule_set_version, fs.computed_at
-            FROM financial.fundamental_scores fs
-            JOIN reference.instruments i ON i.id = fs.instrument_id
-            WHERE fs.instrument_id = ?
-            ORDER BY fs.as_of_date DESC
-            LIMIT 1
-            """,
+            SELECT_COLUMNS + " WHERE fs.instrument_id = ? ORDER BY fs.as_of_date DESC LIMIT 1",
             this::mapRow,
             instrumentId
+        );
+        return rows.stream().findFirst();
+    }
+
+    /** Latest score with as_of_date on or before {@code asOfDate} - used to resolve what a decision made on that date could actually have known, rather than always pulling whatever's newest today. */
+    public Optional<FundamentalScore> findAsOf(UUID instrumentId, LocalDate asOfDate) {
+        List<FundamentalScore> rows = jdbcTemplate.query(
+            SELECT_COLUMNS + " WHERE fs.instrument_id = ? AND fs.as_of_date <= ? ORDER BY fs.as_of_date DESC LIMIT 1",
+            this::mapRow,
+            instrumentId, Date.valueOf(asOfDate)
         );
         return rows.stream().findFirst();
     }

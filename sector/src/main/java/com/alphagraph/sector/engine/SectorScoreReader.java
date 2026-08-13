@@ -9,6 +9,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,20 +57,29 @@ public class SectorScoreReader {
         return rows.stream().findFirst();
     }
 
+    private static final String SELECT_COLUMNS_FOR_INSTRUMENT = """
+        SELECT ss.sector_id, ss.sector_name, ss.as_of_date, ss.leadership, ss.momentum, ss.rotation,
+               ss.money_flow, ss.sector_score, ss.confidence, ss.relative_strength, ss.sector_performance_pct,
+               ss.sector_volume_ratio, ss.breadth_pct, ss.participation_pct, ss.constituent_count,
+               ss.rule_set_version, ss.computed_at
+        FROM sector.sector_scores ss
+        JOIN reference.instruments i ON i.sector_id = ss.sector_id
+        """;
+
     /** The sector a tracked instrument belongs to, via reference.instruments.sector_id - by value, no cross-schema FK. */
     public Optional<SectorScore> findLatestForInstrument(UUID instrumentId) {
         List<SectorScore> rows = jdbcTemplate.query(
-            """
-            SELECT ss.sector_id, ss.sector_name, ss.as_of_date, ss.leadership, ss.momentum, ss.rotation,
-                   ss.money_flow, ss.sector_score, ss.confidence, ss.relative_strength, ss.sector_performance_pct,
-                   ss.sector_volume_ratio, ss.breadth_pct, ss.participation_pct, ss.constituent_count,
-                   ss.rule_set_version, ss.computed_at
-            FROM sector.sector_scores ss
-            JOIN reference.instruments i ON i.sector_id = ss.sector_id
-            WHERE i.id = ?
-            ORDER BY ss.as_of_date DESC LIMIT 1
-            """,
+            SELECT_COLUMNS_FOR_INSTRUMENT + " WHERE i.id = ? ORDER BY ss.as_of_date DESC LIMIT 1",
             ROW_MAPPER, instrumentId
+        );
+        return rows.stream().findFirst();
+    }
+
+    /** Same as {@link #findLatestForInstrument}, but the latest score with as_of_date on or before {@code asOfDate} - used to resolve what a decision made on that date could actually have known. */
+    public Optional<SectorScore> findAsOfForInstrument(UUID instrumentId, LocalDate asOfDate) {
+        List<SectorScore> rows = jdbcTemplate.query(
+            SELECT_COLUMNS_FOR_INSTRUMENT + " WHERE i.id = ? AND ss.as_of_date <= ? ORDER BY ss.as_of_date DESC LIMIT 1",
+            ROW_MAPPER, instrumentId, Date.valueOf(asOfDate)
         );
         return rows.stream().findFirst();
     }

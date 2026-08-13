@@ -9,8 +9,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,22 +31,31 @@ public class TechnicalScoreReader {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    private static final String SELECT_COLUMNS = """
+        SELECT ts.instrument_id, i.symbol, ts.as_of_date, ts.trend, ts.trend_confidence,
+               ts.momentum, ts.volume_state, ts.breakout_status, ts.stage, ts.market_behaviour_score,
+               ts.sma20, ts.sma50, ts.sma200, ts.weekly_sma30, ts.rsi14, ts.macd_line, ts.macd_signal,
+               ts.macd_histogram, ts.adx14, ts.atr14, ts.obv, ts.relative_volume, ts.rule_set_version,
+               ts.computed_at
+        FROM technical.technical_scores ts
+        JOIN reference.instruments i ON i.id = ts.instrument_id
+        """;
+
     public Optional<TechnicalScore> findLatest(UUID instrumentId) {
         List<TechnicalScore> rows = jdbcTemplate.query(
-            """
-            SELECT ts.instrument_id, i.symbol, ts.as_of_date, ts.trend, ts.trend_confidence,
-                   ts.momentum, ts.volume_state, ts.breakout_status, ts.stage, ts.market_behaviour_score,
-                   ts.sma20, ts.sma50, ts.sma200, ts.weekly_sma30, ts.rsi14, ts.macd_line, ts.macd_signal,
-                   ts.macd_histogram, ts.adx14, ts.atr14, ts.obv, ts.relative_volume, ts.rule_set_version,
-                   ts.computed_at
-            FROM technical.technical_scores ts
-            JOIN reference.instruments i ON i.id = ts.instrument_id
-            WHERE ts.instrument_id = ?
-            ORDER BY ts.as_of_date DESC
-            LIMIT 1
-            """,
+            SELECT_COLUMNS + " WHERE ts.instrument_id = ? ORDER BY ts.as_of_date DESC LIMIT 1",
             this::mapRow,
             instrumentId
+        );
+        return rows.stream().findFirst();
+    }
+
+    /** Latest score with as_of_date on or before {@code asOfDate} - used to resolve what a decision made on that date could actually have known, rather than always pulling whatever's newest today. */
+    public Optional<TechnicalScore> findAsOf(UUID instrumentId, LocalDate asOfDate) {
+        List<TechnicalScore> rows = jdbcTemplate.query(
+            SELECT_COLUMNS + " WHERE ts.instrument_id = ? AND ts.as_of_date <= ? ORDER BY ts.as_of_date DESC LIMIT 1",
+            this::mapRow,
+            instrumentId, Date.valueOf(asOfDate)
         );
         return rows.stream().findFirst();
     }

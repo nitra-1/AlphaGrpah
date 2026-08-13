@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Powers the financial/shareholding data-entry form's instrument picker - every currently tracked instrument, independent of whether it has any scores yet. */
@@ -30,5 +31,15 @@ public class InstrumentReader {
                 (UUID) rs.getObject("sector_id"), rs.getString("sector_name")
             )
         );
+    }
+
+    /** Added for {@code learning.outcomes.BenchmarkReturnCalculator}, which resolves a configured market-benchmark symbol (e.g. "NIFTY50") to its instrument id once at outcome-computation time - empty if that symbol isn't tracked yet. */
+    public Optional<UUID> findIdBySymbol(String symbol) {
+        List<UUID> rows = jdbcTemplate.query(
+            "SELECT id FROM reference.instruments WHERE symbol = ?",
+            (rs, rowNum) -> (UUID) rs.getObject("id"),
+            symbol
+        );
+        return rows.stream().findFirst();
     }
 }

@@ -31,7 +31,8 @@ public class CorporateActionsNormalizer implements Normalizer<RawCorporateAction
             instrumentId, raw.symbol(), raw.actionType(), LocalDate.parse(raw.exDate()),
             toLocalDateOrNull(raw.recordDate()), toLocalDateOrNull(raw.announcementDate()),
             toBigDecimalOrNull(raw.dividendAmount()), toIntegerOrNull(raw.ratioNumerator()),
-            toIntegerOrNull(raw.ratioDenominator()), toBigDecimalOrNull(raw.price())
+            toIntegerOrNull(raw.ratioDenominator()), toBigDecimalOrNull(raw.price()),
+            null // created_at is DB-generated (DEFAULT now()) at insert time, not known yet here
         );
     }
 

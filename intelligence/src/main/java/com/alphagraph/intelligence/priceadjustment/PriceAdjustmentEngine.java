@@ -57,9 +57,12 @@ public class PriceAdjustmentEngine {
             .reduce(BigDecimal.ONE, BigDecimal::multiply);
 
         BigDecimal adjustedClose = price.close().multiply(cumulativeFactor).setScale(PRICE_SCALE, RoundingMode.HALF_UP);
+        BigDecimal adjustedHigh = price.high().multiply(cumulativeFactor).setScale(PRICE_SCALE, RoundingMode.HALF_UP);
+        BigDecimal adjustedLow = price.low().multiply(cumulativeFactor).setScale(PRICE_SCALE, RoundingMode.HALF_UP);
 
         return new AdjustedDailyPrice(
-            price.instrumentId(), price.symbol(), price.tradeDate(), price.close(), adjustedClose, cumulativeFactor, applied
+            price.instrumentId(), price.symbol(), price.tradeDate(), price.close(), adjustedClose,
+            price.high(), adjustedHigh, price.low(), adjustedLow, cumulativeFactor, applied
         );
     }
 

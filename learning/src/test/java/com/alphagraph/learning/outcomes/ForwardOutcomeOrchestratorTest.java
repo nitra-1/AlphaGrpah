@@ -28,11 +28,17 @@ class ForwardOutcomeOrchestratorTest {
     private final ForwardOutcomeStore outcomeStore = mock(ForwardOutcomeStore.class);
     private final PriceAdjustmentService priceAdjustmentService = mock(PriceAdjustmentService.class);
     private final ForwardOutcomeEngine engine = mock(ForwardOutcomeEngine.class);
+    private final ForwardOutcomeInvalidator invalidator = mock(ForwardOutcomeInvalidator.class);
     private final ForwardOutcomeOrchestrator orchestrator =
-        new ForwardOutcomeOrchestrator(snapshotReader, outcomeReader, outcomeStore, priceAdjustmentService, engine);
+        new ForwardOutcomeOrchestrator(snapshotReader, outcomeReader, outcomeStore, priceAdjustmentService, engine, invalidator);
 
     private final UUID instrumentId = UUID.randomUUID();
     private final LocalDate asOfDate = LocalDate.of(2026, 8, 1);
+
+    @org.junit.jupiter.api.BeforeEach
+    void noInvalidatedRowsByDefault() {
+        when(outcomeReader.findInvalidated()).thenReturn(List.of());
+    }
 
     @Test
     void skipsPriceLookupWhenAllFourHorizonsAlreadyComputed() {
@@ -60,12 +66,24 @@ class ForwardOutcomeOrchestratorTest {
         verify(outcomeStore).save(outcome);
     }
 
+    @Test
+    void invalidatorAlwaysRunsBeforeFillingNewHorizons() {
+        when(snapshotReader.findAllBefore(any())).thenReturn(List.of());
+
+        orchestrator.computeAllPending();
+
+        verify(invalidator).invalidateAffectedOutcomes();
+    }
+
     private DecisionSnapshot snapshot() {
         return new DecisionSnapshot(
             instrumentId, "TEST", asOfDate,
             60.0, DecisionRating.BUY, 1, 60.0, DecisionRating.BUY, 1,
             null, null, null, null, null, null,
-            80.0, 1, Instant.now(), Instant.now()
+            80.0, 1, Instant.now(),
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null,
+            Instant.now()
         );
     }
 
@@ -74,7 +92,11 @@ class ForwardOutcomeOrchestratorTest {
             instrumentId, "TEST", asOfDate, 5, asOfDate.plusDays(5),
             new BigDecimal("100.00"), new BigDecimal("105.00"), new BigDecimal("5.00"),
             DecisionRating.BUY, true, DecisionRating.BUY, true,
-            null, null, null, null, null, null
+            null, null, null, null, null, null,
+            "CURRENT", null, null,
+            null, null, null, null,
+            null, null, null, null,
+            null, null
         );
     }
 }

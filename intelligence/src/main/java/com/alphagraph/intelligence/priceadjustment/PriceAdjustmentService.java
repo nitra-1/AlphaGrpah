@@ -34,4 +34,15 @@ public class PriceAdjustmentService {
     public List<CorporateAction> recentPriceAffectingActions(int lookbackDays) {
         return corporateActionsReader.findRecentPriceAffectingActions(lookbackDays);
     }
+
+    /**
+     * BONUS/SPLIT actions for one instrument - the same data {@link #adjustedHistory} already
+     * pulls internally, exposed directly so {@code learning.outcomes.ForwardOutcomeInvalidator}
+     * can detect a later-ingested action without querying {@code corporate.corporate_actions}
+     * itself (per docs/001_System_Architecture.md §4 Rule 4, only this module may cross that
+     * boundary).
+     */
+    public List<CorporateAction> findPriceAffectingActions(UUID instrumentId) {
+        return corporateActionsReader.findPriceAffectingActions(instrumentId);
+    }
 }

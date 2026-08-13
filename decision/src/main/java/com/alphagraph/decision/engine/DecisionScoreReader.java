@@ -31,13 +31,37 @@ public class DecisionScoreReader {
         rs.getObject("sector_score") == null ? null : rs.getDouble("sector_score"),
         rs.getObject("risk_score") == null ? null : rs.getDouble("risk_score"),
         rs.getObject("corporate_score") == null ? null : rs.getDouble("corporate_score"),
-        rs.getDouble("confidence"), rs.getInt("rule_set_version"), rs.getTimestamp("computed_at").toInstant()
+        rs.getDouble("confidence"), rs.getInt("rule_set_version"), rs.getTimestamp("computed_at").toInstant(),
+        toLocalDate(rs, "technical_score_as_of_date"), (Integer) rs.getObject("technical_rule_set_version"), toInstant(rs, "technical_computed_at"),
+        toLocalDate(rs, "fundamental_score_as_of_date"), (Integer) rs.getObject("fundamental_rule_set_version"), toInstant(rs, "fundamental_computed_at"),
+        toLocalDate(rs, "institutional_score_as_of_date"), (Integer) rs.getObject("institutional_rule_set_version"), toInstant(rs, "institutional_computed_at"),
+        toLocalDate(rs, "sector_score_as_of_date"), (Integer) rs.getObject("sector_rule_set_version"), toInstant(rs, "sector_computed_at"),
+        toLocalDate(rs, "risk_score_as_of_date"), (Integer) rs.getObject("risk_rule_set_version"), toInstant(rs, "risk_computed_at"),
+        toLocalDate(rs, "corporate_score_as_of_date"), (Integer) rs.getObject("corporate_rule_set_version"), toInstant(rs, "corporate_computed_at"),
+        (UUID) rs.getObject("decision_run_id"), (Integer) rs.getObject("swing_rank_universe_size"), (Integer) rs.getObject("long_term_rank_universe_size")
     );
+
+    private static LocalDate toLocalDate(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        java.sql.Date date = rs.getDate(column);
+        return date == null ? null : date.toLocalDate();
+    }
+
+    private static java.time.Instant toInstant(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        java.sql.Timestamp timestamp = rs.getTimestamp(column);
+        return timestamp == null ? null : timestamp.toInstant();
+    }
 
     private static final String SELECT_COLUMNS = """
         instrument_id, symbol, as_of_date, swing_score, swing_rating, swing_rank,
         long_term_score, long_term_rating, long_term_rank, technical_score, fundamental_score,
-        institutional_score, sector_score, risk_score, corporate_score, confidence, rule_set_version, computed_at
+        institutional_score, sector_score, risk_score, corporate_score, confidence, rule_set_version, computed_at,
+        technical_score_as_of_date, technical_rule_set_version, technical_computed_at,
+        fundamental_score_as_of_date, fundamental_rule_set_version, fundamental_computed_at,
+        institutional_score_as_of_date, institutional_rule_set_version, institutional_computed_at,
+        sector_score_as_of_date, sector_rule_set_version, sector_computed_at,
+        risk_score_as_of_date, risk_rule_set_version, risk_computed_at,
+        corporate_score_as_of_date, corporate_rule_set_version, corporate_computed_at,
+        decision_run_id, swing_rank_universe_size, long_term_rank_universe_size
         """;
 
     private final JdbcTemplate jdbcTemplate;

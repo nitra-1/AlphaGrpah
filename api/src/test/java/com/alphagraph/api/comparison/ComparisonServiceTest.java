@@ -91,7 +91,9 @@ class ComparisonServiceTest {
             85.16, DecisionRating.STRONG_BUY, swingRank,
             72.35, DecisionRating.BUY, 1,
             100.0, 85.0, 60.0, 100.0, 48.75, null,
-            85.0, 1, Instant.now()
+            85.0, 1, Instant.now(),
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null
         );
     }
 }

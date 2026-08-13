@@ -109,7 +109,7 @@ class PriceAdjustmentEngineTest {
     void ignoresDividendActionsEntirely() {
         DailyPrice priced = price(LocalDate.of(2026, 1, 10), "100.00");
         CorporateAction dividend = new CorporateAction(
-            instrumentId, "TEST", "DIVIDEND", LocalDate.of(2026, 2, 1), null, null, new BigDecimal("5.00"), null, null, null
+            instrumentId, "TEST", "DIVIDEND", LocalDate.of(2026, 2, 1), null, null, new BigDecimal("5.00"), null, null, null, null
         );
 
         List<AdjustedDailyPrice> result = engine.apply(List.of(priced), List.of(dividend));
@@ -121,7 +121,7 @@ class PriceAdjustmentEngineTest {
     void throwsRatherThanSilentlySkippingAnActionWithAMissingRatio() {
         DailyPrice priced = price(LocalDate.of(2026, 1, 10), "100.00");
         CorporateAction malformedBonus = new CorporateAction(
-            instrumentId, "TEST", "BONUS", LocalDate.of(2026, 2, 1), null, null, null, null, null, null
+            instrumentId, "TEST", "BONUS", LocalDate.of(2026, 2, 1), null, null, null, null, null, null, null
         );
 
         assertThatIllegalStateExceptionThrown(() -> engine.apply(List.of(priced), List.of(malformedBonus)));
@@ -137,10 +137,10 @@ class PriceAdjustmentEngineTest {
     }
 
     private CorporateAction bonus(LocalDate exDate, int numerator, int denominator) {
-        return new CorporateAction(instrumentId, "TEST", "BONUS", exDate, null, null, null, numerator, denominator, null);
+        return new CorporateAction(instrumentId, "TEST", "BONUS", exDate, null, null, null, numerator, denominator, null, null);
     }
 
     private CorporateAction split(LocalDate exDate, int numerator, int denominator) {
-        return new CorporateAction(instrumentId, "TEST", "SPLIT", exDate, null, null, null, numerator, denominator, null);
+        return new CorporateAction(instrumentId, "TEST", "SPLIT", exDate, null, null, null, numerator, denominator, null, null);
     }
 }

@@ -379,7 +379,9 @@ class AnalystEvidenceBuilderTest {
             80.0, DecisionRating.BUY, swingRank,
             75.0, DecisionRating.BUY, 1,
             technicalScore, fundamentalScore, institutionalScore, sectorScoreValue, riskScoreValue, corporateScoreValue,
-            90.0, 1, Instant.now()
+            90.0, 1, Instant.now(),
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null, null, null
         );
     }
 

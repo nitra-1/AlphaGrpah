@@ -44,7 +44,9 @@ class DecisionScoringEngineTest {
     @Test
     void allSixDomainsAtTheSameValueYieldsThatSameValueRegardlessOfWeights() {
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, asOfDate
+            instrumentId, "TEST", 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         DecisionScore score = engine.calculate(input, RULES);
@@ -60,7 +62,9 @@ class DecisionScoringEngineTest {
     void fullyCoveredInstrumentComputesAGenuineWeightedAverageNotJustAnEqualSplit() {
         // technical=100, everything else=0 (but present): swing = 0.35*100 = 35, longTerm = 0.05*100 = 5.
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", 100.0, 0.0, 0.0, 0.0, 0.0, 0.0, asOfDate
+            instrumentId, "TEST", 100.0, 0.0, 0.0, 0.0, 0.0, 0.0, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         DecisionScore score = engine.calculate(input, RULES);
@@ -77,7 +81,9 @@ class DecisionScoringEngineTest {
         // Only fundamental present at 60 - naively (no renormalization) swing would compute
         // 0.05*60=3.0 and stop there. Renormalized over the one present domain, it must be 60.0.
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", null, 60.0, null, null, null, null, asOfDate
+            instrumentId, "TEST", null, 60.0, null, null, null, null, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         DecisionScore score = engine.calculate(input, RULES);
@@ -90,7 +96,9 @@ class DecisionScoringEngineTest {
     @Test
     void missingDomainsAreNullInTheOutputAndExcludedFromTheAverage() {
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", 90.0, null, 70.0, null, null, null, asOfDate
+            instrumentId, "TEST", 90.0, null, 70.0, null, null, null, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         DecisionScore score = engine.calculate(input, RULES);
@@ -118,7 +126,9 @@ class DecisionScoringEngineTest {
 
     private DecisionRating swingRatingForSoleDomain(double technicalScore) {
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", technicalScore, null, null, null, null, null, asOfDate
+            instrumentId, "TEST", technicalScore, null, null, null, null, null, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
         return engine.calculate(input, RULES).swingRating();
     }
@@ -126,7 +136,9 @@ class DecisionScoringEngineTest {
     @Test
     void ranksAreAlwaysNullFromTheEngineItself() {
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, asOfDate
+            instrumentId, "TEST", 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         DecisionScore score = engine.calculate(input, RULES);
@@ -138,7 +150,9 @@ class DecisionScoringEngineTest {
     @Test
     void scoreCarriesTheInstrumentSymbolDateAndRuleSetVersion() {
         DecisionScoringInput input = new DecisionScoringInput(
-            instrumentId, "TEST", 80.0, null, null, null, null, null, asOfDate
+            instrumentId, "TEST", 80.0, null, null, null, null, null, asOfDate,
+            null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, null, null, null, null
         );
 
         DecisionScore score = engine.calculate(input, RULES);

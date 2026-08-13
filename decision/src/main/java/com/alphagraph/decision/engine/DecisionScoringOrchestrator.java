@@ -53,12 +53,14 @@ public class DecisionScoringOrchestrator {
     private final DecisionRuleSetLoader ruleSetLoader;
     private final DecisionScoringEngine engine;
     private final DecisionScoreStore scoreStore;
+    private final DecisionRunStore runStore;
 
     public DecisionScoringOrchestrator(
         JdbcTemplate jdbcTemplate, TechnicalScoreReader technicalScoreReader,
         FundamentalScoreReader fundamentalScoreReader, InstitutionalScoreReader institutionalScoreReader,
         SectorScoreReader sectorScoreReader, RiskScoreReader riskScoreReader, CorporateScoreReader corporateScoreReader,
-        DecisionRuleSetLoader ruleSetLoader, DecisionScoringEngine engine, DecisionScoreStore scoreStore
+        DecisionRuleSetLoader ruleSetLoader, DecisionScoringEngine engine, DecisionScoreStore scoreStore,
+        DecisionRunStore runStore
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.technicalScoreReader = technicalScoreReader;
@@ -70,24 +72,41 @@ public class DecisionScoringOrchestrator {
         this.ruleSetLoader = ruleSetLoader;
         this.engine = engine;
         this.scoreStore = scoreStore;
+        this.runStore = runStore;
     }
 
     public void recomputeAllInstruments() {
         List<UUID> instrumentIds = findDrivingSet();
         LocalDate asOfDate = LocalDate.now();
         RuleSet rules = ruleSetLoader.loadActiveRules();
+        UUID runId = runStore.startOrResume(asOfDate, rules.version());
 
-        int updated = 0;
-        for (UUID instrumentId : instrumentIds) {
-            try {
-                recomputeOne(instrumentId, asOfDate, rules);
-                updated++;
-            } catch (Exception e) {
-                log.error("Failed to recompute decision score for instrument {}: {}", instrumentId, e.getMessage(), e);
+        try {
+            int updated = 0;
+            for (UUID instrumentId : instrumentIds) {
+                try {
+                    recomputeOne(instrumentId, asOfDate, rules, runId);
+                    updated++;
+                } catch (Exception e) {
+                    log.error("Failed to recompute decision score for instrument {}: {}", instrumentId, e.getMessage(), e);
+                }
             }
+            assignRanks(asOfDate);
+            int rankedCount = countRankedForDate(asOfDate);
+            runStore.markCompleted(runId, instrumentIds.size(), rankedCount);
+            log.info("Decision Scoring update: {} instrument scores recomputed, {} ranked (of {} candidates)", updated, rankedCount, instrumentIds.size());
+        } catch (Exception e) {
+            runStore.markFailed(runId);
+            throw e;
         }
-        assignRanks(asOfDate);
-        log.info("Decision Scoring update: {} instrument scores recomputed and ranked (of {} candidates)", updated, instrumentIds.size());
+    }
+
+    private int countRankedForDate(LocalDate asOfDate) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM decision.decision_scores WHERE as_of_date = ? AND swing_rank IS NOT NULL",
+            Integer.class, Date.valueOf(asOfDate)
+        );
+        return count == null ? 0 : count;
     }
 
     private List<UUID> findDrivingSet() {
@@ -105,13 +124,13 @@ public class DecisionScoringOrchestrator {
         );
     }
 
-    private void recomputeOne(UUID instrumentId, LocalDate asOfDate, RuleSet rules) {
-        Optional<TechnicalScore> technical = technicalScoreReader.findLatest(instrumentId);
-        Optional<FundamentalScore> fundamental = fundamentalScoreReader.findLatest(instrumentId);
-        Optional<InstitutionalScore> institutional = institutionalScoreReader.findLatest(instrumentId);
-        Optional<SectorScore> sector = sectorScoreReader.findLatestForInstrument(instrumentId);
-        Optional<RiskScore> risk = riskScoreReader.findLatest(instrumentId);
-        Optional<CorporateScore> corporate = corporateScoreReader.findLatest(instrumentId);
+    private void recomputeOne(UUID instrumentId, LocalDate asOfDate, RuleSet rules, UUID runId) {
+        Optional<TechnicalScore> technical = technicalScoreReader.findAsOf(instrumentId, asOfDate);
+        Optional<FundamentalScore> fundamental = fundamentalScoreReader.findAsOf(instrumentId, asOfDate);
+        Optional<InstitutionalScore> institutional = institutionalScoreReader.findAsOf(instrumentId, asOfDate);
+        Optional<SectorScore> sector = sectorScoreReader.findAsOfForInstrument(instrumentId, asOfDate);
+        Optional<RiskScore> risk = riskScoreReader.findAsOf(instrumentId, asOfDate);
+        Optional<CorporateScore> corporate = corporateScoreReader.findAsOf(instrumentId, asOfDate);
 
         String symbol = resolveSymbol(technical, fundamental, institutional, risk, corporate, instrumentId);
 
@@ -123,7 +142,14 @@ public class DecisionScoringOrchestrator {
             sector.map(SectorScore::sectorScore).orElse(null),
             risk.map(RiskScore::riskScore).orElse(null),
             corporate.map(CorporateScore::corporateScore).orElse(null),
-            asOfDate
+            asOfDate,
+            technical.map(TechnicalScore::asOfDate).orElse(null), technical.map(TechnicalScore::ruleSetVersion).orElse(null), technical.map(TechnicalScore::computedAt).orElse(null),
+            fundamental.map(FundamentalScore::asOfDate).orElse(null), fundamental.map(FundamentalScore::ruleSetVersion).orElse(null), fundamental.map(FundamentalScore::computedAt).orElse(null),
+            institutional.map(InstitutionalScore::asOfDate).orElse(null), institutional.map(InstitutionalScore::ruleSetVersion).orElse(null), institutional.map(InstitutionalScore::computedAt).orElse(null),
+            sector.map(SectorScore::asOfDate).orElse(null), sector.map(SectorScore::ruleSetVersion).orElse(null), sector.map(SectorScore::computedAt).orElse(null),
+            risk.map(RiskScore::asOfDate).orElse(null), risk.map(RiskScore::ruleSetVersion).orElse(null), risk.map(RiskScore::computedAt).orElse(null),
+            corporate.map(CorporateScore::asOfDate).orElse(null), corporate.map(CorporateScore::ruleSetVersion).orElse(null), corporate.map(CorporateScore::computedAt).orElse(null),
+            runId
         );
 
         DecisionScore score = engine.calculate(input, rules);
@@ -153,13 +179,13 @@ public class DecisionScoringOrchestrator {
         return jdbcTemplate.queryForObject("SELECT symbol FROM reference.instruments WHERE id = ?", String.class, instrumentId);
     }
 
-    /** Dense rank, highest score first, scoped to the given date - ties share a rank, matching standard leaderboard semantics. */
+    /** Dense rank, highest score first, scoped to the given date - ties share a rank, matching standard leaderboard semantics. COUNT(*) OVER () alongside it records how many instruments shared that day's ranking, so a rank like "#4" can be read against its actual universe size rather than assumed. */
     private void assignRanks(LocalDate asOfDate) {
         jdbcTemplate.update(
             """
-            UPDATE decision.decision_scores d SET swing_rank = ranked.rnk
+            UPDATE decision.decision_scores d SET swing_rank = ranked.rnk, swing_rank_universe_size = ranked.universe_size
             FROM (
-                SELECT id, DENSE_RANK() OVER (ORDER BY swing_score DESC) AS rnk
+                SELECT id, DENSE_RANK() OVER (ORDER BY swing_score DESC) AS rnk, COUNT(*) OVER () AS universe_size
                 FROM decision.decision_scores WHERE as_of_date = ?
             ) ranked
             WHERE d.id = ranked.id
@@ -168,9 +194,9 @@ public class DecisionScoringOrchestrator {
         );
         jdbcTemplate.update(
             """
-            UPDATE decision.decision_scores d SET long_term_rank = ranked.rnk
+            UPDATE decision.decision_scores d SET long_term_rank = ranked.rnk, long_term_rank_universe_size = ranked.universe_size
             FROM (
-                SELECT id, DENSE_RANK() OVER (ORDER BY long_term_score DESC) AS rnk
+                SELECT id, DENSE_RANK() OVER (ORDER BY long_term_score DESC) AS rnk, COUNT(*) OVER () AS universe_size
                 FROM decision.decision_scores WHERE as_of_date = ?
             ) ranked
             WHERE d.id = ranked.id

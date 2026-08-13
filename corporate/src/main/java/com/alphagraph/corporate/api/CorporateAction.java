@@ -1,6 +1,7 @@
 package com.alphagraph.corporate.api;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -10,10 +11,13 @@ import java.util.UUID;
  * {@code exDate} are guaranteed present - those apply regardless of action type.
  * {@code dividendAmount} only applies to DIVIDEND; {@code ratioNumerator}/{@code ratioDenominator}
  * only to BONUS/SPLIT/RIGHTS; {@code price} only to RIGHTS/BUYBACK - all nullable accordingly.
+ * {@code createdAt} is when this row was first ingested - used by learning.outcomes.ForwardOutcomeInvalidator
+ * as a watermark to detect a BONUS/SPLIT ingested after a forward outcome was already computed.
  */
 public record CorporateAction(
     UUID instrumentId, String symbol, String actionType, LocalDate exDate,
     LocalDate recordDate, LocalDate announcementDate,
-    BigDecimal dividendAmount, Integer ratioNumerator, Integer ratioDenominator, BigDecimal price
+    BigDecimal dividendAmount, Integer ratioNumerator, Integer ratioDenominator, BigDecimal price,
+    Instant createdAt
 ) {
 }

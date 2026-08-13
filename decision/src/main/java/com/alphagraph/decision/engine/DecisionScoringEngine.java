@@ -60,7 +60,14 @@ class DecisionScoringEngine implements Engine<DecisionScoringInput, DecisionScor
             longTermScore, ratingFor(longTermScore), null,
             input.technicalScore(), input.fundamentalScore(), input.institutionalScore(),
             input.sectorScore(), input.riskScore(), input.corporateScore(),
-            confidence, rules.version(), Instant.now()
+            confidence, rules.version(), Instant.now(),
+            input.technicalScoreAsOfDate(), input.technicalRuleSetVersion(), input.technicalComputedAt(),
+            input.fundamentalScoreAsOfDate(), input.fundamentalRuleSetVersion(), input.fundamentalComputedAt(),
+            input.institutionalScoreAsOfDate(), input.institutionalRuleSetVersion(), input.institutionalComputedAt(),
+            input.sectorScoreAsOfDate(), input.sectorRuleSetVersion(), input.sectorComputedAt(),
+            input.riskScoreAsOfDate(), input.riskRuleSetVersion(), input.riskComputedAt(),
+            input.corporateScoreAsOfDate(), input.corporateRuleSetVersion(), input.corporateComputedAt(),
+            input.decisionRunId(), null, null
         );
     }
 

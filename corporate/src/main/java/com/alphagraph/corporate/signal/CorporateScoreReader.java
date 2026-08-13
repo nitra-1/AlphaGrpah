@@ -6,6 +6,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +31,12 @@ public class CorporateScoreReader {
         rs.getTimestamp("computed_at").toInstant()
     );
 
+    private static final String SELECT_COLUMNS = """
+        SELECT instrument_id, symbol, as_of_date, corporate_score, corporate_rating, order_book_score,
+               management_score, news_catalyst_score, event_net_signal, confidence, rule_set_version, computed_at
+        FROM corporate.corporate_scores
+        """;
+
     private final JdbcTemplate jdbcTemplate;
 
     public CorporateScoreReader(JdbcTemplate jdbcTemplate) {
@@ -37,12 +45,17 @@ public class CorporateScoreReader {
 
     public Optional<CorporateScore> findLatest(UUID instrumentId) {
         List<CorporateScore> rows = jdbcTemplate.query(
-            """
-            SELECT instrument_id, symbol, as_of_date, corporate_score, corporate_rating, order_book_score,
-                   management_score, news_catalyst_score, event_net_signal, confidence, rule_set_version, computed_at
-            FROM corporate.corporate_scores WHERE instrument_id = ? ORDER BY as_of_date DESC LIMIT 1
-            """,
+            SELECT_COLUMNS + " WHERE instrument_id = ? ORDER BY as_of_date DESC LIMIT 1",
             ROW_MAPPER, instrumentId
+        );
+        return rows.stream().findFirst();
+    }
+
+    /** Latest score with as_of_date on or before {@code asOfDate} - used to resolve what a decision made on that date could actually have known, rather than always pulling whatever's newest today. */
+    public Optional<CorporateScore> findAsOf(UUID instrumentId, LocalDate asOfDate) {
+        List<CorporateScore> rows = jdbcTemplate.query(
+            SELECT_COLUMNS + " WHERE instrument_id = ? AND as_of_date <= ? ORDER BY as_of_date DESC LIMIT 1",
+            ROW_MAPPER, instrumentId, Date.valueOf(asOfDate)
         );
         return rows.stream().findFirst();
     }
