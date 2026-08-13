@@ -2,15 +2,19 @@ package com.alphagraph.market.pricing;
 
 import com.alphagraph.common.etl.SourceConfig;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
@@ -29,19 +33,65 @@ class HttpBhavdataCollectorTest {
 
     private final SourceConfig sourceConfig = new SourceConfig("nse-daily-bhavdata", "market");
 
+    /** A real bhavcopy lists thousands of securities; this builds a realistically-sized fixture. */
+    private static String realisticSizedBody(int dataRows) {
+        String header = "SYMBOL, SERIES";
+        return Stream.concat(Stream.of(header), IntStream.range(0, dataRows).mapToObj(i -> "SYM" + i + ", EQ"))
+            .reduce((a, b) -> a + "\n" + b)
+            .orElse(header);
+    }
+
     @Test
     void successfulFetchReturnsEachLine() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo(EXPECTED_URL))
-            .andRespond(withSuccess("SYMBOL, SERIES\nACE, EQ", MediaType.TEXT_PLAIN));
+        String body = realisticSizedBody(600);
+        server.expect(requestTo(EXPECTED_URL)).andRespond(withSuccess(body, MediaType.TEXT_PLAIN));
 
         HttpBhavdataCollector collector = new HttpBhavdataCollector(builder, URL_TEMPLATE, FIXED_CLOCK);
 
         List<String> lines = collector.fetch(sourceConfig);
 
-        assertThat(lines).containsExactly("SYMBOL, SERIES", "ACE, EQ");
+        assertThat(lines).hasSize(601).startsWith("SYMBOL, SERIES", "SYM0, EQ");
         server.verify();
+    }
+
+    @Test
+    void suspiciouslySmallResponseIsTreatedAsATruncatedDownload() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(EXPECTED_URL))
+            .andRespond(withSuccess("SYMBOL, SERIES\n20MICRONS, EQ", MediaType.TEXT_PLAIN));
+
+        HttpBhavdataCollector collector = new HttpBhavdataCollector(builder, URL_TEMPLATE, FIXED_CLOCK);
+
+        assertThatIllegalStateException()
+            .isThrownBy(() -> collector.fetch(sourceConfig))
+            .withMessageContaining("Suspiciously small")
+            .withMessageContaining("truncated download");
+    }
+
+    @Test
+    void contentLengthMismatchIsTreatedAsATruncatedResponse() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        String body = realisticSizedBody(600);
+        long actualBytes = body.getBytes(StandardCharsets.UTF_8).length;
+        server.expect(requestTo(EXPECTED_URL))
+            .andRespond(withSuccess(body, MediaType.TEXT_PLAIN)
+                .headers(headersWithContentLength(actualBytes * 2)));
+
+        HttpBhavdataCollector collector = new HttpBhavdataCollector(builder, URL_TEMPLATE, FIXED_CLOCK);
+
+        assertThatIllegalStateException()
+            .isThrownBy(() -> collector.fetch(sourceConfig))
+            .withMessageContaining("Truncated response");
+    }
+
+    private static HttpHeaders headersWithContentLength(long declaredLength) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentLength(declaredLength);
+        return headers;
     }
 
     @Test
