@@ -15,12 +15,12 @@ import java.util.Map;
  * Merges two independent execution-tracking stores into one admin-facing cron status list:
  * scheduler.pipeline_definitions/pipeline_executions for the 9 registered
  * common.etl.ScheduledPipeline beans (pre-existing, module 0.10), and scheduler.job_runs for the
- * 15 standalone @Scheduled orchestrator calls that had zero tracking before this feature. The 15
- * job cron expressions are hardcoded here rather than read from a table because they're compiled
+ * 17 standalone @Scheduled orchestrator calls that had zero tracking before this feature. The job
+ * cron expressions are hardcoded here rather than read from a table because they're compiled
  * constants in each scheduler class (e.g. corporate.commentary.ManagementCommentaryScheduler's
  * CRON_915PM_IST) - copied by hand from those files, not guessed. If one of those constants
  * changes, this map needs a matching edit; there's no way around that without inventing a whole
- * second definitions table for 15 rows that never change at runtime.
+ * second definitions table for 17 rows that never change at runtime.
  */
 @Repository
 public class CronMonitoringRepository {
@@ -42,6 +42,8 @@ public class CronMonitoringRepository {
         JOB_SCHEDULES.put("news-catalyst", "0 30 19 * * *");
         JOB_SCHEDULES.put("corporate-signal", "0 45 19 * * *");
         JOB_SCHEDULES.put("decision-scoring", "0 45 21 * * *");
+        JOB_SCHEDULES.put("decision-snapshot-archive", "0 50 21 * * *");
+        JOB_SCHEDULES.put("forward-outcome-tracking", "0 55 21 * * *");
         JOB_SCHEDULES.put("daily-ai-report", "0 0 22 * * *");
     }
 
