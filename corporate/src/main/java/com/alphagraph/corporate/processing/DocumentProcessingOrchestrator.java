@@ -20,6 +20,12 @@ import java.util.UUID;
  * PDF, and the sidecar has no OCR fallback yet) is marked NEEDS_OCR and left there rather than
  * retried indefinitely; nothing currently re-attempts NEEDS_OCR documents once Tesseract-based OCR
  * is added to the sidecar - a real, disclosed gap, not a silent one.
+ *
+ * A document whose real {@code source_url} isn't a {@code .pdf} (NSE's "KMP" filings sometimes
+ * attach a {@code .zip} instead) is marked DISCARDED before ever reaching the sidecar - the
+ * sidecar only knows how to parse PDF bytes, and without this check a non-PDF attachment would
+ * fail identically every single day forever, since a caught exception here doesn't change the
+ * document's status.
  */
 @Component
 public class DocumentProcessingOrchestrator {
@@ -48,13 +54,14 @@ public class DocumentProcessingOrchestrator {
 
         int processed = 0;
         int needsOcr = 0;
+        int discarded = 0;
         int failed = 0;
         for (PendingDocument document : pending) {
             try {
-                if (processOne(document)) {
-                    processed++;
-                } else {
-                    needsOcr++;
+                switch (processOne(document)) {
+                    case PROCESSED -> processed++;
+                    case NEEDS_OCR -> needsOcr++;
+                    case DISCARDED_NON_PDF -> discarded++;
                 }
             } catch (Exception e) {
                 log.error("Failed to process document {} (symbol={}): {}", document.id(), document.symbol(), e.getMessage(), e);
@@ -62,12 +69,22 @@ public class DocumentProcessingOrchestrator {
             }
         }
 
-        log.info("Document processing: {} processed, {} need OCR, {} failed (of {} pending)",
-            processed, needsOcr, failed, pending.size());
+        log.info("Document processing: {} processed, {} need OCR, {} discarded (non-PDF), {} failed (of {} pending)",
+            processed, needsOcr, discarded, failed, pending.size());
     }
 
-    /** Returns true if the document was fully processed, false if it was marked NEEDS_OCR instead. */
-    private boolean processOne(PendingDocument document) {
+    private enum ProcessingOutcome { PROCESSED, NEEDS_OCR, DISCARDED_NON_PDF }
+
+    private ProcessingOutcome processOne(PendingDocument document) {
+        if (document.sourceUrl() == null || !document.sourceUrl().toLowerCase().endsWith(".pdf")) {
+            log.warn("Discarding document {} (symbol={}): source URL is not a PDF ({})",
+                document.id(), document.symbol(), document.sourceUrl());
+            jdbcTemplate.update(
+                "UPDATE corporate.documents SET status = 'DISCARDED' WHERE id = ?", document.id()
+            );
+            return ProcessingOutcome.DISCARDED_NON_PDF;
+        }
+
         String filename = document.symbol() + "_" + document.externalId() + ".pdf";
         SidecarProcessedDocumentResponse result = sidecarClient.process(document.rawPdf(), filename);
 
@@ -75,7 +92,7 @@ public class DocumentProcessingOrchestrator {
             jdbcTemplate.update(
                 "UPDATE corporate.documents SET status = 'NEEDS_OCR' WHERE id = ?", document.id()
             );
-            return false;
+            return ProcessingOutcome.NEEDS_OCR;
         }
 
         for (SidecarChunkResponse chunk : result.chunks()) {
@@ -89,6 +106,6 @@ public class DocumentProcessingOrchestrator {
             "UPDATE corporate.documents SET extracted_text = ?, status = 'PROCESSED' WHERE id = ?",
             result.fullText(), document.id()
         );
-        return true;
+        return ProcessingOutcome.PROCESSED;
     }
 }
