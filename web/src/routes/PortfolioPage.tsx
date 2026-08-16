@@ -5,6 +5,7 @@ import type { PortfolioEntry, PortfolioRisk } from '../types/portfolio'
 import type { RankingEntry } from '../types/rankings'
 import { RatingBadge } from '../components/RatingBadge'
 import { LevelBadge } from '../components/LevelBadge'
+import { PositionHealthBadge } from '../components/PositionHealthBadge'
 import { WidgetCard } from '../components/WidgetCard'
 import { ErrorState } from '../components/ErrorState'
 import { TableSkeleton } from '../components/TableSkeleton'
@@ -18,6 +19,31 @@ function formatMoney(value: number | null) {
 function formatPercent(value: number | null) {
   if (value == null) return '—'
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function healthTooltip(entry: PortfolioEntry): string {
+  if (!entry.positionHealth) return 'No Decision Score exists as of this holding\'s entry date yet.'
+  const lines: string[] = []
+  const anchorLabel = entry.healthAnchorType === 'FIRST_ENTRY' ? 'First entry' : entry.healthAnchorType ?? 'Entry'
+  lines.push(`Health measured since: ${anchorLabel} - ${entry.healthAnchorDate ?? '—'}`)
+  if (entry.entrySwingScore != null && entry.swingScoreChange != null) {
+    const current = entry.entrySwingScore + entry.swingScoreChange
+    lines.push(`Swing Score: ${entry.entrySwingScore.toFixed(1)} -> ${current.toFixed(1)} (${formatPercent(entry.swingScoreChange).replace('%', '')})`)
+  }
+  if (entry.entrySwingRank != null && entry.swingRankChange != null) {
+    const current = entry.entrySwingRank - entry.swingRankChange
+    lines.push(`Swing Rank: #${entry.entrySwingRank} -> #${current}`)
+  }
+  if (entry.healthReason) {
+    lines.push(`Reason: ${entry.healthReason.replace(/_/g, ' ')}`)
+  }
+  if (entry.attentionLevel) {
+    lines.push(`Attention: ${entry.attentionLevel}`)
+  }
+  for (const delta of entry.domainDeltas) {
+    lines.push(`${delta.domain}: ${delta.entryValue.toFixed(1)} -> ${delta.currentValue.toFixed(1)} (${delta.delta >= 0 ? '+' : ''}${delta.delta.toFixed(1)})`)
+  }
+  return lines.join('\n')
 }
 
 export function PortfolioPage() {
@@ -163,7 +189,7 @@ export function PortfolioPage() {
         {buyMutation.isError && <p className="mt-2 text-sm text-loss">Couldn't complete that buy.</p>}
       </div>
 
-      {portfolioQuery.isLoading && <TableSkeleton columns={10} />}
+      {portfolioQuery.isLoading && <TableSkeleton columns={11} />}
       {portfolioQuery.error && <ErrorState message="Couldn't load the portfolio." onRetry={portfolioQuery.refetch} />}
 
       {portfolioQuery.data && portfolioQuery.data.length === 0 && (
@@ -182,6 +208,7 @@ export function PortfolioPage() {
                 <th className="px-4 py-3 font-medium">Market Value</th>
                 <th className="px-4 py-3 font-medium">Unrealized P&L</th>
                 <th className="px-4 py-3 font-medium">Swing</th>
+                <th className="px-4 py-3 font-medium">Health</th>
                 <th className="px-4 py-3 font-medium">Long-Term</th>
                 <th className="px-4 py-3 font-medium">Risk</th>
                 <th className="px-4 py-3 font-medium"></th>
@@ -204,6 +231,9 @@ export function PortfolioPage() {
                         <RatingBadge rating={entry.swingRating} />
                         {entry.swingRank && <span className="text-xs text-text-muted">#{entry.swingRank}</span>}
                       </div>
+                    </td>
+                    <td className="px-4 py-3" title={healthTooltip(entry)}>
+                      <PositionHealthBadge health={entry.positionHealth} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -237,7 +267,7 @@ export function PortfolioPage() {
                   </tr>
                   {sellingId === entry.instrumentId && (
                     <tr className="border-b border-border bg-bg">
-                      <td colSpan={10} className="px-4 py-3">
+                      <td colSpan={11} className="px-4 py-3">
                         <div className="flex flex-wrap items-end gap-3">
                           <input
                             className="w-28 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
@@ -278,7 +308,7 @@ export function PortfolioPage() {
                   )}
                   {deletingId === entry.instrumentId && (
                     <tr className="border-b border-border bg-bg">
-                      <td colSpan={10} className="px-4 py-3">
+                      <td colSpan={11} className="px-4 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-sm text-text">
                             Delete {entry.symbol} from your portfolio? This removes the holding without recording a trade

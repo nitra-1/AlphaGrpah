@@ -1,3 +1,10 @@
+export interface DomainDelta {
+  domain: string
+  entryValue: number
+  currentValue: number
+  delta: number
+}
+
 export interface PortfolioEntry {
   instrumentId: string
   symbol: string
@@ -16,6 +23,21 @@ export interface PortfolioEntry {
   longTermRank: number | null
   riskLevel: string | null
   riskScore: number | null
+  // Position Health (v1) - null together when no Decision Score exists as of this holding's
+  // entry date. healthAnchorType is always "FIRST_ENTRY" here, meaning "first time AlphaGraph
+  // recorded this holding," not necessarily the investor's actual purchase date.
+  positionHealth: string | null
+  healthReason: string | null
+  attentionLevel: string | null
+  entrySwingScore: number | null
+  swingScoreChange: number | null
+  entrySwingRank: number | null
+  swingRankChange: number | null
+  rankDeteriorationLevel: string | null
+  rankDeteriorationBasis: string | null
+  healthAnchorDate: string | null
+  healthAnchorType: string | null
+  domainDeltas: DomainDelta[]
 }
 
 export interface SectorExposure {

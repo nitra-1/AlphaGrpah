@@ -155,7 +155,8 @@ class PortfolioRiskServiceTest {
             instrumentId, symbol, BigDecimal.TEN, BigDecimal.TEN,
             null, null, marketValue, null, null,
             null, null, null, null, null, null,
-            riskScore == null ? null : "LOW", riskScore
+            riskScore == null ? null : "LOW", riskScore,
+            null, null, null, null, null, null, null, null, null, null, null, List.of()
         );
     }
 }

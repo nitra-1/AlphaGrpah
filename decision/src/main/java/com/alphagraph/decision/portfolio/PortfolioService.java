@@ -116,7 +116,7 @@ public class PortfolioService {
             store.delete(userId, instrumentId);
             // Transient confirmation value only - quantity=0 is never actually persisted (the
             // CHECK constraint on portfolio_holdings.quantity forbids it), the row is deleted.
-            result = Optional.of(new PortfolioHolding(holding.id(), instrumentId, holding.symbol(), BigDecimal.ZERO, holding.avgBuyPrice(), holding.updatedAt()));
+            result = Optional.of(new PortfolioHolding(holding.id(), instrumentId, holding.symbol(), BigDecimal.ZERO, holding.avgBuyPrice(), holding.updatedAt(), holding.createdAt()));
         } else {
             store.upsert(userId, instrumentId, holding.symbol(), remaining, holding.avgBuyPrice());
             result = reader.findByInstrument(userId, instrumentId);

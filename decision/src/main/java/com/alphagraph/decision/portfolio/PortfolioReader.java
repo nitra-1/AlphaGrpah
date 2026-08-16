@@ -13,7 +13,7 @@ import java.util.UUID;
 @Component
 class PortfolioReader {
 
-    private static final String SELECT_COLUMNS = "id, instrument_id, symbol, quantity, avg_buy_price, updated_at";
+    private static final String SELECT_COLUMNS = "id, instrument_id, symbol, quantity, avg_buy_price, updated_at, created_at";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -40,7 +40,8 @@ class PortfolioReader {
     private static PortfolioHolding mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new PortfolioHolding(
             (UUID) rs.getObject("id"), (UUID) rs.getObject("instrument_id"), rs.getString("symbol"),
-            rs.getBigDecimal("quantity"), rs.getBigDecimal("avg_buy_price"), rs.getTimestamp("updated_at").toInstant()
+            rs.getBigDecimal("quantity"), rs.getBigDecimal("avg_buy_price"), rs.getTimestamp("updated_at").toInstant(),
+            rs.getTimestamp("created_at").toInstant()
         );
     }
 }

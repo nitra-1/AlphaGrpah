@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,19 +28,24 @@ import java.util.UUID;
 @Service
 public class PortfolioViewService {
 
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+
     private final PortfolioService portfolioService;
     private final DailyPriceReader dailyPriceReader;
     private final DecisionScoreReader decisionScoreReader;
     private final RiskScoreReader riskScoreReader;
+    private final PositionHealthClassifier positionHealthClassifier;
 
     public PortfolioViewService(
         PortfolioService portfolioService, DailyPriceReader dailyPriceReader,
-        DecisionScoreReader decisionScoreReader, RiskScoreReader riskScoreReader
+        DecisionScoreReader decisionScoreReader, RiskScoreReader riskScoreReader,
+        PositionHealthClassifier positionHealthClassifier
     ) {
         this.portfolioService = portfolioService;
         this.dailyPriceReader = dailyPriceReader;
         this.decisionScoreReader = decisionScoreReader;
         this.riskScoreReader = riskScoreReader;
+        this.positionHealthClassifier = positionHealthClassifier;
     }
 
     public List<PortfolioEntryDto> list(UUID userId) {
@@ -72,6 +79,8 @@ public class PortfolioViewService {
         BigDecimal unrealizedPnlPercent = unrealizedPnl == null ? null
             : unrealizedPnl.divide(holding.quantity().multiply(holding.avgBuyPrice()), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
 
+        PositionHealthResult health = score.flatMap(currentScore -> positionHealthFor(holding, currentScore)).orElse(null);
+
         return new PortfolioEntryDto(
             holding.instrumentId(), holding.symbol(), holding.quantity(), holding.avgBuyPrice(),
             currentPrice, latestPrice.map(DailyPrice::tradeDate).orElse(null), marketValue,
@@ -83,7 +92,30 @@ public class PortfolioViewService {
             score.map(s -> s.longTermRating().name()).orElse(null),
             score.map(DecisionScore::longTermRank).orElse(null),
             risk.map(r -> r.overallRisk().name()).orElse(null),
-            risk.map(RiskScore::riskScore).orElse(null)
+            risk.map(RiskScore::riskScore).orElse(null),
+            health == null ? null : health.positionHealth().name(),
+            health == null ? null : mapOrNull(health.healthReason()),
+            health == null ? null : health.attentionLevel().name(),
+            health == null ? null : health.entrySwingScore(),
+            health == null ? null : health.swingScoreChange(),
+            health == null ? null : health.entrySwingRank(),
+            health == null ? null : health.swingRankChange(),
+            health == null ? null : mapOrNull(health.rankDeteriorationLevel()),
+            health == null ? null : mapOrNull(health.rankDeteriorationBasis()),
+            health == null ? null : health.healthAnchorDate(),
+            health == null ? null : health.healthAnchorType(),
+            health == null ? List.of() : health.domainDeltas()
         );
+    }
+
+    /** Position Health is anchored to the holding's first-recorded entry (see {@code PortfolioHolding.createdAt}'s javadoc for exactly what that does and doesn't prove) - null when no score exists as of that date (instrument added to tracking after entry, or a real coverage gap), never guessed. */
+    private Optional<PositionHealthResult> positionHealthFor(PortfolioHolding holding, DecisionScore currentScore) {
+        LocalDate entryDate = holding.createdAt().atZone(IST).toLocalDate();
+        return decisionScoreReader.findAsOf(holding.instrumentId(), entryDate)
+            .map(entryScore -> positionHealthClassifier.classify(entryScore, currentScore));
+    }
+
+    private static String mapOrNull(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

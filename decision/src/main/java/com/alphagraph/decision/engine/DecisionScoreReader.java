@@ -78,6 +78,15 @@ public class DecisionScoreReader {
         return rows.stream().findFirst();
     }
 
+    /** The latest score on or before a given date - added for Position Health (api.portfolio), which needs "what did this look like as of the user's entry date," not just "what does it look like now." Same as-of-date resolution pattern already used by the six domain score readers. */
+    public Optional<DecisionScore> findAsOf(UUID instrumentId, LocalDate asOfDate) {
+        List<DecisionScore> rows = jdbcTemplate.query(
+            "SELECT " + SELECT_COLUMNS + " FROM decision.decision_scores WHERE instrument_id = ? AND as_of_date <= ? ORDER BY as_of_date DESC LIMIT 1",
+            ROW_MAPPER, instrumentId, Date.valueOf(asOfDate)
+        );
+        return rows.stream().findFirst();
+    }
+
     /** Every score on record for one instrument, newest first. */
     public List<DecisionScore> findHistory(UUID instrumentId) {
         return jdbcTemplate.query(

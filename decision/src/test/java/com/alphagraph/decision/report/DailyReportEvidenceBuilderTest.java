@@ -194,6 +194,6 @@ class DailyReportEvidenceBuilderTest {
     }
 
     private PortfolioHolding holding(UUID instrumentId) {
-        return new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", BigDecimal.TEN, BigDecimal.TEN, Instant.now());
+        return new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", BigDecimal.TEN, BigDecimal.TEN, Instant.now(), Instant.now());
     }
 }

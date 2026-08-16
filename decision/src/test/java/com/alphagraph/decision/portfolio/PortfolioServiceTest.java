@@ -193,6 +193,6 @@ class PortfolioServiceTest {
     }
 
     private PortfolioHolding holding(BigDecimal quantity, BigDecimal avgPrice) {
-        return new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", quantity, avgPrice, Instant.now());
+        return new PortfolioHolding(UUID.randomUUID(), instrumentId, "TCS", quantity, avgPrice, Instant.now(), Instant.now());
     }
 }
