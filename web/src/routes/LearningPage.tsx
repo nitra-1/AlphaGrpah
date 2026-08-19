@@ -76,7 +76,12 @@ export function LearningPage() {
 
       {data && (
         <div className="mt-6 space-y-5">
-          <WidgetCard title="Evidence Accumulated" subtitle="Raw counters - the honest 'how much do we actually have' picture" isEmpty={false}>
+          <WidgetCard
+            title="Evidence Accumulated"
+            subtitle="Raw counters - the honest 'how much do we actually have' picture"
+            isEmpty={data.decisionSnapshotCount === 0}
+            emptyLabel="No decision snapshots archived yet."
+          >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <StatTile label="Days of History" value={data.daysOfHistory} />
               <StatTile label="Decision Snapshots Archived" value={data.decisionSnapshotCount} />
