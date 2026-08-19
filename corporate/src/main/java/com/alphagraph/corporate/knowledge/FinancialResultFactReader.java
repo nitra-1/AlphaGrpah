@@ -69,6 +69,18 @@ public class FinancialResultFactReader {
                 continue;
             }
             RawRow first = group.get(0);
+            if (first.instrumentId() == null) {
+                // A document can reach KNOWLEDGE_EXTRACTED and still have no instrument link -
+                // e.g. a market-wide news article (corporate.newsfeed) about a company outside
+                // the tracked universe, whose text still happens to read like a financial result
+                // (a headline literally stating "Revenue... PAT..." is enough for Stage 1 to
+                // classify it and Stage 2 to extract real numbers from it). financial.
+                // financial_results has no meaning without a known instrument, so this group is
+                // never published rather than being handed to a caller that has no way to write
+                // it - the same "quarantine before it reaches a hard constraint" discipline
+                // DocumentProcessingOrchestrator's non-PDF check follows.
+                continue;
+            }
             groups.add(new FinancialFactGroup(first.documentId(), first.instrumentId(), first.symbol(), facts));
         }
         return groups;
