@@ -27,6 +27,35 @@ public class EntityResolver {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * Creates (or retroactively links) the {@code knowledge.entity_master} row for a newly-added
+     * tracked instrument - the ongoing counterpart to {@code V9__init_knowledge_relationship_engine
+     * .sql}'s one-time backfill, which only ever linked the instruments tracked at the moment that
+     * migration ran. Every instrument added afterward had no linked entity at all until this
+     * method existed - {@code NewsInstrumentMatcher} (which requires {@code linked_instrument_id
+     * IS NOT NULL}) could never match news naming it, and {@code RelationshipBuilder} would create
+     * a second, orphaned entity the first time any extractor mentioned it. Called once, synchronously,
+     * from {@code api.admin.InstrumentAdditionService} right after the instrument itself is created.
+     *
+     * <p>{@code canonical_name} is the trading symbol and {@code companyName} becomes its first
+     * alias - the exact same convention the original seed used, so a document referring to either
+     * "INFY" or "Infosys Limited" resolves to the same row. {@code ON CONFLICT (canonical_name) DO
+     * UPDATE} handles both the fresh-instrument case and the case where an extractor already
+     * created an unlinked entity under this exact symbol before it became tracked - either way,
+     * the row ends up linked, never duplicated (the unique constraint would reject a duplicate
+     * insert regardless).
+     */
+    public void linkTrackedInstrument(UUID instrumentId, String symbol, String companyName) {
+        jdbcTemplate.update(
+            """
+            INSERT INTO knowledge.entity_master (entity_type, canonical_name, aliases, linked_instrument_id)
+            VALUES ('COMPANY', ?, ARRAY[?]::text[], ?)
+            ON CONFLICT (canonical_name) DO UPDATE SET linked_instrument_id = EXCLUDED.linked_instrument_id
+            """,
+            symbol, companyName, instrumentId
+        );
+    }
+
     public UUID resolve(EntityType entityType, String rawName) {
         String trimmed = rawName.trim();
         String normalizedInput = EntityNameNormalizer.normalize(trimmed);
