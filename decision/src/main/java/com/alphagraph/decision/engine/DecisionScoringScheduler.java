@@ -6,10 +6,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Runs after every upstream scheduler that feeds a domain score has had its chance to run for the
- * day - the latest is {@code corporate.news.NewsCatalystScheduler} at 21:30 IST, itself feeding
- * {@code corporate.signal.CorporateSignalScheduler} at 19:45 IST (before the News Catalyst score
- * it depends on refreshes - a pre-existing sequencing quirk in that module, not something this
- * scheduler can fix). 21:45 IST leaves 15 minutes after the last of them.
+ * day - the latest is {@code corporate.signal.CorporateSignalScheduler} at 20:00 IST (moved from
+ * 19:45 on 2026-08-22), itself running after {@code corporate.news.NewsCatalystScheduler} at 19:30
+ * IST, the News Catalyst score it depends on. 21:45 IST leaves 1h45m after the last of them.
  */
 @Component
 public class DecisionScoringScheduler {

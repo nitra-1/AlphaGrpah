@@ -40,7 +40,7 @@ public class CronMonitoringRepository {
         JOB_SCHEDULES.put("order-book", "0 0 19 * * *");
         JOB_SCHEDULES.put("management-commentary", "0 15 19 * * *");
         JOB_SCHEDULES.put("news-catalyst", "0 30 19 * * *");
-        JOB_SCHEDULES.put("corporate-signal", "0 45 19 * * *");
+        JOB_SCHEDULES.put("corporate-signal", "0 0 20 * * *");
         JOB_SCHEDULES.put("decision-scoring", "0 45 21 * * *");
         JOB_SCHEDULES.put("decision-snapshot-archive", "0 50 21 * * *");
         JOB_SCHEDULES.put("forward-outcome-tracking", "0 55 21 * * *");
