@@ -13,4 +13,8 @@ dependencies {
     // call. Resolves credentials from ANTHROPIC_API_KEY at runtime (AnthropicOkHttpClient.fromEnv()) -
     // never hardcoded, never passed through Spring config.
     implementation("com.anthropic:anthropic-java:2.52.0")
+    // Gemini free-tier pilot (NewsExtractor only, GeminiNewsExtractionClient) - official Google
+    // Gen AI Java SDK. Resolves credentials from GOOGLE_API_KEY at runtime (new Client()) - same
+    // "never hardcoded" precedent as the Anthropic client above.
+    implementation("com.google.genai:google-genai:1.67.0")
 }

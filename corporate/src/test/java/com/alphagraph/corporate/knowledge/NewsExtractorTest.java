@@ -1,7 +1,6 @@
 package com.alphagraph.corporate.knowledge;
 
 import com.alphagraph.corporate.api.Sentiment;
-import com.anthropic.client.AnthropicClient;
 import com.anthropic.models.messages.OutputConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -13,10 +12,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class NewsExtractorTest {
 
-    private final NewsExtractor extractor = new NewsExtractor(mock(AnthropicClient.class), new ObjectMapper());
+    private final ClaudeNewsExtractionClient claudeClient = mock(ClaudeNewsExtractionClient.class);
+    private final GeminiNewsExtractionClient geminiClient = mock(GeminiNewsExtractionClient.class);
+    private final NewsExtractor extractor = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), true);
 
     @Test
     void supportsWhenRecommendedExtractorsContainsNews() {
@@ -146,6 +148,56 @@ class NewsExtractorTest {
         OutputConfig outputConfig = NewsExtractor.buildOutputConfig();
 
         assertThat(outputConfig).isNotNull();
+    }
+
+    @Test
+    void schemaMapIsWhatBothProvidersActuallyGetAsked() {
+        Map<String, Object> schemaMap = NewsExtractor.buildSchemaMap();
+
+        assertThat(schemaMap.get("type")).isEqualTo("object");
+        assertThat(schemaMap.get("additionalProperties")).isEqualTo(false);
+        assertThat(schemaMap.get("required")).isEqualTo(List.of("impacts"));
+    }
+
+    @Test
+    void useGeminiTrueAndGeminiSucceedsNeverCallsClaude() {
+        NewsExtractor extractorWithGemini = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), true);
+        when(geminiClient.extractRawJson("doc text")).thenReturn("{\"impacts\": []}");
+
+        ExtractionResult result = extractorWithGemini.extract(context("doc text"));
+
+        assertThat(result.facts()).isEmpty();
+        org.mockito.Mockito.verify(geminiClient).extractRawJson("doc text");
+        org.mockito.Mockito.verifyNoInteractions(claudeClient);
+    }
+
+    @Test
+    void useGeminiTrueAndGeminiFailsFallsBackToClaude() {
+        NewsExtractor extractorWithGemini = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), true);
+        when(geminiClient.extractRawJson("doc text")).thenThrow(new IllegalStateException("Gemini API call failed"));
+        when(claudeClient.extractRawJson("doc text")).thenReturn("""
+            {"impacts": [{"companyName": "TCS", "direction": "POSITIVE", "signal": "x", "impactSummary": "x", "confidence": 90}]}
+            """);
+
+        ExtractionResult result = extractorWithGemini.extract(context("doc text"));
+
+        assertThat(result.facts()).isNotEmpty();
+        org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
+    }
+
+    @Test
+    void useGeminiFalseNeverCallsGeminiAtAll() {
+        NewsExtractor extractorClaudeOnly = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), false);
+        when(claudeClient.extractRawJson("doc text")).thenReturn("{\"impacts\": []}");
+
+        extractorClaudeOnly.extract(context("doc text"));
+
+        org.mockito.Mockito.verifyNoInteractions(geminiClient);
+        org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
+    }
+
+    private DocumentContext context(String documentText) {
+        return new DocumentContext(UUID.randomUUID(), UUID.randomUUID(), "TCS", documentText, classification(List.of("NEWS")));
     }
 
     private DocumentClassification classification(List<String> recommendedExtractors) {

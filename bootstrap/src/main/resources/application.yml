@@ -28,3 +28,9 @@ alphagraph:
     # Module 2.1: the Python NLP sidecar (nlp-sidecar/). localhost:8000 for local dev (run
     # uvicorn directly); docker-compose's service name resolves this in docker/prod profiles.
     base-url: ${NLP_SIDECAR_URL:http://localhost:8000}
+  corporate:
+    news-extractor:
+      # NewsExtractor's Gemini free-tier pilot (real cost driver: knowledge-extraction is the
+      # dominant Claude spend in this app). true = try Gemini first, fall back to Claude on any
+      # failure. Flip to false to go back to Claude-only with no code change.
+      use-gemini: true

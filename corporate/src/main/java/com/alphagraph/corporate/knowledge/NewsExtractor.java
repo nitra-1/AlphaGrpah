@@ -1,16 +1,13 @@
 package com.alphagraph.corporate.knowledge;
 
-import com.anthropic.client.AnthropicClient;
 import com.anthropic.core.JsonValue;
-import com.anthropic.errors.AnthropicIoException;
-import com.anthropic.errors.AnthropicServiceException;
-import com.anthropic.errors.NotFoundException;
-import com.anthropic.errors.RateLimitException;
 import com.anthropic.models.messages.JsonOutputFormat;
-import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.OutputConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -45,15 +42,27 @@ import java.util.UUID;
 @Component
 class NewsExtractor implements DocumentExtractor {
 
-    private static final Model MODEL = Model.CLAUDE_SONNET_5;
-    private static final long MAX_TOKENS = 2048L;
+    private static final Logger log = LoggerFactory.getLogger(NewsExtractor.class);
 
-    private final AnthropicClient client;
+    // Package-private, not private: ClaudeNewsExtractionClient builds its own MessageCreateParams
+    // from these, same model/token budget this class always used before the Gemini pilot split
+    // provider-calling logic out into ClaudeNewsExtractionClient/GeminiNewsExtractionClient.
+    static final Model MODEL = Model.CLAUDE_SONNET_5;
+    static final long MAX_TOKENS = 2048L;
+
+    private final ClaudeNewsExtractionClient claudeClient;
+    private final GeminiNewsExtractionClient geminiClient;
     private final ObjectMapper objectMapper;
+    private final boolean useGemini;
 
-    NewsExtractor(AnthropicClient client, ObjectMapper objectMapper) {
-        this.client = client;
+    NewsExtractor(
+        ClaudeNewsExtractionClient claudeClient, GeminiNewsExtractionClient geminiClient, ObjectMapper objectMapper,
+        @Value("${alphagraph.corporate.news-extractor.use-gemini:true}") boolean useGemini
+    ) {
+        this.claudeClient = claudeClient;
+        this.geminiClient = geminiClient;
         this.objectMapper = objectMapper;
+        this.useGemini = useGemini;
     }
 
     @Override
@@ -62,34 +71,27 @@ class NewsExtractor implements DocumentExtractor {
             .anyMatch(name -> name.equalsIgnoreCase("NEWS"));
     }
 
+    /**
+     * Hard cutover to Gemini with a Claude fallback, per the user's explicit design - tries the
+     * configured primary client first; any failure - the call itself throwing (network, schema
+     * rejection, rate limit) OR a successfully-returned response that then fails to parse (a real
+     * case found live: Gemini can return HTTP 200 with truncated/invalid JSON, which only
+     * surfaces once {@link #parseResult} tries to read it) - falls back to Claude rather than
+     * failing the document outright. Parsing is deliberately inside the try, not after it, so a
+     * "succeeded but garbage" response is caught the same as an outright call failure. {@code
+     * useGemini} is a plain Spring property (no admin UI, no DB flag) so switching back to
+     * Claude-only is a config change, not a code change.
+     */
     @Override
     public ExtractionResult extract(DocumentContext context) {
-        MessageCreateParams createParams = MessageCreateParams.builder()
-            .model(MODEL)
-            .maxTokens(MAX_TOKENS)
-            .outputConfig(buildOutputConfig())
-            .addUserMessage(buildPrompt(context.documentText()))
-            .build();
-
-        String rawJson = callClaude(createParams);
-        return parseResult(rawJson);
-    }
-
-    private String callClaude(MessageCreateParams createParams) {
+        if (!useGemini) {
+            return parseResult(claudeClient.extractRawJson(context.documentText()));
+        }
         try {
-            StringBuilder rawJson = new StringBuilder();
-            client.messages().create(createParams).content().stream()
-                .flatMap(contentBlock -> contentBlock.text().stream())
-                .forEach(textBlock -> rawJson.append(textBlock.text()));
-            return rawJson.toString();
-        } catch (NotFoundException e) {
-            throw new IllegalStateException("Claude API rejected the model/endpoint: " + e.getMessage(), e);
-        } catch (RateLimitException e) {
-            throw new IllegalStateException("Claude API rate limit hit during news extraction: " + e.getMessage(), e);
-        } catch (AnthropicIoException e) {
-            throw new IllegalStateException("Network failure calling Claude API: " + e.getMessage(), e);
-        } catch (AnthropicServiceException e) {
-            throw new IllegalStateException("Claude API call failed: " + e.getMessage(), e);
+            return parseResult(geminiClient.extractRawJson(context.documentText()));
+        } catch (Exception e) {
+            log.warn("Gemini news extraction failed, falling back to Claude: {}", e.getMessage());
+            return parseResult(claudeClient.extractRawJson(context.documentText()));
         }
     }
 
@@ -192,7 +194,14 @@ class NewsExtractor implements DocumentExtractor {
             """.formatted(documentText);
     }
 
-    static OutputConfig buildOutputConfig() {
+    /**
+     * The one JSON schema both {@link ClaudeNewsExtractionClient} and {@link GeminiNewsExtractionClient}
+     * ask for - defined once so the two providers can never quietly drift out of sync. {@link #buildOutputConfig}
+     * wraps this same map into Anthropic's {@code OutputConfig}/{@code JsonOutputFormat} shape;
+     * {@code GeminiNewsExtractionClient} passes it straight to Gemini's {@code responseSchema()},
+     * which accepts a raw map with no dedicated schema-builder type required.
+     */
+    static Map<String, Object> buildSchemaMap() {
         Map<String, Object> impactSchema = Map.ofEntries(
             Map.entry("type", "object"),
             Map.entry("properties", Map.ofEntries(
@@ -220,11 +229,22 @@ class NewsExtractor implements DocumentExtractor {
         Map<String, Object> impactsArraySchema = Map.of("type", "array", "items", impactSchema);
         Map<String, Object> rootProperties = Map.of("impacts", impactsArraySchema);
 
+        return Map.of(
+            "type", "object",
+            "properties", rootProperties,
+            "required", List.of("impacts"),
+            "additionalProperties", false
+        );
+    }
+
+    static OutputConfig buildOutputConfig() {
+        Map<String, Object> schemaMap = buildSchemaMap();
+
         JsonOutputFormat.Schema schema = JsonOutputFormat.Schema.builder()
-            .putAdditionalProperty("type", JsonValue.from("object"))
-            .putAdditionalProperty("properties", JsonValue.from(rootProperties))
-            .putAdditionalProperty("required", JsonValue.from(List.of("impacts")))
-            .putAdditionalProperty("additionalProperties", JsonValue.from(false))
+            .putAdditionalProperty("type", JsonValue.from(schemaMap.get("type")))
+            .putAdditionalProperty("properties", JsonValue.from(schemaMap.get("properties")))
+            .putAdditionalProperty("required", JsonValue.from(schemaMap.get("required")))
+            .putAdditionalProperty("additionalProperties", JsonValue.from(schemaMap.get("additionalProperties")))
             .build();
 
         return OutputConfig.builder()
