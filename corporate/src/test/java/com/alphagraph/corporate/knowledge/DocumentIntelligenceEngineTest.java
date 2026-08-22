@@ -1,14 +1,17 @@
 package com.alphagraph.corporate.knowledge;
 
 import com.alphagraph.corporate.api.Sentiment;
-import com.anthropic.client.AnthropicClient;
 import com.anthropic.models.messages.OutputConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests Stage 1's parsing/normalization logic - turning Claude's classification JSON into a
@@ -19,7 +22,9 @@ import static org.mockito.Mockito.mock;
  */
 class DocumentIntelligenceEngineTest {
 
-    private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(mock(AnthropicClient.class), new ObjectMapper());
+    private final ClaudeDocumentClassificationClient claudeClient = mock(ClaudeDocumentClassificationClient.class);
+    private final GeminiDocumentClassificationClient geminiClient = mock(GeminiDocumentClassificationClient.class);
+    private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
 
     @Test
     void parsesFullClassificationFromValidJson() {
@@ -114,5 +119,67 @@ class DocumentIntelligenceEngineTest {
         OutputConfig outputConfig = DocumentIntelligenceEngine.buildOutputConfig();
 
         assertThat(outputConfig).isNotNull();
+    }
+
+    @Test
+    void schemaMapIsWhatBothProvidersActuallyGetAsked() {
+        Map<String, Object> schemaMap = DocumentIntelligenceEngine.buildSchemaMap();
+
+        assertThat(schemaMap.get("type")).isEqualTo("object");
+        assertThat(schemaMap.get("additionalProperties")).isEqualTo(false);
+        assertThat(schemaMap.get("required")).isEqualTo(List.of(
+            "documentType", "topics", "entities", "summary", "sentiment", "confidence", "recommendedExtractors"
+        ));
+    }
+
+    private static final String VALID_JSON = """
+        {"documentType": "GENERAL_UPDATE", "topics": [], "entities": [], "summary": "Routine filing.",
+         "sentiment": "NEUTRAL", "confidence": 60, "recommendedExtractors": []}
+        """;
+
+    @Test
+    void newsSourceWithGeminiEnabledAndGeminiSucceedsNeverCallsClaude() {
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+        when(geminiClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
+
+        DocumentClassification classification = engineWithGemini.classify("doc text", "NEWS");
+
+        assertThat(classification.documentType()).isEqualTo("GENERAL_UPDATE");
+        org.mockito.Mockito.verify(geminiClient).extractRawJson("doc text");
+        org.mockito.Mockito.verifyNoInteractions(claudeClient);
+    }
+
+    @Test
+    void newsSourceWithGeminiEnabledAndGeminiFailsFallsBackToClaude() {
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+        when(geminiClient.extractRawJson("doc text")).thenThrow(new IllegalStateException("Gemini API call failed"));
+        when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
+
+        DocumentClassification classification = engineWithGemini.classify("doc text", "NEWS");
+
+        assertThat(classification.documentType()).isEqualTo("GENERAL_UPDATE");
+        org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
+    }
+
+    @Test
+    void nonNewsSourceNeverTouchesGeminiEvenWithFlagOn() {
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+        when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
+
+        engineWithGemini.classify("doc text", "EXCHANGE_ANNOUNCEMENT");
+
+        org.mockito.Mockito.verifyNoInteractions(geminiClient);
+        org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
+    }
+
+    @Test
+    void useGeminiForNewsFalseNeverCallsGeminiEvenForNews() {
+        DocumentIntelligenceEngine engineClaudeOnly = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), false);
+        when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
+
+        engineClaudeOnly.classify("doc text", "NEWS");
+
+        org.mockito.Mockito.verifyNoInteractions(geminiClient);
+        org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
     }
 }

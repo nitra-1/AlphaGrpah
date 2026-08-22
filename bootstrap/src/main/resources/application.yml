@@ -34,3 +34,11 @@ alphagraph:
       # dominant Claude spend in this app). true = try Gemini first, fall back to Claude on any
       # failure. Flip to false to go back to Claude-only with no code change.
       use-gemini: true
+    stage1-classification:
+      # Stage 1 (DocumentIntelligenceEngine) is mandatory for every document, regardless of which
+      # Stage 2 extractor eventually runs - this is a separate toggle from news-extractor.use-gemini
+      # above, scoped ONLY to NEWS-sourced documents (see DocumentIntelligenceEngine.classify).
+      # Every other source (EXCHANGE_ANNOUNCEMENT, QUARTERLY_RESULTS, ...) stays Claude-only
+      # unconditionally regardless of this flag - a Stage 1 misclassification silently misroutes a
+      # document, so this pilot deliberately does not extend beyond public news content.
+      use-gemini-for-news: true

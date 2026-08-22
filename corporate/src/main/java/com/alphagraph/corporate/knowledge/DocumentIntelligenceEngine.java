@@ -1,17 +1,14 @@
 package com.alphagraph.corporate.knowledge;
 
 import com.alphagraph.corporate.api.Sentiment;
-import com.anthropic.client.AnthropicClient;
 import com.anthropic.core.JsonValue;
-import com.anthropic.errors.AnthropicIoException;
-import com.anthropic.errors.AnthropicServiceException;
-import com.anthropic.errors.NotFoundException;
-import com.anthropic.errors.RateLimitException;
 import com.anthropic.models.messages.JsonOutputFormat;
-import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.OutputConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -33,50 +30,55 @@ import java.util.Map;
 @Component
 public class DocumentIntelligenceEngine {
 
+    private static final Logger log = LoggerFactory.getLogger(DocumentIntelligenceEngine.class);
+
     /** Bumped whenever the classification prompt/schema changes meaningfully - carried onto every {@link com.alphagraph.corporate.api.DocumentSummary}. */
     static final int PROMPT_VERSION = 3;
 
     // Sonnet 5, matching every other extractor's cost/quality call - classification is a bounded
     // structured-extraction task (fixed field set, enumerable sentiment), not open-ended reasoning.
-    private static final Model MODEL = Model.CLAUDE_SONNET_5;
-    private static final long MAX_TOKENS = 4096L;
+    // Package-private, not private: ClaudeDocumentClassificationClient builds its own
+    // MessageCreateParams from these, same model/token budget this class always used before the
+    // Gemini pilot split provider-calling logic out into
+    // ClaudeDocumentClassificationClient/GeminiDocumentClassificationClient.
+    static final Model MODEL = Model.CLAUDE_SONNET_5;
+    static final long MAX_TOKENS = 4096L;
 
-    private final AnthropicClient client;
+    private final ClaudeDocumentClassificationClient claudeClient;
+    private final GeminiDocumentClassificationClient geminiClient;
     private final ObjectMapper objectMapper;
+    private final boolean useGeminiForNews;
 
-    public DocumentIntelligenceEngine(AnthropicClient client, ObjectMapper objectMapper) {
-        this.client = client;
+    public DocumentIntelligenceEngine(
+        ClaudeDocumentClassificationClient claudeClient, GeminiDocumentClassificationClient geminiClient, ObjectMapper objectMapper,
+        @Value("${alphagraph.corporate.stage1-classification.use-gemini-for-news:true}") boolean useGeminiForNews
+    ) {
+        this.claudeClient = claudeClient;
+        this.geminiClient = geminiClient;
         this.objectMapper = objectMapper;
+        this.useGeminiForNews = useGeminiForNews;
     }
 
-    /** Returns the Stage 1 classification for one document's already-extracted text. Never re-parses a PDF. */
-    public DocumentClassification classify(String documentText) {
-        MessageCreateParams createParams = MessageCreateParams.builder()
-            .model(MODEL)
-            .maxTokens(MAX_TOKENS)
-            .outputConfig(buildOutputConfig())
-            .addUserMessage(buildPrompt(documentText))
-            .build();
-
-        String rawJson = callClaude(createParams);
-        return parseClassification(rawJson);
-    }
-
-    private String callClaude(MessageCreateParams createParams) {
+    /**
+     * Returns the Stage 1 classification for one document's already-extracted text. Never
+     * re-parses a PDF. {@code source} (see {@link com.alphagraph.corporate.api.DocumentSource})
+     * gates the Gemini pilot: only {@code "NEWS"}-sourced documents are eligible, since Stage 1
+     * decides which Stage 2 extractor runs at all for EVERY document type, including unreleased
+     * financial filings - a misclassification there silently misroutes a document, not just
+     * produces one bad fact, so this stays Claude-only for every other source unconditionally.
+     * Same hard-cutover-with-fallback shape as {@link NewsExtractor#extract}: parsing happens
+     * inside the try, not after it, so a "succeeded but garbage" Gemini response is caught the
+     * same as an outright call failure.
+     */
+    public DocumentClassification classify(String documentText, String source) {
+        if (!useGeminiForNews || !"NEWS".equals(source)) {
+            return parseClassification(claudeClient.extractRawJson(documentText));
+        }
         try {
-            StringBuilder rawJson = new StringBuilder();
-            client.messages().create(createParams).content().stream()
-                .flatMap(contentBlock -> contentBlock.text().stream())
-                .forEach(textBlock -> rawJson.append(textBlock.text()));
-            return rawJson.toString();
-        } catch (NotFoundException e) {
-            throw new IllegalStateException("Claude API rejected the model/endpoint: " + e.getMessage(), e);
-        } catch (RateLimitException e) {
-            throw new IllegalStateException("Claude API rate limit hit during document classification: " + e.getMessage(), e);
-        } catch (AnthropicIoException e) {
-            throw new IllegalStateException("Network failure calling Claude API: " + e.getMessage(), e);
-        } catch (AnthropicServiceException e) {
-            throw new IllegalStateException("Claude API call failed: " + e.getMessage(), e);
+            return parseClassification(geminiClient.extractRawJson(documentText));
+        } catch (Exception e) {
+            log.warn("Gemini document classification failed, falling back to Claude: {}", e.getMessage());
+            return parseClassification(claudeClient.extractRawJson(documentText));
         }
     }
 
@@ -163,7 +165,14 @@ public class DocumentIntelligenceEngine {
             """.formatted(documentText);
     }
 
-    static OutputConfig buildOutputConfig() {
+    /**
+     * The one JSON schema both {@link ClaudeDocumentClassificationClient} and
+     * {@link GeminiDocumentClassificationClient} ask for - defined once so the two providers can
+     * never quietly drift out of sync. {@link #buildOutputConfig} wraps this same map into
+     * Anthropic's {@code OutputConfig}/{@code JsonOutputFormat} shape; {@link GeminiSchemaTranslator}
+     * translates it into Gemini's typed {@code Schema} shape.
+     */
+    static Map<String, Object> buildSchemaMap() {
         Map<String, Object> stringArraySchema = Map.of("type", "array", "items", Map.of("type", "string"));
 
         Map<String, Object> rootProperties = Map.of(
@@ -179,13 +188,22 @@ public class DocumentIntelligenceEngine {
             )
         );
 
+        return Map.of(
+            "type", "object",
+            "properties", rootProperties,
+            "required", List.of("documentType", "topics", "entities", "summary", "sentiment", "confidence", "recommendedExtractors"),
+            "additionalProperties", false
+        );
+    }
+
+    static OutputConfig buildOutputConfig() {
+        Map<String, Object> schemaMap = buildSchemaMap();
+
         JsonOutputFormat.Schema schema = JsonOutputFormat.Schema.builder()
-            .putAdditionalProperty("type", JsonValue.from("object"))
-            .putAdditionalProperty("properties", JsonValue.from(rootProperties))
-            .putAdditionalProperty("required", JsonValue.from(List.of(
-                "documentType", "topics", "entities", "summary", "sentiment", "confidence", "recommendedExtractors"
-            )))
-            .putAdditionalProperty("additionalProperties", JsonValue.from(false))
+            .putAdditionalProperty("type", JsonValue.from(schemaMap.get("type")))
+            .putAdditionalProperty("properties", JsonValue.from(schemaMap.get("properties")))
+            .putAdditionalProperty("required", JsonValue.from(schemaMap.get("required")))
+            .putAdditionalProperty("additionalProperties", JsonValue.from(schemaMap.get("additionalProperties")))
             .build();
 
         return OutputConfig.builder()

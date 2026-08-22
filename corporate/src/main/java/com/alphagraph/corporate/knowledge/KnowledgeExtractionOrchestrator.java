@@ -80,7 +80,7 @@ public class KnowledgeExtractionOrchestrator {
     }
 
     private void extractOne(PendingKnowledgeDocument document) {
-        DocumentClassification classification = classificationEngine.classify(document.extractedText());
+        DocumentClassification classification = classificationEngine.classify(document.extractedText(), document.source());
         writer.writeClassification(document.id(), classification);
 
         DocumentContext context = new DocumentContext(

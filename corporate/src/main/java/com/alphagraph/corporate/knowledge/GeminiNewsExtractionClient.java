@@ -4,12 +4,9 @@ import com.google.genai.Client;
 import com.google.genai.errors.GenAiIOException;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
-import com.google.genai.types.Schema;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /**
  * The Gemini free-tier pilot's own call for {@link NewsExtractor} - same prompt text
@@ -18,14 +15,13 @@ import java.util.Map;
  * regardless of which client actually produced the raw JSON.
  *
  * <p>Unlike Anthropic's {@code OutputConfig} (which accepts the schema as a lightweight
- * {@code JsonValue}-wrapped map), Gemini's SDK requires a genuinely typed {@link Schema} object -
+ * {@code JsonValue}-wrapped map), Gemini's SDK requires a genuinely typed {@code Schema} object -
  * confirmed via the compiler, not the SDK's own docs, which had described a raw-map path that
- * doesn't actually exist in the installed 1.67.0 jar. {@link #toGeminiSchema} translates
- * {@link NewsExtractor#buildSchemaMap}'s map into that typed shape, so the schema is still defined
- * exactly once - only the wire-level building differs per provider. One real, disclosed difference:
- * Gemini's {@code Schema} type has no {@code additionalProperties} concept at all (no builder
- * method exists for it), so Gemini's structured output is somewhat less strict than Claude's on
- * this one dimension - not fixable, just a known gap between the two providers' schema dialects.
+ * doesn't actually exist in the installed 1.67.0 jar. {@link GeminiSchemaTranslator} translates
+ * {@link NewsExtractor#buildSchemaMap}'s map into that typed shape (shared with
+ * {@code GeminiDocumentClassificationClient} once Stage 1's own Gemini pilot needed the identical
+ * translation), so the schema is still defined exactly once - only the wire-level building differs
+ * per provider.
  *
  * <p>Any failure here is wrapped as {@link IllegalStateException} without distinguishing error type
  * (Gemini's error hierarchy isn't as fully documented as Anthropic's) - this fallback path's whole
@@ -55,7 +51,7 @@ class GeminiNewsExtractionClient implements NewsImpactExtractionClient {
     public String extractRawJson(String documentText) {
         GenerateContentConfig config = GenerateContentConfig.builder()
             .responseMimeType("application/json")
-            .responseSchema(toGeminiSchema(NewsExtractor.buildSchemaMap()))
+            .responseSchema(GeminiSchemaTranslator.toGeminiSchema(NewsExtractor.buildSchemaMap(), OPTIONAL_WHEN_BLANK_FIELDS))
             .maxOutputTokens(MAX_OUTPUT_TOKENS)
             .build();
 
@@ -83,37 +79,7 @@ class GeminiNewsExtractionClient implements NewsImpactExtractionClient {
      * from Gemini's enum AND drop these three fields from Gemini's {@code required} list, so
      * Gemini can genuinely omit them instead of being forced to always name a related entity.
      */
-    private static final List<String> OPTIONAL_WHEN_BLANK_FIELDS = List.of(
+    private static final Set<String> OPTIONAL_WHEN_BLANK_FIELDS = Set.of(
         "relatedEntityName", "relatedEntityType", "relationshipType"
     );
-
-    @SuppressWarnings("unchecked")
-    private static Schema toGeminiSchema(Map<String, Object> map) {
-        Schema.Builder builder = Schema.builder().type((String) map.get("type"));
-
-        if (map.get("description") instanceof String description) {
-            builder.description(description);
-        }
-        if (map.get("enum") instanceof List<?> enumValues) {
-            List<String> withoutBlankMember = ((List<String>) enumValues).stream().filter(v -> !v.isBlank()).toList();
-            builder.enum_(withoutBlankMember.isEmpty() ? (List<String>) enumValues : withoutBlankMember);
-        }
-        if (map.get("properties") instanceof Map<?, ?> rawProperties) {
-            Map<String, Schema> properties = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : rawProperties.entrySet()) {
-                properties.put((String) entry.getKey(), toGeminiSchema((Map<String, Object>) entry.getValue()));
-            }
-            builder.properties(properties);
-        }
-        if (map.get("required") instanceof List<?> required) {
-            List<String> withoutOptionalFields = ((List<String>) required).stream()
-                .filter(name -> !OPTIONAL_WHEN_BLANK_FIELDS.contains(name))
-                .toList();
-            builder.required(withoutOptionalFields);
-        }
-        if (map.get("items") instanceof Map<?, ?> items) {
-            builder.items(toGeminiSchema((Map<String, Object>) items));
-        }
-        return builder.build();
-    }
 }
