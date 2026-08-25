@@ -6,6 +6,12 @@ export interface CronStatus {
   lastStartedAt: string | null
   lastFinishedAt: string | null
   lastSummary: string | null
+  missedToday: boolean
+}
+
+export interface CronRetryResponse {
+  name: string
+  message: string
 }
 
 export interface LiveSourceStatus {

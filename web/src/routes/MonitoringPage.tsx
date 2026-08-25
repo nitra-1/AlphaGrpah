@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
-import type { CronStatus, LiveSourceStatus } from '../types/monitoring'
+import type { CronRetryResponse, CronStatus, LiveSourceStatus } from '../types/monitoring'
 import { ErrorState } from '../components/ErrorState'
 import { Skeleton } from '../components/Skeleton'
 
@@ -35,10 +36,20 @@ function formatDateTime(iso: string | null) {
 }
 
 export function MonitoringPage() {
+  const queryClient = useQueryClient()
+  const [retryingName, setRetryingName] = useState<string | null>(null)
+
   const cronsQuery = useQuery({
     queryKey: ['admin-monitoring-crons'],
     queryFn: () => apiFetch<CronStatus[]>('/admin/monitoring/crons'),
     refetchInterval: 60_000,
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: (name: string) => apiFetch<CronRetryResponse>(`/admin/monitoring/crons/${name}/retry`, { method: 'POST' }),
+    onMutate: (name) => setRetryingName(name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-monitoring-crons'] }),
+    onSettled: () => setRetryingName(null),
   })
 
   const sourcesQuery = useQuery({
@@ -79,24 +90,42 @@ export function MonitoringPage() {
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Last Completed</th>
                 <th className="px-4 py-3 font-medium">Summary</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {cronsQuery.data.map((cron) => (
-                <tr key={cron.name} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 font-medium text-text">{cron.name}</td>
-                  <td className="px-4 py-3 text-text-muted">{cron.schedule}</td>
-                  <td className="px-4 py-3">
-                    {cron.lastStatus ? (
-                      <StatusPill label={cron.lastStatus} styles={CRON_STATUS_STYLES} />
-                    ) : (
-                      <span className="text-xs text-text-muted">Never run</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-text-muted">{formatDateTime(cron.lastFinishedAt)}</td>
-                  <td className="px-4 py-3 text-text-muted">{cron.lastSummary ?? '—'}</td>
-                </tr>
-              ))}
+              {cronsQuery.data.map((cron) => {
+                const isRetrying = retryingName === cron.name && retryMutation.isPending
+                return (
+                  <tr key={cron.name} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 font-medium text-text">{cron.name}</td>
+                    <td className="px-4 py-3 text-text-muted">{cron.schedule}</td>
+                    <td className="px-4 py-3">
+                      {cron.lastStatus ? (
+                        <StatusPill label={cron.lastStatus} styles={CRON_STATUS_STYLES} />
+                      ) : (
+                        <span className="text-xs text-text-muted">Never run</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted">{formatDateTime(cron.lastFinishedAt)}</td>
+                    <td className="px-4 py-3 text-text-muted">{cron.lastSummary ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {cron.missedToday && (
+                        <button
+                          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+                          disabled={isRetrying}
+                          onClick={() => retryMutation.mutate(cron.name)}
+                        >
+                          {isRetrying ? 'Retrying…' : 'Retry'}
+                        </button>
+                      )}
+                      {retryingName === cron.name && retryMutation.isError && (
+                        <p className="mt-1 text-xs text-loss">Couldn't retry.</p>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

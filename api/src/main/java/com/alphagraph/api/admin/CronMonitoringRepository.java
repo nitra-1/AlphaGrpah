@@ -4,7 +4,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,6 +30,8 @@ import java.util.Map;
  */
 @Repository
 public class CronMonitoringRepository {
+
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
     private static final Map<String, String> JOB_SCHEDULES = new LinkedHashMap<>();
 
@@ -48,6 +56,7 @@ public class CronMonitoringRepository {
     }
 
     private final JdbcTemplate jdbcTemplate;
+    private final Clock clock = Clock.system(IST);
 
     public CronMonitoringRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -80,9 +89,12 @@ public class CronMonitoringRepository {
                 String summary = status == null ? "Never run yet" : "%d read, %d accepted, %d rejected".formatted(
                     rs.getInt("rows_read"), rs.getInt("rows_accepted"), rs.getInt("rows_rejected")
                 );
+                String cronExpression = rs.getString("cron_expression");
+                Instant startedAt = toInstant(rs.getTimestamp("started_at"));
                 return new CronStatusDto(
-                    rs.getString("name"), humanizeCron(rs.getString("cron_expression")), "pipeline",
-                    status, toInstant(rs.getTimestamp("started_at")), toInstant(rs.getTimestamp("finished_at")), summary
+                    rs.getString("name"), humanizeCron(cronExpression), "pipeline",
+                    status, startedAt, toInstant(rs.getTimestamp("finished_at")), summary,
+                    computeMissedToday(cronExpression, startedAt, clock.instant())
                 );
             }
         );
@@ -100,29 +112,69 @@ public class CronMonitoringRepository {
                 (rs, rowNum) -> {
                     String status = rs.getString("status");
                     String detail = "FAILED".equals(status) ? rs.getString("error_message") : rs.getString("summary");
+                    Instant startedAt = toInstant(rs.getTimestamp("started_at"));
                     return new CronStatusDto(
                         jobName, humanizeCron(entry.getValue()), "job",
-                        status, toInstant(rs.getTimestamp("started_at")), toInstant(rs.getTimestamp("finished_at")), detail
+                        status, startedAt, toInstant(rs.getTimestamp("finished_at")), detail,
+                        computeMissedToday(entry.getValue(), startedAt, clock.instant())
                     );
                 },
                 jobName
             );
             result.add(rows.isEmpty()
-                ? new CronStatusDto(jobName, humanizeCron(entry.getValue()), "job", null, null, null, "Never run yet")
+                ? new CronStatusDto(
+                    jobName, humanizeCron(entry.getValue()), "job", null, null, null, "Never run yet",
+                    computeMissedToday(entry.getValue(), null, clock.instant())
+                )
                 : rows.get(0));
         }
         return result;
     }
 
     private static String humanizeCron(String cronExpression) {
+        LocalTime scheduledTime = parseScheduledTime(cronExpression);
+        return scheduledTime == null ? cronExpression : "%02d:%02d IST daily".formatted(scheduledTime.getHour(), scheduledTime.getMinute());
+    }
+
+    /**
+     * Every cron in this system is a simple daily "second minute hour * * *" expression (confirmed
+     * across all 9 pipeline definitions and all 17 job constants - no cron in this codebase uses a
+     * day-of-week/month restriction or fires more than once a day), so only fields[1]/[2] matter.
+     * Returns null for anything that doesn't fit that shape rather than guessing.
+     */
+    private static LocalTime parseScheduledTime(String cronExpression) {
         if (cronExpression == null) {
             return null;
         }
         String[] parts = cronExpression.trim().split("\\s+");
         if (parts.length < 3) {
-            return cronExpression;
+            return null;
         }
-        return "%02d:%02d IST daily".formatted(Integer.parseInt(parts[2]), Integer.parseInt(parts[1]));
+        try {
+            return LocalTime.of(Integer.parseInt(parts[2]), Integer.parseInt(parts[1]));
+        } catch (NumberFormatException | DateTimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * True when this cron's scheduled time has already passed today (IST) but no run - success,
+     * failure, or still-{@code RUNNING} - is on record for today. A same-day run of any status
+     * means there's nothing meaningful to retry (a currently-running job would just get a second
+     * concurrent execution), so this is a same-day-or-not check, not a status check. {@code now} is
+     * passed explicitly so this stays a pure, deterministically testable function.
+     */
+    static boolean computeMissedToday(String cronExpression, Instant lastStartedAt, Instant now) {
+        LocalTime scheduledTime = parseScheduledTime(cronExpression);
+        if (scheduledTime == null) {
+            return false;
+        }
+        ZonedDateTime nowIst = now.atZone(IST);
+        LocalDate today = nowIst.toLocalDate();
+        if (nowIst.isBefore(today.atTime(scheduledTime).atZone(IST))) {
+            return false;
+        }
+        return lastStartedAt == null || lastStartedAt.atZone(IST).toLocalDate().isBefore(today);
     }
 
     private static Instant toInstant(Timestamp timestamp) {
