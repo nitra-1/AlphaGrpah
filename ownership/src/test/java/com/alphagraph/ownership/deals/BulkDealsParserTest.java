@@ -24,6 +24,7 @@ class BulkDealsParserTest {
         RawDealRow bulk = parsed.get(0);
         assertThat(bulk.dealType()).isEqualTo("BULK");
         assertThat(bulk.symbol()).isEqualTo("AASTHA");
+        assertThat(bulk.securityName()).isEqualTo("Aastha Spintex Limited");
         assertThat(bulk.dealDate()).isEqualTo("28-JUL-2026");
         assertThat(bulk.clientName()).isEqualTo("D3 STOCK VISION LLP");
         assertThat(bulk.buySell()).isEqualTo("BUY");

@@ -22,7 +22,7 @@ public class BulkDealsParser implements Parser<List<String>, RawDealRow> {
             .map(line -> line.split(",", -1))
             .filter(fields -> fields.length >= 8)
             .map(fields -> new RawDealRow(
-                fields[0].trim(), fields[2].trim(), fields[1].trim(), fields[4].trim(),
+                fields[0].trim(), fields[2].trim(), fields[3].trim(), fields[1].trim(), fields[4].trim(),
                 fields[5].trim(), fields[6].trim(), fields[7].trim()
             ))
             .toList();

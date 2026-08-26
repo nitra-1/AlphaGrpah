@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
 import type { Instrument, Sector, SecurityMasterEntry } from '../types/instrument'
@@ -15,7 +16,9 @@ function useDebounced<T>(value: T, delayMs: number): T {
 
 export function AddInstrumentPage() {
   const queryClient = useQueryClient()
-  const [searchText, setSearchText] = useState('')
+  const [searchParams] = useSearchParams()
+  const prefillSymbol = searchParams.get('symbol')
+  const [searchText, setSearchText] = useState(prefillSymbol ?? '')
   const [selected, setSelected] = useState<SecurityMasterEntry | null>(null)
   const [sectorName, setSectorName] = useState('')
   const [lastAdded, setLastAdded] = useState<Instrument | null>(null)
@@ -26,6 +29,19 @@ export function AddInstrumentPage() {
     queryFn: () => apiFetch<SecurityMasterEntry[]>(`/admin/security-master/search?query=${encodeURIComponent(debouncedSearch)}`),
     enabled: debouncedSearch.trim().length >= 2 && !selected,
   })
+
+  // Arriving from the Discovery page's "Promote" link with ?symbol=XYZ pre-fills the search box
+  // (above) and, once the security-master search resolves, auto-selects the exact match - skips
+  // the manual type-then-click step for a symbol the admin already decided to add.
+  useEffect(() => {
+    if (!prefillSymbol || selected || !searchQuery.data) {
+      return
+    }
+    const exactMatch = searchQuery.data.find((entry) => entry.symbol === prefillSymbol)
+    if (exactMatch) {
+      setSelected(exactMatch)
+    }
+  }, [prefillSymbol, selected, searchQuery.data])
 
   const sectorsQuery = useQuery({
     queryKey: ['sectors'],

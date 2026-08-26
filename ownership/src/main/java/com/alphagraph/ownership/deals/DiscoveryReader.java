@@ -1,0 +1,61 @@
+package com.alphagraph.ownership.deals;
+
+import com.alphagraph.ownership.api.DiscoveryCandidate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import java.sql.Date;
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * Aggregates {@code ownership.discovered_deals} at read time (deal count, distinct buyers, total
+ * quantity, first/latest deal date) for the admin Discovery review page - not a separately
+ * maintained aggregate table, matching this codebase's existing "compute views at read time"
+ * convention (e.g. {@code api.admin.CronMonitoringRepository}'s {@code LEFT JOIN LATERAL}).
+ *
+ * <p>Excludes any symbol already in {@code reference.instruments} (promoted - detected live, not
+ * via a status flag written by the promote action, so this can never drift out of sync with the
+ * real tracked universe) or already {@code DISMISSED} in {@code ownership.discovery_status}.
+ * Cross-schema read by value only, same established pattern as
+ * {@code ownership.pattern.OwnershipInstrumentLookup}.
+ */
+@Component
+public class DiscoveryReader {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public DiscoveryReader(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public List<DiscoveryCandidate> findPendingReview() {
+        return jdbcTemplate.query(
+            """
+            SELECT d.symbol,
+                   MAX(d.security_name) AS security_name,
+                   COUNT(*) AS deal_count,
+                   COUNT(DISTINCT d.client_name) AS distinct_buyers,
+                   SUM(d.quantity) AS total_quantity,
+                   MIN(d.deal_date) AS first_deal_date,
+                   MAX(d.deal_date) AS latest_deal_date
+            FROM ownership.discovered_deals d
+            WHERE NOT EXISTS (SELECT 1 FROM reference.instruments i WHERE i.symbol = d.symbol)
+              AND NOT EXISTS (
+                  SELECT 1 FROM ownership.discovery_status s WHERE s.symbol = d.symbol AND s.status = 'DISMISSED'
+              )
+            GROUP BY d.symbol
+            ORDER BY latest_deal_date DESC
+            """,
+            (rs, rowNum) -> new DiscoveryCandidate(
+                rs.getString("symbol"), rs.getString("security_name"), rs.getInt("deal_count"),
+                rs.getInt("distinct_buyers"), rs.getLong("total_quantity"),
+                toLocalDate(rs.getDate("first_deal_date")), toLocalDate(rs.getDate("latest_deal_date"))
+            )
+        );
+    }
+
+    private static LocalDate toLocalDate(Date date) {
+        return date == null ? null : date.toLocalDate();
+    }
+}

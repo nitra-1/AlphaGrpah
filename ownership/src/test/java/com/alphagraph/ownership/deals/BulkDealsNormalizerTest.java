@@ -11,19 +11,22 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class BulkDealsNormalizerTest {
 
     private final OwnershipInstrumentLookup instrumentLookup = mock(OwnershipInstrumentLookup.class);
-    private final BulkDealsNormalizer normalizer = new BulkDealsNormalizer(instrumentLookup);
+    private final DiscoveredDealWriter discoveredDealWriter = mock(DiscoveredDealWriter.class);
+    private final BulkDealsNormalizer normalizer = new BulkDealsNormalizer(instrumentLookup, discoveredDealWriter);
 
     @Test
     void resolvesKnownSymbolAndParsesAllFieldsIncludingAllCapsDate() {
         UUID instrumentId = UUID.randomUUID();
         when(instrumentLookup.findIdBySymbol("RELIANCE")).thenReturn(Optional.of(instrumentId));
 
-        RawDealRow raw = new RawDealRow("BULK", "RELIANCE", "28-JUL-2026", "SOME FUND", "BUY", "222230", "83.00");
+        RawDealRow raw = new RawDealRow("BULK", "RELIANCE", "Reliance Industries Ltd", "28-JUL-2026", "SOME FUND", "BUY", "222230", "83.00");
 
         BulkDeal deal = normalizer.normalize(raw);
 
@@ -38,13 +41,33 @@ class BulkDealsNormalizerTest {
     }
 
     @Test
+    void resolvedSymbolNeverTouchesDiscoveredDealCapture() {
+        when(instrumentLookup.findIdBySymbol("RELIANCE")).thenReturn(Optional.of(UUID.randomUUID()));
+        RawDealRow raw = new RawDealRow("BULK", "RELIANCE", "Reliance Industries Ltd", "28-JUL-2026", "SOME FUND", "BUY", "222230", "83.00");
+
+        normalizer.normalize(raw);
+
+        verifyNoInteractions(discoveredDealWriter);
+    }
+
+    @Test
     void unknownSymbolThrowsRatherThanReturningAPartialRecord() {
         when(instrumentLookup.findIdBySymbol("AASTHA")).thenReturn(Optional.empty());
 
-        RawDealRow raw = new RawDealRow("BULK", "AASTHA", "28-JUL-2026", "D3 STOCK VISION LLP", "BUY", "222230", "83.00");
+        RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 STOCK VISION LLP", "BUY", "222230", "83.00");
 
         assertThatIllegalStateException()
             .isThrownBy(() -> normalizer.normalize(raw))
             .withMessageContaining("AASTHA");
+    }
+
+    @Test
+    void unknownSymbolCapturesTheRawRowAsADiscoveryCandidateBeforeThrowing() {
+        when(instrumentLookup.findIdBySymbol("AASTHA")).thenReturn(Optional.empty());
+        RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 STOCK VISION LLP", "BUY", "222230", "83.00");
+
+        assertThatIllegalStateException().isThrownBy(() -> normalizer.normalize(raw));
+
+        verify(discoveredDealWriter).capture(raw);
     }
 }
