@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
 
+import static com.alphagraph.ownership.deals.DiscoveredDealWriter.normalizeClientName;
+
 class DiscoveredDealWriterTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
@@ -39,5 +41,36 @@ class DiscoveredDealWriterTest {
         RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "not-a-date", "D3 STOCK VISION LLP", "BUY", "222230", "83.00");
 
         assertThatCode(() -> writer.capture(raw)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void captureStoresTheNormalizedClientNameAlongsideTheRawOne() {
+        RawDealRow raw = new RawDealRow(
+            "BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "  D3 Stock-Vision, LLP.  ", "BUY", "222230", "83.00"
+        );
+
+        writer.capture(raw);
+
+        // Invocation.getArguments() flattens the update(String, Object...) call to [sql, ...varargs] -
+        // the 11-column deal insert is the only "update" invocation with 12 total elements.
+        Object[] insertArgs = mockingDetails(jdbcTemplate).getInvocations().stream()
+            .filter(inv -> inv.getMethod().getName().equals("update"))
+            .map(Invocation::getArguments)
+            .filter(args -> args.length == 12)
+            .findFirst().orElseThrow();
+        assertThat(insertArgs[5]).isEqualTo("  D3 Stock-Vision, LLP.  ");
+        assertThat(insertArgs[6]).isEqualTo("D3 STOCKVISION LLP");
+    }
+
+    @Test
+    void normalizeClientNameUppercasesTrimsStripsPunctuationAndCollapsesWhitespace() {
+        assertThat(normalizeClientName("  D3 Stock-Vision, LLP.  ")).isEqualTo("D3 STOCKVISION LLP");
+        assertThat(normalizeClientName("ABC Mutual Fund")).isEqualTo("ABC MUTUAL FUND");
+        assertThat(normalizeClientName("ABC   MUTUAL    FUND")).isEqualTo("ABC MUTUAL FUND");
+    }
+
+    @Test
+    void normalizeClientNameOfNullIsNull() {
+        assertThat(normalizeClientName(null)).isNull();
     }
 }

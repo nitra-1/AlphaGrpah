@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -43,12 +44,12 @@ class DiscoveredDealWriter {
             jdbcTemplate.update(
                 """
                 INSERT INTO ownership.discovered_deals
-                    (id, symbol, security_name, deal_date, client_name, buy_sell, quantity, price, deal_value, deal_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, symbol, security_name, deal_date, client_name, client_name_normalized, buy_sell, quantity, price, deal_value, deal_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (symbol, deal_date, client_name, buy_sell, deal_type) DO NOTHING
                 """,
                 UUID.randomUUID(), raw.symbol(), blankToNull(raw.securityName()), dealDate, raw.clientName(),
-                raw.buySell(), quantity, price, dealValue, raw.dealType()
+                normalizeClientName(raw.clientName()), raw.buySell(), quantity, price, dealValue, raw.dealType()
             );
 
             jdbcTemplate.update(
@@ -66,5 +67,21 @@ class DiscoveredDealWriter {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * Deterministic normalization only (uppercase, trim, strip punctuation, collapse whitespace) -
+     * not real entity resolution; see V5's migration comment for the identical SQL-side algorithm
+     * used to backfill rows captured before this column existed. "ABC MUTUAL FUND LTD" vs
+     * "ABC MUTUAL FUND" won't collapse under this - a known, accepted v1 limitation.
+     */
+    static String normalizeClientName(String clientName) {
+        if (clientName == null) {
+            return null;
+        }
+        String upperTrimmed = clientName.trim().toUpperCase(Locale.ROOT);
+        String noPunctuation = upperTrimmed.replaceAll("[^A-Z0-9 ]", "");
+        String collapsed = noPunctuation.replaceAll("\\s+", " ").trim();
+        return collapsed.isEmpty() ? null : collapsed;
     }
 }

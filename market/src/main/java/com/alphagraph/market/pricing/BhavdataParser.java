@@ -10,7 +10,9 @@ import java.util.List;
  * only SERIES = EQ rows; bonds/gold-bonds/T-bills etc. in the same file aren't equity market
  * data. Column order: SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE,
  * LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, NO_OF_TRADES, DELIV_QTY,
- * DELIV_PER.
+ * DELIV_PER. TURNOVER_LACS (index 11) is NSE's own real traded-value figure - captured here (the
+ * Sprint 2 discovery-ADTV feature needs genuine turnover, not an estimate) even though the
+ * tracked-instrument path (market.daily_prices) doesn't store it yet.
  */
 @Component
 public class BhavdataParser implements Parser<List<String>, RawDeliveryRow> {
@@ -24,7 +26,7 @@ public class BhavdataParser implements Parser<List<String>, RawDeliveryRow> {
             .map(fields -> new RawDeliveryRow(
                 fields[0].trim(), fields[1].trim(), fields[2].trim(),
                 fields[4].trim(), fields[5].trim(), fields[6].trim(), fields[8].trim(),
-                fields[10].trim(), fields[14].trim()
+                fields[10].trim(), fields[11].trim(), fields[14].trim()
             ))
             .toList();
     }

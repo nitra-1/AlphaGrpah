@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 public record DiscoveryCandidateDto(
     String symbol, String securityName, int dealCount, int distinctBuyers,
-    long totalQuantity, LocalDate firstDealDate, LocalDate latestDealDate
+    long totalQuantity, LocalDate firstDealDate, LocalDate latestDealDate,
+    Double maxMaterialityScore, String maxMaterialityLevel, Double largestDealToAdtvRatio
 ) {
 }

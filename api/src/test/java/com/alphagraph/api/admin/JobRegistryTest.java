@@ -17,6 +17,8 @@ import com.alphagraph.intelligence.sector.SectorAnalysisScheduler;
 import com.alphagraph.intelligence.technical.TechnicalAnalysisScheduler;
 import com.alphagraph.learning.outcomes.ForwardOutcomeScheduler;
 import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
+import com.alphagraph.market.pricing.MarketPriceBackfillScheduler;
+import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -28,6 +30,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class JobRegistryTest {
 
+    private final MarketPriceBackfillScheduler marketPriceBackfillScheduler = mock(MarketPriceBackfillScheduler.class);
+    private final DealMaterialityScoringScheduler dealMaterialityScoringScheduler = mock(DealMaterialityScoringScheduler.class);
     private final DocumentProcessingScheduler documentProcessingScheduler = mock(DocumentProcessingScheduler.class);
     private final KnowledgeExtractionScheduler knowledgeExtractionScheduler = mock(KnowledgeExtractionScheduler.class);
     private final TechnicalAnalysisScheduler technicalAnalysisScheduler = mock(TechnicalAnalysisScheduler.class);
@@ -47,6 +51,7 @@ class JobRegistryTest {
     private final DailyReportScheduler dailyReportScheduler = mock(DailyReportScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
+        marketPriceBackfillScheduler, dealMaterialityScoringScheduler,
         documentProcessingScheduler, knowledgeExtractionScheduler, technicalAnalysisScheduler,
         financialResultsBridgeScheduler, fundamentalAnalysisScheduler, eventExtractionScheduler,
         institutionalAnalysisScheduler, sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler,
@@ -54,7 +59,8 @@ class JobRegistryTest {
         decisionSnapshotScheduler, forwardOutcomeScheduler, dailyReportScheduler
     );
 
-    private static final List<String> ALL_17_JOB_NAMES = List.of(
+    private static final List<String> ALL_19_JOB_NAMES = List.of(
+        "market-discovery-price-backfill", "deal-materiality-scoring",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
         "risk-analysis", "order-book", "management-commentary", "news-catalyst", "corporate-signal",
@@ -62,8 +68,8 @@ class JobRegistryTest {
     );
 
     @Test
-    void containsExactlyAllSeventeenRealJobNames() {
-        for (String jobName : ALL_17_JOB_NAMES) {
+    void containsExactlyAllNineteenRealJobNames() {
+        for (String jobName : ALL_19_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -75,6 +81,7 @@ class JobRegistryTest {
 
         verify(knowledgeExtractionScheduler).runKnowledgeExtraction();
         verifyNoInteractions(
+            marketPriceBackfillScheduler, dealMaterialityScoringScheduler,
             documentProcessingScheduler, technicalAnalysisScheduler, financialResultsBridgeScheduler,
             fundamentalAnalysisScheduler, eventExtractionScheduler, institutionalAnalysisScheduler,
             sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler, managementCommentaryScheduler,
@@ -85,6 +92,8 @@ class JobRegistryTest {
 
     @Test
     void triggerInvokesEachRegisteredJobsOwnMethod() {
+        registry.trigger("market-discovery-price-backfill");
+        registry.trigger("deal-materiality-scoring");
         registry.trigger("document-processing");
         registry.trigger("technical-analysis");
         registry.trigger("financial-results-bridge");
@@ -102,6 +111,8 @@ class JobRegistryTest {
         registry.trigger("forward-outcome-tracking");
         registry.trigger("daily-ai-report");
 
+        verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
+        verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
         verify(documentProcessingScheduler).runDocumentProcessing();
         verify(technicalAnalysisScheduler).runDailyTechnicalAnalysis();
         verify(financialResultsBridgeScheduler).runDailyFinancialResultsBridge();

@@ -40,6 +40,12 @@ public class DiscoveryController {
         return viewService.listPendingReview();
     }
 
+    @Operation(summary = "List individual deals for one Discovery symbol", description = "Expand-on-click detail - each deal's own materiality result is included when it's been scored yet, null otherwise.")
+    @GetMapping("/{symbol}/deals")
+    public List<DiscoveredDealDetailDto> deals(@PathVariable String symbol) {
+        return viewService.listDealsForSymbol(symbol);
+    }
+
     @Operation(summary = "Dismiss a discovery candidate", description = "Terminal - the symbol stops appearing here even if new deal activity arrives later.")
     @PostMapping("/{symbol}/discard")
     public ResponseEntity<Void> discard(@PathVariable String symbol) {

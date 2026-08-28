@@ -74,6 +74,7 @@ public class MarketDataScheduledPipeline implements ScheduledPipeline {
 
         Map<String, Function<RawDeliveryRow, ?>> expectedFields = new HashMap<>(requiredFields);
         expectedFields.put("deliveryPercentage", RawDeliveryRow::deliveryPercentage);
+        expectedFields.put("turnoverLacs", RawDeliveryRow::turnoverLacs);
         DataQualitySpec<RawDeliveryRow> qualitySpec = new DataQualitySpec<>(
             expectedFields, requiredFields.keySet(), RawDeliveryRow::symbol
         );

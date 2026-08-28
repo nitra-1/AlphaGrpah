@@ -17,13 +17,15 @@ import com.alphagraph.intelligence.sector.SectorAnalysisScheduler;
 import com.alphagraph.intelligence.technical.TechnicalAnalysisScheduler;
 import com.alphagraph.learning.outcomes.ForwardOutcomeScheduler;
 import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
+import com.alphagraph.market.pricing.MarketPriceBackfillScheduler;
+import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for the 17 standalone {@code @Scheduled} jobs - the {@code
+ * Manual re-trigger dispatch for the 19 standalone {@code @Scheduled} jobs - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
  * Scheduler bean method Spring's own cron trigger would call, so a manual retry gets identical
@@ -38,6 +40,8 @@ class JobRegistry {
     private final Map<String, Runnable> jobs = new LinkedHashMap<>();
 
     JobRegistry(
+        MarketPriceBackfillScheduler marketPriceBackfillScheduler,
+        DealMaterialityScoringScheduler dealMaterialityScoringScheduler,
         DocumentProcessingScheduler documentProcessingScheduler,
         KnowledgeExtractionScheduler knowledgeExtractionScheduler,
         TechnicalAnalysisScheduler technicalAnalysisScheduler,
@@ -56,6 +60,8 @@ class JobRegistry {
         ForwardOutcomeScheduler forwardOutcomeScheduler,
         DailyReportScheduler dailyReportScheduler
     ) {
+        jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
+        jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

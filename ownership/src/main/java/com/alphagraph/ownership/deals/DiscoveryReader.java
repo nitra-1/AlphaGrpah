@@ -4,6 +4,7 @@ import com.alphagraph.ownership.api.DiscoveryCandidate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
@@ -44,24 +45,45 @@ public class DiscoveryReader {
                    COUNT(DISTINCT d.client_name) AS distinct_buyers,
                    SUM(d.quantity) AS total_quantity,
                    MIN(d.deal_date) AS first_deal_date,
-                   MAX(d.deal_date) AS latest_deal_date
+                   MAX(d.deal_date) AS latest_deal_date,
+                   best.materiality_score AS max_materiality_score,
+                   best.materiality_level AS max_materiality_level,
+                   widest.largest_ratio AS largest_deal_to_adtv_ratio
             FROM ownership.discovered_deals d
+            LEFT JOIN LATERAL (
+                SELECT m.materiality_score, m.materiality_level
+                FROM ownership.deal_materiality m
+                WHERE m.symbol = d.symbol
+                ORDER BY m.materiality_score DESC
+                LIMIT 1
+            ) best ON true
+            LEFT JOIN LATERAL (
+                SELECT MAX(m2.deal_to_adtv_ratio) AS largest_ratio
+                FROM ownership.deal_materiality m2
+                WHERE m2.symbol = d.symbol
+            ) widest ON true
             WHERE NOT EXISTS (SELECT 1 FROM reference.instruments i WHERE i.symbol = d.symbol)
               AND NOT EXISTS (
                   SELECT 1 FROM ownership.discovery_status s WHERE s.symbol = d.symbol AND s.status = 'DISMISSED'
               )
-            GROUP BY d.symbol
-            ORDER BY latest_deal_date DESC, deal_count DESC, d.symbol
+            GROUP BY d.symbol, best.materiality_score, best.materiality_level, widest.largest_ratio
+            ORDER BY latest_deal_date DESC, max_materiality_score DESC NULLS LAST, deal_count DESC, d.symbol
             """,
             (rs, rowNum) -> new DiscoveryCandidate(
                 rs.getString("symbol"), rs.getString("security_name"), rs.getInt("deal_count"),
                 rs.getInt("distinct_buyers"), rs.getLong("total_quantity"),
-                toLocalDate(rs.getDate("first_deal_date")), toLocalDate(rs.getDate("latest_deal_date"))
+                toLocalDate(rs.getDate("first_deal_date")), toLocalDate(rs.getDate("latest_deal_date")),
+                toDouble(rs.getBigDecimal("max_materiality_score")), rs.getString("max_materiality_level"),
+                toDouble(rs.getBigDecimal("largest_deal_to_adtv_ratio"))
             )
         );
     }
 
     private static LocalDate toLocalDate(Date date) {
         return date == null ? null : date.toLocalDate();
+    }
+
+    private static Double toDouble(BigDecimal value) {
+        return value == null ? null : value.doubleValue();
     }
 }

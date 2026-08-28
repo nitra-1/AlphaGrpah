@@ -30,6 +30,7 @@ class BhavdataParserTest {
         assertThat(row.low()).isEqualTo("971.60");
         assertThat(row.close()).isEqualTo("1039.40");
         assertThat(row.volume()).isEqualTo("2105588");
+        assertThat(row.turnoverLacs()).isEqualTo("21638.42");
         assertThat(row.deliveryPercentage()).isEqualTo("22.57");
     }
 

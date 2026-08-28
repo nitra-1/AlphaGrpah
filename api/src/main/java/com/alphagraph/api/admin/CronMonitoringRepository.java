@@ -36,6 +36,8 @@ public class CronMonitoringRepository {
     private static final Map<String, String> JOB_SCHEDULES = new LinkedHashMap<>();
 
     static {
+        JOB_SCHEDULES.put("market-discovery-price-backfill", "0 10 18 * * *");
+        JOB_SCHEDULES.put("deal-materiality-scoring", "0 20 18 * * *");
         JOB_SCHEDULES.put("document-processing", "0 15 18 * * *");
         JOB_SCHEDULES.put("knowledge-extraction", "0 30 18 * * *");
         JOB_SCHEDULES.put("technical-analysis", "0 30 18 * * *");

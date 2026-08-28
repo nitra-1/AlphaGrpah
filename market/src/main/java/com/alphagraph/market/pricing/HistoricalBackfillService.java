@@ -19,6 +19,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -104,29 +105,9 @@ public class HistoricalBackfillService {
         );
     }
 
-    /**
-     * Full-row column order (matches BhavdataParser/SecurityMasterParser's proven approach -
-     * every field kept at its real CSV index, no capture-group slicing that would shift indices
-     * and risk exactly the kind of off-by-N bug a slice-then-reindex approach invites): SYMBOL(0),
-     * SERIES(1), DATE1(2), PREV_CLOSE(3), OPEN_PRICE(4), HIGH_PRICE(5), LOW_PRICE(6),
-     * LAST_PRICE(7), CLOSE_PRICE(8), AVG_PRICE(9), TTL_TRD_QNTY(10), TURNOVER_LACS(11),
-     * NO_OF_TRADES(12), DELIV_QTY(13), DELIV_PER(14).
-     */
     private void fetchOneDay(UUID instrumentId, String symbol, LocalDate date, Map<LocalDate, DailyPrice> byDate) {
-        String url = urlTemplate.formatted(date.format(URL_DATE_FORMAT));
-        String body;
-        try {
-            body = restClient.get().uri(url).retrieve().body(String.class);
-        } catch (HttpClientErrorException.NotFound e) {
-            return;
-        }
-        if (body == null || body.isBlank()) {
-            return;
-        }
-
-        body.lines()
-            .map(line -> line.split(",\\s*", -1))
-            .filter(fields -> fields.length >= 15 && "EQ".equals(fields[1].trim()) && symbol.equals(fields[0].trim()))
+        fetchEquityRows(date).stream()
+            .filter(fields -> symbol.equals(fields[0].trim()))
             .findFirst()
             .ifPresent(fields -> {
                 LocalDate tradeDate = LocalDate.parse(fields[2].trim(), ROW_DATE_FORMAT);
@@ -140,5 +121,36 @@ public class HistoricalBackfillService {
 
                 byDate.put(tradeDate, new DailyPrice(instrumentId, symbol, tradeDate, open, high, low, close, volume, deliveryPercentage));
             });
+    }
+
+    /**
+     * Fetches one calendar day's full bhavdata CSV and splits it into EQ-series rows, every field
+     * kept at its real CSV index (matches BhavdataParser/SecurityMasterParser's proven approach -
+     * no capture-group slicing that would shift indices and risk exactly the kind of off-by-N bug
+     * a slice-then-reindex approach invites): SYMBOL(0), SERIES(1), DATE1(2), PREV_CLOSE(3),
+     * OPEN_PRICE(4), HIGH_PRICE(5), LOW_PRICE(6), LAST_PRICE(7), CLOSE_PRICE(8), AVG_PRICE(9),
+     * TTL_TRD_QNTY(10), TURNOVER_LACS(11), NO_OF_TRADES(12), DELIV_QTY(13), DELIV_PER(14).
+     *
+     * <p>Returns an empty list on a 404 (holiday/no file yet) or a blank body - never throws for
+     * either, matching the original single-symbol path's behavior. Package-private: shared with
+     * {@code MarketPriceBackfillOrchestrator}, which needs every still-needed symbol's row out of
+     * the same day's file rather than fetching the same URL once per symbol.
+     */
+    List<String[]> fetchEquityRows(LocalDate date) {
+        String url = urlTemplate.formatted(date.format(URL_DATE_FORMAT));
+        String body;
+        try {
+            body = restClient.get().uri(url).retrieve().body(String.class);
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        }
+        if (body == null || body.isBlank()) {
+            return List.of();
+        }
+
+        return body.lines()
+            .map(line -> line.split(",\\s*", -1))
+            .filter(fields -> fields.length >= 15 && "EQ".equals(fields[1].trim()))
+            .toList();
     }
 }
