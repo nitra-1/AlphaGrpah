@@ -19,6 +19,12 @@ import java.util.List;
  * real tracked universe) or already {@code DISMISSED} in {@code ownership.discovery_status}.
  * Cross-schema read by value only, same established pattern as
  * {@code ownership.pattern.OwnershipInstrumentLookup}.
+ *
+ * <p>Ordered by most-recently-active symbol first, but real data ties heavily on that alone - the
+ * daily cron typically leaves dozens of symbols sharing the same {@code latest_deal_date} (today),
+ * so {@code deal_count} is a real secondary sort key (more persistent activity first among
+ * same-day symbols), with {@code symbol} as a final deterministic tie-break so the order never
+ * looks arbitrary between two otherwise-identical candidates.
  */
 @Component
 public class DiscoveryReader {
@@ -45,7 +51,7 @@ public class DiscoveryReader {
                   SELECT 1 FROM ownership.discovery_status s WHERE s.symbol = d.symbol AND s.status = 'DISMISSED'
               )
             GROUP BY d.symbol
-            ORDER BY latest_deal_date DESC
+            ORDER BY latest_deal_date DESC, deal_count DESC, d.symbol
             """,
             (rs, rowNum) -> new DiscoveryCandidate(
                 rs.getString("symbol"), rs.getString("security_name"), rs.getInt("deal_count"),

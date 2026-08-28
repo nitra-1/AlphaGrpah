@@ -473,6 +473,8 @@ Live-verified end to end against the real running app, real NSE data, not mocked
 
 Sprints 2+ (materiality via ADTV - not free float/market cap, which don't exist - institutional observations, research-universe promotion rules, generalizing `ForwardOutcomeEngine` for deal-event follow-through, buyer/entity/theme clustering through the Knowledge Relationship layer) are real, deliberately-scoped future work, not started.
 
+**Fix: Discovery list ordering looked arbitrary once volume grew** (2026-08-27): user reported the list didn't look sorted. Real cause, found live: `DiscoveryReader`'s original `ORDER BY latest_deal_date DESC` has only one real value in practice - "today" - once the daily cron has run, since most active symbols share that same date. With no secondary sort key, Postgres's tie-break among dozens of same-date rows is undefined/arbitrary, not meaningful. Fixed by adding `deal_count DESC` as a real secondary key (ties toward the persistence signal - more repeated activity ranks higher among same-day candidates, directly answering the "why does a symbol reappearing across days matter" question this session's own discussion just walked through) and `symbol` as a final deterministic tie-break. Live-verified against real data: WEL (44 deals) → RAMBHAJO (41) → SUNSHINE (25) → ... down to real four-way ties (10/10/10/10, 8/8) correctly broken alphabetically.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
