@@ -19,6 +19,7 @@ import com.alphagraph.learning.outcomes.ForwardOutcomeScheduler;
 import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
 import com.alphagraph.market.pricing.MarketPriceBackfillScheduler;
 import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
+import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,6 +33,7 @@ class JobRegistryTest {
 
     private final MarketPriceBackfillScheduler marketPriceBackfillScheduler = mock(MarketPriceBackfillScheduler.class);
     private final DealMaterialityScoringScheduler dealMaterialityScoringScheduler = mock(DealMaterialityScoringScheduler.class);
+    private final InstitutionalInterpretationScheduler institutionalInterpretationScheduler = mock(InstitutionalInterpretationScheduler.class);
     private final DocumentProcessingScheduler documentProcessingScheduler = mock(DocumentProcessingScheduler.class);
     private final KnowledgeExtractionScheduler knowledgeExtractionScheduler = mock(KnowledgeExtractionScheduler.class);
     private final TechnicalAnalysisScheduler technicalAnalysisScheduler = mock(TechnicalAnalysisScheduler.class);
@@ -51,7 +53,7 @@ class JobRegistryTest {
     private final DailyReportScheduler dailyReportScheduler = mock(DailyReportScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
-        marketPriceBackfillScheduler, dealMaterialityScoringScheduler,
+        marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
         documentProcessingScheduler, knowledgeExtractionScheduler, technicalAnalysisScheduler,
         financialResultsBridgeScheduler, fundamentalAnalysisScheduler, eventExtractionScheduler,
         institutionalAnalysisScheduler, sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler,
@@ -59,8 +61,8 @@ class JobRegistryTest {
         decisionSnapshotScheduler, forwardOutcomeScheduler, dailyReportScheduler
     );
 
-    private static final List<String> ALL_19_JOB_NAMES = List.of(
-        "market-discovery-price-backfill", "deal-materiality-scoring",
+    private static final List<String> ALL_20_JOB_NAMES = List.of(
+        "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
         "risk-analysis", "order-book", "management-commentary", "news-catalyst", "corporate-signal",
@@ -68,8 +70,8 @@ class JobRegistryTest {
     );
 
     @Test
-    void containsExactlyAllNineteenRealJobNames() {
-        for (String jobName : ALL_19_JOB_NAMES) {
+    void containsExactlyAllTwentyRealJobNames() {
+        for (String jobName : ALL_20_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -81,7 +83,7 @@ class JobRegistryTest {
 
         verify(knowledgeExtractionScheduler).runKnowledgeExtraction();
         verifyNoInteractions(
-            marketPriceBackfillScheduler, dealMaterialityScoringScheduler,
+            marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
             documentProcessingScheduler, technicalAnalysisScheduler, financialResultsBridgeScheduler,
             fundamentalAnalysisScheduler, eventExtractionScheduler, institutionalAnalysisScheduler,
             sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler, managementCommentaryScheduler,
@@ -94,6 +96,7 @@ class JobRegistryTest {
     void triggerInvokesEachRegisteredJobsOwnMethod() {
         registry.trigger("market-discovery-price-backfill");
         registry.trigger("deal-materiality-scoring");
+        registry.trigger("institutional-interpretation");
         registry.trigger("document-processing");
         registry.trigger("technical-analysis");
         registry.trigger("financial-results-bridge");
@@ -113,6 +116,7 @@ class JobRegistryTest {
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
+        verify(institutionalInterpretationScheduler).runInstitutionalInterpretation();
         verify(documentProcessingScheduler).runDocumentProcessing();
         verify(technicalAnalysisScheduler).runDailyTechnicalAnalysis();
         verify(financialResultsBridgeScheduler).runDailyFinancialResultsBridge();

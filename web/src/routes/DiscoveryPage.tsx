@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
-import type { DiscoveryCandidate, DiscoveryDealDetail } from '../types/discovery'
+import type { DiscoveryCandidate, DiscoveryDealDetail, InstitutionalInterpretationDetail } from '../types/discovery'
 import { ErrorState } from '../components/ErrorState'
 import { Skeleton } from '../components/Skeleton'
 import { MaterialityBadge } from '../components/MaterialityBadge'
 import { FlowStateBadge } from '../components/FlowStateBadge'
+import { InstitutionalStateBadge } from '../components/InstitutionalStateBadge'
+import { ConfirmationBadge } from '../components/ConfirmationBadge'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -20,10 +22,15 @@ function formatRatio(ratio: number) {
   return `${ratio.toFixed(2)}x`
 }
 
+function formatEventStructure(value: string) {
+  return value.replace(/_/g, ' ')
+}
+
 export function DiscoveryPage() {
   const queryClient = useQueryClient()
   const [actioningSymbol, setActioningSymbol] = useState<string | null>(null)
-  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
+  const [expandedDeals, setExpandedDeals] = useState<string | null>(null)
+  const [expandedWhy, setExpandedWhy] = useState<string | null>(null)
 
   const listQuery = useQuery({
     queryKey: ['discovery'],
@@ -42,9 +49,11 @@ export function DiscoveryPage() {
       <h1 className="text-2xl font-bold text-text">Discovery</h1>
       <p className="mt-1 text-sm text-text-muted">
         Real NSE bulk/block deal activity in stocks not currently tracked - institutional buying signal that would otherwise be silently
-        discarded. Materiality (Deal Value / 20-day ADTV, repetition, breadth) ranks how significant a deal is; reported net flow is a
-        separate, deliberately distinct signal - disclosed deals leaning buy-side isn't proof of genuine accumulation. Promote a symbol to
-        start tracking it, or Discard to stop seeing it here.
+        discarded. Materiality ranks how significant a deal is; institutional state interprets the pattern
+        (accumulation/distribution/churn); Discovery confirmation checks whether subsequent price/delivery/volume behavior actually
+        backed it up, within a bounded T+1/T+3/T+5-session window. All four - materiality, reported flow, institutional state, and
+        confirmation - are deliberately kept separate, never blended into one score. Promote a symbol to start tracking it, or Discard to
+        stop seeing it here.
       </p>
 
       {listQuery.isLoading && (
@@ -68,7 +77,8 @@ export function DiscoveryPage() {
         <div className="mt-6 space-y-3">
           {listQuery.data.map((candidate) => {
             const isActioning = actioningSymbol === candidate.symbol && discardMutation.isPending
-            const isExpanded = expandedSymbol === candidate.symbol
+            const dealsExpanded = expandedDeals === candidate.symbol
+            const whyExpanded = expandedWhy === candidate.symbol
             return (
               <div key={candidate.symbol} className="rounded-2xl border border-border bg-surface p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -89,6 +99,18 @@ export function DiscoveryPage() {
                         <> &middot; largest deal {formatRatio(candidate.largestDealToAdtvRatio)} ADTV</>
                       )}
                     </p>
+                    {candidate.institutionalState && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-text-muted">
+                          {candidate.eventStructure && formatEventStructure(candidate.eventStructure)}
+                        </span>
+                        <InstitutionalStateBadge state={candidate.institutionalState} />
+                        <ConfirmationBadge state={candidate.discoveryConfirmationState} />
+                        {candidate.interpretationConfidence != null && (
+                          <span className="text-xs text-text-muted">confidence {candidate.interpretationConfidence.toFixed(0)}%</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="mt-4 flex items-center gap-3">
@@ -105,22 +127,83 @@ export function DiscoveryPage() {
                   >
                     {isActioning ? 'Discarding…' : 'Discard'}
                   </button>
-                  <button
-                    className="ml-auto text-sm font-semibold text-accent hover:text-accent-hover"
-                    onClick={() => setExpandedSymbol(isExpanded ? null : candidate.symbol)}
-                  >
-                    {isExpanded ? 'Hide deals' : 'Show deals'}
-                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    {candidate.institutionalState && (
+                      <button
+                        className="text-sm font-semibold text-accent hover:text-accent-hover"
+                        onClick={() => setExpandedWhy(whyExpanded ? null : candidate.symbol)}
+                      >
+                        {whyExpanded ? 'Hide why' : 'Why?'}
+                      </button>
+                    )}
+                    <button
+                      className="text-sm font-semibold text-accent hover:text-accent-hover"
+                      onClick={() => setExpandedDeals(dealsExpanded ? null : candidate.symbol)}
+                    >
+                      {dealsExpanded ? 'Hide deals' : 'Show deals'}
+                    </button>
+                  </div>
                 </div>
                 {actioningSymbol === candidate.symbol && discardMutation.isError && (
                   <p className="mt-2 text-sm text-loss">Couldn't discard.</p>
                 )}
-                {isExpanded && <DealList symbol={candidate.symbol} />}
+                {whyExpanded && <WhySection symbol={candidate.symbol} />}
+                {dealsExpanded && <DealList symbol={candidate.symbol} />}
               </div>
             )
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+function WhySection({ symbol }: { symbol: string }) {
+  const interpretationQuery = useQuery({
+    queryKey: ['discovery', symbol, 'interpretation'],
+    queryFn: () => apiFetch<InstitutionalInterpretationDetail>(`/admin/discovery/${symbol}/interpretation`),
+  })
+
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-bg p-4">
+      {interpretationQuery.isLoading && <Skeleton className="h-4 w-full" />}
+      {interpretationQuery.error && <ErrorState message="Couldn't load interpretation." onRetry={interpretationQuery.refetch} />}
+      {interpretationQuery.data && (
+        <>
+          {interpretationQuery.data.discoveryConfirmationState !== 'NOT_APPLICABLE' && (
+            <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <ConfirmationMetric label="Price" value={interpretationQuery.data.priceConfirmationScore} />
+              <ConfirmationMetric label="Delivery" value={interpretationQuery.data.deliveryConfirmationScore} />
+              <ConfirmationMetric label="Volume" value={interpretationQuery.data.volumeConfirmationScore} />
+              <ConfirmationMetric label="Repeat activity" value={interpretationQuery.data.repeatActivityConfirmationScore} />
+            </div>
+          )}
+          {interpretationQuery.data.reasons.length === 0 && (
+            <p className="text-sm text-text-muted">No specific evidence recorded yet.</p>
+          )}
+          <ul className="space-y-1 text-sm text-text">
+            {interpretationQuery.data.reasons.map((reason, i) => (
+              <li key={i} className="flex items-baseline gap-2">
+                <span>&bull;</span>
+                <span>
+                  {formatEventStructure(reason.reasonCode)}
+                  {reason.evidenceReference && <span className="text-text-muted"> — {reason.evidenceReference}</span>}
+                  {reason.metricValue != null && <span className="text-text-muted"> ({reason.metricValue.toFixed(1)})</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ConfirmationMetric({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="rounded-lg bg-surface p-2 text-center">
+      <div className="text-xs text-text-muted">{label}</div>
+      <div className="text-lg font-semibold text-text">{value != null ? value.toFixed(0) : '—'}</div>
     </div>
   )
 }

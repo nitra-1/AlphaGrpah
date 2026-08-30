@@ -1,5 +1,6 @@
 package com.alphagraph.ownership.deals;
 
+import com.alphagraph.ownership.interpretation.ParticipantResolver;
 import org.junit.jupiter.api.Test;
 import org.mockito.invocation.Invocation;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,7 +15,8 @@ import static com.alphagraph.ownership.deals.DiscoveredDealWriter.normalizeClien
 class DiscoveredDealWriterTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-    private final DiscoveredDealWriter writer = new DiscoveredDealWriter(jdbcTemplate);
+    private final ParticipantResolver participantResolver = mock(ParticipantResolver.class);
+    private final DiscoveredDealWriter writer = new DiscoveredDealWriter(jdbcTemplate, participantResolver);
 
     @Test
     void validRowWritesBothTheRawDealAndTheDiscoveryStatus() {
@@ -52,11 +54,11 @@ class DiscoveredDealWriterTest {
         writer.capture(raw);
 
         // Invocation.getArguments() flattens the update(String, Object...) call to [sql, ...varargs] -
-        // the 11-column deal insert is the only "update" invocation with 12 total elements.
+        // the 12-column deal insert is the only "update" invocation with 13 total elements.
         Object[] insertArgs = mockingDetails(jdbcTemplate).getInvocations().stream()
             .filter(inv -> inv.getMethod().getName().equals("update"))
             .map(Invocation::getArguments)
-            .filter(args -> args.length == 12)
+            .filter(args -> args.length == 13)
             .findFirst().orElseThrow();
         assertThat(insertArgs[5]).isEqualTo("  D3 Stock-Vision, LLP.  ");
         assertThat(insertArgs[6]).isEqualTo("D3 STOCKVISION LLP");
@@ -72,5 +74,34 @@ class DiscoveredDealWriterTest {
     @Test
     void normalizeClientNameOfNullIsNull() {
         assertThat(normalizeClientName(null)).isNull();
+    }
+
+    @Test
+    void captureResolvesAndStoresTheParticipantId() {
+        java.util.UUID participantId = java.util.UUID.randomUUID();
+        org.mockito.Mockito.when(participantResolver.resolve("D3 Stock-Vision LLP", "D3 STOCKVISION LLP")).thenReturn(participantId);
+        RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 Stock-Vision LLP", "BUY", "222230", "83.00");
+
+        writer.capture(raw);
+
+        Object[] insertArgs = mockingDetails(jdbcTemplate).getInvocations().stream()
+            .filter(inv -> inv.getMethod().getName().equals("update"))
+            .map(Invocation::getArguments)
+            .filter(args -> args.length == 13)
+            .findFirst().orElseThrow();
+        assertThat(insertArgs[12]).isEqualTo(participantId);
+    }
+
+    @Test
+    void aParticipantResolutionFailureIsSwallowedAndTheRowStillCaptures() {
+        org.mockito.Mockito.when(participantResolver.resolve(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+            .thenThrow(new RuntimeException("boom"));
+        RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 Stock-Vision LLP", "BUY", "222230", "83.00");
+
+        assertThatCode(() -> writer.capture(raw)).doesNotThrowAnyException();
+
+        long updateCalls = mockingDetails(jdbcTemplate).getInvocations().stream()
+            .map(Invocation::getMethod).filter(method -> method.getName().equals("update")).count();
+        assertThat(updateCalls).isEqualTo(2);
     }
 }

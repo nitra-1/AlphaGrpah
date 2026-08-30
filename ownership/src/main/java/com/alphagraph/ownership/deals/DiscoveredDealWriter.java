@@ -1,5 +1,6 @@
 package com.alphagraph.ownership.deals;
 
+import com.alphagraph.ownership.interpretation.ParticipantResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,6 +23,12 @@ import java.util.UUID;
  * any failure here (a malformed quantity/price, a transient DB issue) is caught and logged, never
  * propagated - a bug in this side-channel capture must never suppress or change the real
  * "Unknown instrument" rejection the caller is about to throw.
+ *
+ * <p>Sprint 3: also resolves the deal's participant (see {@link ParticipantResolver}) so
+ * repetition/breadth/churn can be judged per genuine real-world entity, not per raw string.
+ * Resolution failure is swallowed the same best-effort way - a row still gets captured with a null
+ * {@code participant_id} rather than losing the deal entirely; {@code
+ * InstitutionalInterpretationOrchestrator}'s self-healing pass picks up anything still unresolved.
  */
 @Component
 class DiscoveredDealWriter {
@@ -29,9 +36,11 @@ class DiscoveredDealWriter {
     private static final Logger log = LoggerFactory.getLogger(DiscoveredDealWriter.class);
 
     private final JdbcTemplate jdbcTemplate;
+    private final ParticipantResolver participantResolver;
 
-    DiscoveredDealWriter(JdbcTemplate jdbcTemplate) {
+    DiscoveredDealWriter(JdbcTemplate jdbcTemplate, ParticipantResolver participantResolver) {
         this.jdbcTemplate = jdbcTemplate;
+        this.participantResolver = participantResolver;
     }
 
     void capture(RawDealRow raw) {
@@ -40,16 +49,18 @@ class DiscoveredDealWriter {
             long quantity = Long.parseLong(raw.quantity());
             BigDecimal price = new BigDecimal(raw.price());
             BigDecimal dealValue = price.multiply(BigDecimal.valueOf(quantity));
+            String normalizedName = normalizeClientName(raw.clientName());
+            UUID participantId = resolveParticipant(raw.clientName(), normalizedName);
 
             jdbcTemplate.update(
                 """
                 INSERT INTO ownership.discovered_deals
-                    (id, symbol, security_name, deal_date, client_name, client_name_normalized, buy_sell, quantity, price, deal_value, deal_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, symbol, security_name, deal_date, client_name, client_name_normalized, buy_sell, quantity, price, deal_value, deal_type, participant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (symbol, deal_date, client_name, buy_sell, deal_type) DO NOTHING
                 """,
                 UUID.randomUUID(), raw.symbol(), blankToNull(raw.securityName()), dealDate, raw.clientName(),
-                normalizeClientName(raw.clientName()), raw.buySell(), quantity, price, dealValue, raw.dealType()
+                normalizedName, raw.buySell(), quantity, price, dealValue, raw.dealType(), participantId
             );
 
             jdbcTemplate.update(
@@ -67,6 +78,19 @@ class DiscoveredDealWriter {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /** Best-effort on its own - a participant-resolution failure must never block capturing the rest of the row. */
+    private UUID resolveParticipant(String rawName, String normalizedName) {
+        if (normalizedName == null) {
+            return null;
+        }
+        try {
+            return participantResolver.resolve(rawName, normalizedName);
+        } catch (Exception e) {
+            log.warn("Failed to resolve participant for {}: {}", rawName, e.getMessage());
+            return null;
+        }
     }
 
     /**

@@ -48,7 +48,9 @@ public class DiscoveryReader {
                    MAX(d.deal_date) AS latest_deal_date,
                    best.materiality_score AS max_materiality_score,
                    best.materiality_level AS max_materiality_level,
-                   widest.largest_ratio AS largest_deal_to_adtv_ratio
+                   widest.largest_ratio AS largest_deal_to_adtv_ratio,
+                   interp.event_structure, interp.institutional_state, interp.discovery_confirmation_state,
+                   interp.confidence AS interpretation_confidence, interp.churn_state
             FROM ownership.discovered_deals d
             LEFT JOIN LATERAL (
                 SELECT m.materiality_score, m.materiality_level
@@ -62,11 +64,20 @@ public class DiscoveryReader {
                 FROM ownership.deal_materiality m2
                 WHERE m2.symbol = d.symbol
             ) widest ON true
+            LEFT JOIN LATERAL (
+                SELECT ii.event_structure, ii.institutional_state, ii.discovery_confirmation_state, ii.confidence, ii.churn_state
+                FROM ownership.institutional_interpretations ii
+                WHERE ii.symbol = d.symbol
+                ORDER BY ii.as_of_date DESC
+                LIMIT 1
+            ) interp ON true
             WHERE NOT EXISTS (SELECT 1 FROM reference.instruments i WHERE i.symbol = d.symbol)
               AND NOT EXISTS (
                   SELECT 1 FROM ownership.discovery_status s WHERE s.symbol = d.symbol AND s.status = 'DISMISSED'
               )
-            GROUP BY d.symbol, best.materiality_score, best.materiality_level, widest.largest_ratio
+            GROUP BY d.symbol, best.materiality_score, best.materiality_level, widest.largest_ratio,
+                     interp.event_structure, interp.institutional_state, interp.discovery_confirmation_state,
+                     interp.confidence, interp.churn_state
             ORDER BY latest_deal_date DESC, max_materiality_score DESC NULLS LAST, deal_count DESC, d.symbol
             """,
             (rs, rowNum) -> new DiscoveryCandidate(
@@ -74,7 +85,10 @@ public class DiscoveryReader {
                 rs.getInt("distinct_buyers"), rs.getLong("total_quantity"),
                 toLocalDate(rs.getDate("first_deal_date")), toLocalDate(rs.getDate("latest_deal_date")),
                 toDouble(rs.getBigDecimal("max_materiality_score")), rs.getString("max_materiality_level"),
-                toDouble(rs.getBigDecimal("largest_deal_to_adtv_ratio"))
+                toDouble(rs.getBigDecimal("largest_deal_to_adtv_ratio")),
+                rs.getString("event_structure"), rs.getString("institutional_state"),
+                rs.getString("discovery_confirmation_state"), toDouble(rs.getBigDecimal("interpretation_confidence")),
+                rs.getString("churn_state")
             )
         );
     }

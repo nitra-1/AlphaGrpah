@@ -46,6 +46,13 @@ public class DiscoveryController {
         return viewService.listDealsForSymbol(symbol);
     }
 
+    @Operation(summary = "Get the latest institutional interpretation for one Discovery symbol", description = "Event structure, institutional state, Discovery confirmation, confidence, and the reason codes backing them - 404 until this symbol's first interpretation has run.")
+    @GetMapping("/{symbol}/interpretation")
+    public InstitutionalInterpretationDetailDto interpretation(@PathVariable String symbol) {
+        return viewService.findInterpretation(symbol)
+            .orElseThrow(() -> new NotFoundException("No interpretation yet for symbol " + symbol));
+    }
+
     @Operation(summary = "Dismiss a discovery candidate", description = "Terminal - the symbol stops appearing here even if new deal activity arrives later.")
     @PostMapping("/{symbol}/discard")
     public ResponseEntity<Void> discard(@PathVariable String symbol) {

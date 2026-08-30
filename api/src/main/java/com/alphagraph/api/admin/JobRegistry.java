@@ -19,13 +19,14 @@ import com.alphagraph.learning.outcomes.ForwardOutcomeScheduler;
 import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
 import com.alphagraph.market.pricing.MarketPriceBackfillScheduler;
 import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
+import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for the 19 standalone {@code @Scheduled} jobs - the {@code
+ * Manual re-trigger dispatch for the 20 standalone {@code @Scheduled} jobs - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
  * Scheduler bean method Spring's own cron trigger would call, so a manual retry gets identical
@@ -42,6 +43,7 @@ class JobRegistry {
     JobRegistry(
         MarketPriceBackfillScheduler marketPriceBackfillScheduler,
         DealMaterialityScoringScheduler dealMaterialityScoringScheduler,
+        InstitutionalInterpretationScheduler institutionalInterpretationScheduler,
         DocumentProcessingScheduler documentProcessingScheduler,
         KnowledgeExtractionScheduler knowledgeExtractionScheduler,
         TechnicalAnalysisScheduler technicalAnalysisScheduler,
@@ -62,6 +64,7 @@ class JobRegistry {
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
+        jobs.put("institutional-interpretation", institutionalInterpretationScheduler::runInstitutionalInterpretation);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);
