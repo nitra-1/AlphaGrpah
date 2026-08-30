@@ -50,17 +50,18 @@ public class DiscoveryViewService {
     private static DiscoveryCandidateDto toDto(DiscoveryCandidate candidate) {
         return new DiscoveryCandidateDto(
             candidate.symbol(), candidate.securityName(), candidate.dealCount(), candidate.distinctBuyers(),
-            candidate.totalQuantity(), candidate.firstDealDate(), candidate.latestDealDate(),
+            candidate.distinctSellers(), candidate.totalQuantity(), candidate.firstDealDate(), candidate.latestDealDate(),
             candidate.maxMaterialityScore(), candidate.maxMaterialityLevel(), candidate.largestDealToAdtvRatio(),
             candidate.eventStructure(), candidate.institutionalState(), candidate.discoveryConfirmationState(),
-            candidate.interpretationConfidence(), candidate.churnState()
+            candidate.interpretationConfidence(), candidate.churnState(), candidate.confirmationSessionsElapsed(),
+            candidate.confirmationFrozen(), candidate.interpretationReadiness()
         );
     }
 
     private static DiscoveredDealDetailDto toDto(DiscoveredDealDetail deal) {
         return new DiscoveredDealDetailDto(
             deal.id(), deal.dealDate(), deal.clientName(), deal.buySell(), deal.quantity(), deal.price(),
-            deal.dealValue(), deal.dealType(), deal.materialityScore(), deal.materialityLevel(),
+            deal.dealValue(), deal.dealType(), deal.isDuplicate(), deal.materialityScore(), deal.materialityLevel(),
             deal.dealToAdtvRatio(), deal.reportedFlowState()
         );
     }
@@ -73,7 +74,7 @@ public class DiscoveryViewService {
             detail.deliveryConfirmationScore(), detail.volumeConfirmationScore(), detail.repeatActivityConfirmationScore(),
             detail.confirmationCoveragePct(), detail.confidence(), detail.materialityScore(), detail.reportedFlowState(),
             detail.churnState(), detail.institutionalBuyValue(), detail.institutionalSellValue(),
-            detail.institutionalBuyerCount(), detail.institutionalSellerCount(),
+            detail.institutionalBuyerCount(), detail.institutionalSellerCount(), detail.interpretationReadiness(),
             detail.reasons().stream().map(DiscoveryViewService::toDto).toList()
         );
     }

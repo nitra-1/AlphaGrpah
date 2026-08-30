@@ -15,6 +15,12 @@ import java.util.UUID;
  * every row) and, if scored yet, its Sprint 2 materiality level (unscored deals default to LOW,
  * never guessed higher - see {@code ownership.deals.DealMaterialityScoringOrchestrator}, which
  * skips a deal until its symbol has 20 real trading sessions of price history).
+ *
+ * <p>Excludes {@code duplicate_of_deal_id IS NOT NULL} rows - real evidence caught live: NSE's
+ * bulk and block feeds can both independently report the exact same trade, and without this
+ * exclusion a genuinely single real trade gets double-counted in every downstream aggregate this
+ * feeds ({@link ParticipantFlowAnalyzer}, {@link DealEventStructureEngine}, the confirmation
+ * engine's weighted event price) - see V11's migration comment.
  */
 @Component
 class InterpretationDealReader {
@@ -34,7 +40,7 @@ class InterpretationDealReader {
             FROM ownership.discovered_deals d
             JOIN ownership.deal_participants p ON p.id = d.participant_id
             LEFT JOIN ownership.deal_materiality m ON m.discovered_deal_id = d.id
-            WHERE d.symbol = ? AND d.deal_date BETWEEN ? AND ?
+            WHERE d.symbol = ? AND d.deal_date BETWEEN ? AND ? AND d.duplicate_of_deal_id IS NULL
             """,
             (rs, rowNum) -> new WindowDealRow(
                 (UUID) rs.getObject("participant_id"), rs.getString("canonical_name"),

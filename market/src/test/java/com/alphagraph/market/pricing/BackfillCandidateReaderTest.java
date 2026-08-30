@@ -24,13 +24,20 @@ class BackfillCandidateReaderTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void findSymbolsNeedingBackfillPassesTargetRowsAndReturnsTheResult() {
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(20)))
-            .thenReturn(List.of("AASTHA", "SUNSHINE"));
+    void findSymbolsNeedingBackfillReturnsEachSymbolWithItsOwnTargetBeforeDate() {
+        LocalDate today = LocalDate.of(2026, 8, 30);
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(), eq(20)))
+            .thenReturn(List.of(
+                new BackfillTarget("LENSKART", LocalDate.of(2026, 8, 28)),
+                new BackfillTarget("AASTHA", today)
+            ));
 
-        List<String> symbols = reader.findSymbolsNeedingBackfill(20);
+        List<BackfillTarget> targets = reader.findSymbolsNeedingBackfill(20, today);
 
-        assertThat(symbols).containsExactly("AASTHA", "SUNSHINE");
+        assertThat(targets).containsExactly(
+            new BackfillTarget("LENSKART", LocalDate.of(2026, 8, 28)),
+            new BackfillTarget("AASTHA", today)
+        );
     }
 
     @Test

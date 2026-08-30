@@ -3,6 +3,7 @@ export interface DiscoveryCandidate {
   securityName: string | null
   dealCount: number
   distinctBuyers: number
+  distinctSellers: number
   totalQuantity: number
   firstDealDate: string
   latestDealDate: string
@@ -22,6 +23,17 @@ export interface DiscoveryCandidate {
   discoveryConfirmationState: string | null
   interpretationConfidence: number | null
   churnState: string | null
+  // LENSKART investigation fix: threaded into the main row (not just the detail endpoint) so the
+  // confirmation badge can show "T+n of 5" here, where the badge is actually rendered. 0/false
+  // when discoveryConfirmationState is 'NOT_APPLICABLE' (nothing directional running).
+  confirmationSessionsElapsed: number
+  confirmationFrozen: boolean
+  // LENSKART investigation fix: 'PENDING_DATA' means at least one deal in this interpretation's
+  // window hasn't been scored by Sprint 2 yet (e.g. its symbol has fewer than 20 real trading
+  // sessions before the deal date) - so a landed state like NO_CLEAR_SIGNAL never silently reads
+  // as a confident final answer when it's actually still waiting on upstream data. 'READY'
+  // otherwise, including for symbols with no interpretation yet (institutionalState null).
+  interpretationReadiness: 'READY' | 'PENDING_DATA' | null
 }
 
 // One persisted piece of evidence backing an interpretation.
@@ -57,11 +69,14 @@ export interface InstitutionalInterpretationDetail {
   institutionalSellValue: number
   institutionalBuyerCount: number
   institutionalSellerCount: number
+  interpretationReadiness: 'READY' | 'PENDING_DATA'
   reasons: InterpretationReason[]
 }
 
 // One individual deal for the Discovery expand-on-click section. Materiality fields are null when
-// the deal hasn't been scored yet.
+// the deal hasn't been scored yet. isDuplicate is true when this deal is a confirmed cross-feed
+// BULK/BLOCK duplicate of another row for the same real trade - still shown here for audit, but
+// excluded from every symbol-level aggregate (deal count, distinct buyers/sellers, etc.).
 export interface DiscoveryDealDetail {
   id: string
   dealDate: string
@@ -71,6 +86,7 @@ export interface DiscoveryDealDetail {
   price: number
   dealValue: number
   dealType: 'BULK' | 'BLOCK'
+  isDuplicate: boolean
   materialityScore: number | null
   materialityLevel: string | null
   dealToAdtvRatio: number | null

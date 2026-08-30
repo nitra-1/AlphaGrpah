@@ -12,6 +12,6 @@ public record InstitutionalInterpretationDetailDto(
     BigDecimal repeatActivityConfirmationScore, BigDecimal confirmationCoveragePct, double confidence,
     Double materialityScore, String reportedFlowState, String churnState, BigDecimal institutionalBuyValue,
     BigDecimal institutionalSellValue, int institutionalBuyerCount, int institutionalSellerCount,
-    List<InterpretationReasonDto> reasons
+    String interpretationReadiness, List<InterpretationReasonDto> reasons
 ) {
 }

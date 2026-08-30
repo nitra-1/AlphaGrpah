@@ -3,6 +3,7 @@ package com.alphagraph.market.pricing;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.sql.Date;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.HashMap;
@@ -15,7 +16,7 @@ import java.util.Set;
  * Finds symbols still under active Discovery review (raw cross-schema read of
  * {@code ownership.discovery_status}, same established by-value pattern as
  * {@link DiscoveryCandidateLookup}) that don't yet have {@code targetRows} of real trading
- * history in {@code market.discovered_prices} - the driving set for
+ * history *before the date they actually need it* - the driving set for
  * {@link MarketPriceBackfillOrchestrator}'s requirement-driven walk-backward backfill.
  */
 @Component
@@ -28,28 +29,42 @@ class BackfillCandidateReader {
     }
 
     /**
-     * Symbols not DISMISSED and not already promoted, whose row count in
-     * {@code discovered_prices} is below {@code targetRows}. "Not DISMISSED" alone isn't enough
-     * to exclude promoted symbols - {@code ownership.discovery_status.status} never actually gets
-     * written as {@code PROMOTED} (promotion is detected live by a symbol's presence in
-     * {@code reference.instruments}, per {@code ownership.deals.DiscoveryReader}'s own doc
-     * comment), so a promoted symbol would otherwise still carry whatever status it had before
-     * promotion and get needlessly backfilled here even though it now gets real history through
-     * the normal tracked-instrument pipeline. Mirrors DiscoveryReader's exact exclusion.
+     * Symbols not DISMISSED and not already promoted (see the class doc on the live-promotion
+     * exclusion) whose {@code discovered_prices} row count *strictly before* their own
+     * {@link BackfillTarget#targetBeforeDate} is below {@code targetRows}.
+     *
+     * <p>{@code targetBeforeDate} is the earliest {@code deal_date} among the symbol's
+     * {@code ownership.discovered_deals} rows with no matching {@code ownership.deal_materiality}
+     * row yet - real evidence caught live: a symbol discovered the day after its first deal (the
+     * common case) would otherwise get "20 total rows" ending exactly *on* that deal's own date,
+     * one session short of the 20 {@code MarketLiquidityReader} needs strictly before it, and that
+     * gap never self-heals since the daily gate only ever adds rows going forward. Falls back to
+     * {@code today} (bound as a parameter, not {@code CURRENT_DATE}, so it stays consistent with
+     * the caller's injected {@code Clock}) when a symbol has no unscored deal yet - the original,
+     * unconstrained "just keep building history" behavior.
      */
-    List<String> findSymbolsNeedingBackfill(int targetRows) {
+    List<BackfillTarget> findSymbolsNeedingBackfill(int targetRows, LocalDate today) {
         return jdbcTemplate.query(
             """
-            SELECT ds.symbol
+            SELECT ds.symbol, target.target_before_date
             FROM ownership.discovery_status ds
-            LEFT JOIN (
-                SELECT symbol, COUNT(*) AS row_count FROM market.discovered_prices GROUP BY symbol
-            ) dp ON dp.symbol = ds.symbol
+            JOIN LATERAL (
+                SELECT COALESCE(
+                    (SELECT MIN(d.deal_date) FROM ownership.discovered_deals d
+                     WHERE d.symbol = ds.symbol
+                     AND NOT EXISTS (SELECT 1 FROM ownership.deal_materiality m WHERE m.discovered_deal_id = d.id)),
+                    ?
+                ) AS target_before_date
+            ) target ON true
             WHERE ds.status != 'DISMISSED'
-            AND NOT EXISTS (SELECT 1 FROM reference.instruments i WHERE i.symbol = ds.symbol)
-            AND COALESCE(dp.row_count, 0) < ?
+              AND NOT EXISTS (SELECT 1 FROM reference.instruments i WHERE i.symbol = ds.symbol)
+              AND (
+                  SELECT COUNT(*) FROM market.discovered_prices dp
+                  WHERE dp.symbol = ds.symbol AND dp.trade_date < target.target_before_date
+              ) < ?
             """,
-            (rs, rowNum) -> rs.getString("symbol"), targetRows
+            (rs, rowNum) -> new BackfillTarget(rs.getString("symbol"), rs.getDate("target_before_date").toLocalDate()),
+            Date.valueOf(today), targetRows
         );
     }
 

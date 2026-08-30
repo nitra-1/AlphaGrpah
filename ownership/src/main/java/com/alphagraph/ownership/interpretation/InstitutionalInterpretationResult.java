@@ -13,7 +13,7 @@ record InstitutionalInterpretationResult(
     BigDecimal deliveryConfirmationScore, BigDecimal volumeConfirmationScore, BigDecimal repeatActivityConfirmationScore,
     BigDecimal confirmationCoveragePct, double confidence, Double materialityScore, String reportedFlowState,
     ChurnState churnState, BigDecimal institutionalBuyValue, BigDecimal institutionalSellValue,
-    int institutionalBuyerCount, int institutionalSellerCount, int ruleVersion, Instant computedAt,
-    List<ReasonCode> reasons
+    int institutionalBuyerCount, int institutionalSellerCount, InterpretationReadiness interpretationReadiness,
+    int ruleVersion, Instant computedAt, List<ReasonCode> reasons
 ) {
 }

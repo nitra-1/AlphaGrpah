@@ -31,8 +31,8 @@ class InstitutionalInterpretationWriter {
                 price_confirmation_score, delivery_confirmation_score, volume_confirmation_score,
                 repeat_activity_confirmation_score, confirmation_coverage_pct, confidence, materiality_score,
                 reported_flow_state, churn_state, institutional_buy_value, institutional_sell_value,
-                institutional_buyer_count, institutional_seller_count, rule_version, computed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                institutional_buyer_count, institutional_seller_count, interpretation_readiness, rule_version, computed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (symbol, as_of_date) DO UPDATE SET
                 event_structure = EXCLUDED.event_structure, institutional_state = EXCLUDED.institutional_state,
                 discovery_confirmation_state = EXCLUDED.discovery_confirmation_state,
@@ -48,6 +48,7 @@ class InstitutionalInterpretationWriter {
                 institutional_sell_value = EXCLUDED.institutional_sell_value,
                 institutional_buyer_count = EXCLUDED.institutional_buyer_count,
                 institutional_seller_count = EXCLUDED.institutional_seller_count,
+                interpretation_readiness = EXCLUDED.interpretation_readiness,
                 rule_version = EXCLUDED.rule_version, computed_at = EXCLUDED.computed_at
             RETURNING id
             """,
@@ -59,7 +60,8 @@ class InstitutionalInterpretationWriter {
             result.volumeConfirmationScore(), result.repeatActivityConfirmationScore(), result.confirmationCoveragePct(),
             result.confidence(), result.materialityScore(), result.reportedFlowState(), result.churnState().name(),
             result.institutionalBuyValue(), result.institutionalSellValue(), result.institutionalBuyerCount(),
-            result.institutionalSellerCount(), result.ruleVersion(), Timestamp.from(result.computedAt())
+            result.institutionalSellerCount(), result.interpretationReadiness().name(), result.ruleVersion(),
+            Timestamp.from(result.computedAt())
         ).get(0);
 
         jdbcTemplate.update("DELETE FROM ownership.institutional_interpretation_reasons WHERE interpretation_id = ?", interpretationId);

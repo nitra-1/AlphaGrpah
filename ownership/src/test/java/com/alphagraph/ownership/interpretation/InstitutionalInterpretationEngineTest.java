@@ -41,7 +41,7 @@ class InstitutionalInterpretationEngineTest {
         return new InstitutionalInterpretationInput(
             "TESTSYM", AS_OF, flow, EventStructure.INSTITUTIONAL_BUYING_CANDIDATE, InstitutionalState.POSSIBLE_ACCUMULATION,
             MaterialityLevel.HIGH, materialityScore, "NET_BUYING", List.of(), DiscoveryConfirmationResult.notApplicable(),
-            List.of(), 1
+            List.of(), true, 1
         );
     }
 
@@ -64,7 +64,7 @@ class InstitutionalInterpretationEngineTest {
         InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
             "TESTSYM", AS_OF, flow, EventStructure.INSTITUTIONAL_BUYING_CANDIDATE, InstitutionalState.POSSIBLE_ACCUMULATION,
             MaterialityLevel.VERY_HIGH, 92.0, "NET_BUYING", List.of(), DiscoveryConfirmationResult.notApplicable(),
-            List.of(), 1
+            List.of(), true, 1
         );
 
         InstitutionalInterpretationResult result = engine.assemble(input);
@@ -85,7 +85,7 @@ class InstitutionalInterpretationEngineTest {
         );
         InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
             "TESTSYM", AS_OF, flow, EventStructure.INSTITUTIONAL_BUYING_CANDIDATE, InstitutionalState.POSSIBLE_ACCUMULATION,
-            MaterialityLevel.HIGH, 80.0, "NET_BUYING", List.of(countervailingSell), confirmation, List.of(), 1
+            MaterialityLevel.HIGH, 80.0, "NET_BUYING", List.of(countervailingSell), confirmation, List.of(), true, 1
         );
 
         InstitutionalInterpretationResult result = engine.assemble(input);
@@ -94,11 +94,63 @@ class InstitutionalInterpretationEngineTest {
     }
 
     @Test
+    void exactlyZeroChurnRatioProducesFullClarityNotZero() {
+        // The direct regression test for the churn-clarity bug: 0.0 is the cleanest possible
+        // directional case, not a "boundary" - it used to score the worst possible clarity.
+        ParticipantFlow flow = new ParticipantFlow(
+            UUID.randomUUID(), "SBI Mutual Fund", ParticipantType.MUTUAL_FUND, 95.0,
+            new BigDecimal("50000000"), BigDecimal.ZERO, BigDecimal.ZERO, 0.0, ChurnState.DIRECTIONAL, 1, 0, RepeatBehavior.ONE_OFF
+        );
+        SymbolFlowSummary zeroChurnFlow = new SymbolFlowSummary(
+            flow.buyValue(), BigDecimal.ZERO, BigDecimal.ZERO, 0.0, ChurnState.DIRECTIONAL,
+            flow.buyValue(), BigDecimal.ZERO, 1, 0, BigDecimal.ZERO, 0.0, 0.0, List.of(flow)
+        );
+        // materialityScore=null and no confirmation coverage isolate churn clarity's own contribution:
+        // confidence = (0.35*95 + 0.30*0 + 0.15*100 + 0.10*20) / 0.90 - only reachable if clarity=100.
+        InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
+            "TESTSYM", AS_OF, zeroChurnFlow, EventStructure.INSTITUTIONAL_BUYING_CANDIDATE, InstitutionalState.POSSIBLE_ACCUMULATION,
+            MaterialityLevel.LOW, null, "NET_BUYING", List.of(), DiscoveryConfirmationResult.notApplicable(), List.of(), true, 1
+        );
+
+        double confidence = engine.assemble(input).confidence();
+
+        assertThat(confidence).isEqualTo(BigDecimal.valueOf((0.35 * 95 + 0.15 * 100 + 0.10 * 20) / 0.90).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue());
+    }
+
+    @Test
+    void allDealsScoredProducesReadyRegardlessOfInstitutionalState() {
+        SymbolFlowSummary flow = flowSummary(flowWithConfidence(new BigDecimal("50000000"), 95.0));
+        InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
+            "TESTSYM", AS_OF, flow, EventStructure.UNRESOLVED, InstitutionalState.NO_CLEAR_SIGNAL,
+            MaterialityLevel.LOW, 20.0, null, List.of(), DiscoveryConfirmationResult.notApplicable(), List.of(), true, 1
+        );
+
+        InstitutionalInterpretationResult result = engine.assemble(input);
+
+        assertThat(result.interpretationReadiness()).isEqualTo(InterpretationReadiness.READY);
+    }
+
+    @Test
+    void someDealsUnscoredProducesPendingDataEvenWhenTheStateLandsOnAConfidentOutcome() {
+        // The direct regression test: missing upstream data must never masquerade as a confident
+        // final answer, even for a symbol that happens to reach a directional state anyway.
+        SymbolFlowSummary flow = flowSummary(flowWithConfidence(new BigDecimal("50000000"), 95.0));
+        InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
+            "TESTSYM", AS_OF, flow, EventStructure.MULTI_INSTITUTION_BUYING, InstitutionalState.POSSIBLE_ACCUMULATION,
+            MaterialityLevel.HIGH, 80.0, "NET_BUYING", List.of(), DiscoveryConfirmationResult.notApplicable(), List.of(), false, 1
+        );
+
+        InstitutionalInterpretationResult result = engine.assemble(input);
+
+        assertThat(result.interpretationReadiness()).isEqualTo(InterpretationReadiness.PENDING_DATA);
+    }
+
+    @Test
     void notApplicableConfirmationNeverProducesConfirmationReasonCodes() {
         SymbolFlowSummary flow = flowSummary(flowWithConfidence(new BigDecimal("50000000"), 95.0));
         InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
             "TESTSYM", AS_OF, flow, EventStructure.PROP_CHURN, InstitutionalState.HIGH_CHURN,
-            MaterialityLevel.HIGH, 80.0, "BALANCED", List.of(), DiscoveryConfirmationResult.notApplicable(), List.of(), 1
+            MaterialityLevel.HIGH, 80.0, "BALANCED", List.of(), DiscoveryConfirmationResult.notApplicable(), List.of(), true, 1
         );
 
         InstitutionalInterpretationResult result = engine.assemble(input);

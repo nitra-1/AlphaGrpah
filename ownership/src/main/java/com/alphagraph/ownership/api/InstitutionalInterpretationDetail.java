@@ -18,6 +18,6 @@ public record InstitutionalInterpretationDetail(
     BigDecimal repeatActivityConfirmationScore, BigDecimal confirmationCoveragePct, double confidence,
     Double materialityScore, String reportedFlowState, String churnState, BigDecimal institutionalBuyValue,
     BigDecimal institutionalSellValue, int institutionalBuyerCount, int institutionalSellerCount,
-    List<InterpretationReason> reasons
+    String interpretationReadiness, List<InterpretationReason> reasons
 ) {
 }

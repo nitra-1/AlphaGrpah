@@ -28,11 +28,15 @@ import java.util.Set;
  * {@link HistoricalBackfillService#fetchEquityRows} and extracting every still-needed symbol's
  * row out of it - one fetch per day covers every candidate, not one fetch per symbol per day.
  * Stops each symbol individually once it reaches {@value #TARGET_ROWS} distinct real trading
- * sessions, and stops the whole walk once either every candidate has reached that or
- * {@value #MAX_LOOKBACK_DAYS} calendar days have been walked - a real, disclosed limit: a symbol
- * that IPO'd fewer than {@value #TARGET_ROWS} trading sessions ago will correctly never reach the
- * target, and {@code MarketLiquidityReader} will correctly report ADTV unavailable for it rather
- * than a guess extrapolated from too little history.
+ * sessions *strictly before that symbol's own {@link BackfillTarget#targetBeforeDate}* (see
+ * {@link BackfillCandidateReader} - not just any 20 total, a real bug caught live: a symbol
+ * discovered the day after its first deal would otherwise land exactly 20 total rows ending *on*
+ * that deal's own date, one short of what's needed strictly before it), and stops the whole walk
+ * once either every candidate has reached that or {@value #MAX_LOOKBACK_DAYS} calendar days have
+ * been walked - a real, disclosed limit: a symbol that IPO'd fewer than {@value #TARGET_ROWS}
+ * trading sessions ago will correctly never reach the target, and {@code MarketLiquidityReader}
+ * will correctly report ADTV unavailable for it rather than a guess extrapolated from too little
+ * history.
  *
  * <p>Tracks progress by distinct {@code trade_date} per symbol (seeded from what's already in
  * {@code discovered_prices}), not by write-call count - the walk window can revisit a date the
@@ -71,21 +75,29 @@ class MarketPriceBackfillOrchestrator {
     }
 
     void backfillDiscoveryCandidates() {
-        List<String> candidates = candidateReader.findSymbolsNeedingBackfill(TARGET_ROWS);
+        LocalDate today = LocalDate.now(clock);
+        List<BackfillTarget> candidates = candidateReader.findSymbolsNeedingBackfill(TARGET_ROWS, today);
         if (candidates.isEmpty()) {
             log.info("Discovery price backfill: no symbols need backfilling.");
             return;
         }
 
-        Map<String, Set<LocalDate>> tradeDatesBySymbol = new HashMap<>(candidateReader.findExistingTradeDates(candidates));
+        Map<String, LocalDate> targetBeforeDateBySymbol = new HashMap<>();
+        for (BackfillTarget target : candidates) {
+            targetBeforeDateBySymbol.put(target.symbol(), target.targetBeforeDate());
+        }
+        List<String> symbolNames = candidates.stream().map(BackfillTarget::symbol).toList();
+
+        Map<String, Set<LocalDate>> tradeDatesBySymbol = new HashMap<>(candidateReader.findExistingTradeDates(symbolNames));
         Set<String> stillNeeded = new HashSet<>();
-        for (String symbol : candidates) {
-            if (tradeDatesBySymbol.computeIfAbsent(symbol, key -> new HashSet<>()).size() < TARGET_ROWS) {
-                stillNeeded.add(symbol);
+        for (BackfillTarget target : candidates) {
+            Set<LocalDate> existing = tradeDatesBySymbol.computeIfAbsent(target.symbol(), key -> new HashSet<>());
+            if (qualifyingCount(existing, target.targetBeforeDate()) < TARGET_ROWS) {
+                stillNeeded.add(target.symbol());
             }
         }
 
-        LocalDate date = LocalDate.now(clock).minusDays(1);
+        LocalDate date = today.minusDays(1);
         int daysWalked = 0;
         int rowsWritten = 0;
         while (!stillNeeded.isEmpty() && daysWalked < MAX_LOOKBACK_DAYS) {
@@ -103,10 +115,13 @@ class MarketPriceBackfillOrchestrator {
                     }
                     Set<LocalDate> dates = tradeDatesBySymbol.get(symbol);
                     if (dates.add(tradeDate)) {
+                        // Still captured even if it falls on/after the target date - harmless
+                        // (idempotent upsert) and useful for other purposes - it just doesn't
+                        // count toward *this* symbol's "sessions before its own target" requirement.
                         discoveredPriceWriter.capture(toRawDeliveryRow(fields));
                         rowsWritten++;
                     }
-                    if (dates.size() >= TARGET_ROWS) {
+                    if (qualifyingCount(dates, targetBeforeDateBySymbol.get(symbol)) >= TARGET_ROWS) {
                         stillNeeded.remove(symbol);
                     }
                 }
@@ -116,9 +131,14 @@ class MarketPriceBackfillOrchestrator {
         }
 
         log.info(
-            "Discovery price backfill complete: {} row(s) written, {} of {} candidate symbol(s) still short of {} sessions after walking {} day(s) (max {})",
+            "Discovery price backfill complete: {} row(s) written, {} of {} candidate symbol(s) still short of {} qualifying sessions after walking {} day(s) (max {})",
             rowsWritten, stillNeeded.size(), candidates.size(), TARGET_ROWS, daysWalked, MAX_LOOKBACK_DAYS
         );
+    }
+
+    /** How many of a symbol's captured trade dates fall strictly before its own target date - the real "sessions before the deal that needs them" count, not a raw total. */
+    private static long qualifyingCount(Set<LocalDate> dates, LocalDate targetBeforeDate) {
+        return dates.stream().filter(d -> d.isBefore(targetBeforeDate)).count();
     }
 
     /** Same full-row column order as {@link BhavdataParser}/{@link HistoricalBackfillService}. */

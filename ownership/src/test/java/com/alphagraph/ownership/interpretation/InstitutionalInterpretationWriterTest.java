@@ -36,7 +36,8 @@ class InstitutionalInterpretationWriterTest {
             InstitutionalState.POSSIBLE_ACCUMULATION, DiscoveryConfirmationState.PARTIALLY_CONFIRMED, false,
             LocalDate.of(2026, 8, 24), 2, new BigDecimal("60.00"), new BigDecimal("65.00"), new BigDecimal("50.00"),
             new BigDecimal("70.00"), new BigDecimal("50.00"), new BigDecimal("100.00"), 78.5, 82.0, "NET_BUYING",
-            ChurnState.DIRECTIONAL, new BigDecimal("50000000"), BigDecimal.ZERO, 1, 0, 1, Instant.now(),
+            ChurnState.DIRECTIONAL, new BigDecimal("50000000"), BigDecimal.ZERO, 1, 0,
+            InterpretationReadiness.READY, 1, Instant.now(),
             List.of(ReasonCode.of("VERY_HIGH_MATERIALITY", 92.0))
         );
 

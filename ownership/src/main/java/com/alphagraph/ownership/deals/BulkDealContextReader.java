@@ -21,6 +21,11 @@ import java.time.LocalDate;
  * {@code distinctBuyers}/{@code distinctSellers} (both sides, always computed regardless of
  * direction) are separate unbiased evidence fields, never used as {@link DealMaterialityEngine}'s
  * scoring input.
+ *
+ * <p>Excludes {@code duplicate_of_deal_id IS NOT NULL} rows - the same real cross-feed BULK/BLOCK
+ * overlap {@code ownership.deals.DiscoveryReader} excludes (see V11's migration comment); without
+ * this a single real trade reported in both feeds would be summed into reported buy/sell value
+ * twice.
  */
 @Component
 class BulkDealContextReader {
@@ -46,7 +51,7 @@ class BulkDealContextReader {
                 COALESCE(SUM(deal_value) FILTER (WHERE buy_sell = 'BUY'), 0) AS reported_buy_value,
                 COALESCE(SUM(deal_value) FILTER (WHERE buy_sell = 'SELL'), 0) AS reported_sell_value
             FROM ownership.discovered_deals
-            WHERE symbol = ? AND deal_date BETWEEN ? AND ?
+            WHERE symbol = ? AND deal_date BETWEEN ? AND ? AND duplicate_of_deal_id IS NULL
             """,
             (rs, rowNum) -> new BulkDealContext(
                 rs.getInt("same_side_count"), rs.getInt("distinct_same_side"),

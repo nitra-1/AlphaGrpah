@@ -163,9 +163,11 @@ class InstitutionalInterpretationOrchestrator {
             confirmation = DiscoveryConfirmationResult.notApplicable();
         }
 
+        boolean allDealsInWindowScored = windowRows.stream().allMatch(r -> r.materialityScore() != null);
+
         InstitutionalInterpretationInput input = new InstitutionalInterpretationInput(
             symbol, asOfDate, flowSummary, eventStructure, institutionalState, maxMateriality, maxMaterialityScore,
-            latestReportedFlowState, anchorCandidates, confirmation, preAnchorBaseline, RULE_VERSION
+            latestReportedFlowState, anchorCandidates, confirmation, preAnchorBaseline, allDealsInWindowScored, RULE_VERSION
         );
         writer.write(interpretationEngine.assemble(input));
         return true;

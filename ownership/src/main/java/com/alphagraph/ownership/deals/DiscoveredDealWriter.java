@@ -29,6 +29,12 @@ import java.util.UUID;
  * Resolution failure is swallowed the same best-effort way - a row still gets captured with a null
  * {@code participant_id} rather than losing the deal entirely; {@code
  * InstitutionalInterpretationOrchestrator}'s self-healing pass picks up anything still unresolved.
+ *
+ * <p>Also detects the real NSE cross-feed overlap where the exact same trade qualifies for and
+ * gets reported in both the bulk and block deal feeds (same symbol/date/client/side/quantity/price,
+ * different {@code deal_type}) - see V11's migration comment. Both rows are still captured (the
+ * raw audit log is never edited), but the second one is marked {@code duplicate_of_deal_id}
+ * pointing at the first so aggregate readers can exclude it without losing the disclosure.
  */
 @Component
 class DiscoveredDealWriter {
@@ -51,16 +57,17 @@ class DiscoveredDealWriter {
             BigDecimal dealValue = price.multiply(BigDecimal.valueOf(quantity));
             String normalizedName = normalizeClientName(raw.clientName());
             UUID participantId = resolveParticipant(raw.clientName(), normalizedName);
+            UUID duplicateOfDealId = findCanonicalDuplicate(raw, dealDate, quantity, price);
 
             jdbcTemplate.update(
                 """
                 INSERT INTO ownership.discovered_deals
-                    (id, symbol, security_name, deal_date, client_name, client_name_normalized, buy_sell, quantity, price, deal_value, deal_type, participant_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, symbol, security_name, deal_date, client_name, client_name_normalized, buy_sell, quantity, price, deal_value, deal_type, participant_id, duplicate_of_deal_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (symbol, deal_date, client_name, buy_sell, deal_type) DO NOTHING
                 """,
                 UUID.randomUUID(), raw.symbol(), blankToNull(raw.securityName()), dealDate, raw.clientName(),
-                normalizedName, raw.buySell(), quantity, price, dealValue, raw.dealType(), participantId
+                normalizedName, raw.buySell(), quantity, price, dealValue, raw.dealType(), participantId, duplicateOfDealId
             );
 
             jdbcTemplate.update(
@@ -78,6 +85,31 @@ class DiscoveredDealWriter {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * Finds the earlier, canonical row this one duplicates - same symbol/date/client/side/
+     * quantity/price but a *different* {@code deal_type}, and not itself already marked as a
+     * duplicate (so a chain of duplicates always points at one real canonical row, never another
+     * duplicate). Best-effort: a lookup failure here must never block capturing the row itself,
+     * it just means this specific row won't get flagged - the same failure mode as a resolution
+     * failure elsewhere in this writer.
+     */
+    private UUID findCanonicalDuplicate(RawDealRow raw, LocalDate dealDate, long quantity, BigDecimal price) {
+        try {
+            return jdbcTemplate.query(
+                """
+                SELECT id FROM ownership.discovered_deals
+                WHERE symbol = ? AND deal_date = ? AND client_name = ? AND buy_sell = ?
+                  AND quantity = ? AND price = ? AND deal_type != ? AND duplicate_of_deal_id IS NULL
+                """,
+                (rs, rowNum) -> (UUID) rs.getObject("id"),
+                raw.symbol(), dealDate, raw.clientName(), raw.buySell(), quantity, price, raw.dealType()
+            ).stream().findFirst().orElse(null);
+        } catch (Exception e) {
+            log.warn("Failed to check for a duplicate BULK/BLOCK report for {}: {}", raw.clientName(), e.getMessage());
+            return null;
+        }
     }
 
     /** Best-effort on its own - a participant-resolution failure must never block capturing the rest of the row. */

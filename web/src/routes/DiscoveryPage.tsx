@@ -93,7 +93,8 @@ export function DiscoveryPage() {
                     </div>
                     <p className="mt-0.5 text-xs text-text-muted">
                       {candidate.dealCount} deal{candidate.dealCount === 1 ? '' : 's'} &middot; {candidate.distinctBuyers} distinct{' '}
-                      buyer{candidate.distinctBuyers === 1 ? '' : 's'} &middot; {candidate.totalQuantity.toLocaleString('en-IN')} shares &middot;{' '}
+                      buyer{candidate.distinctBuyers === 1 ? '' : 's'} &middot; {candidate.distinctSellers} distinct{' '}
+                      seller{candidate.distinctSellers === 1 ? '' : 's'} &middot; {candidate.totalQuantity.toLocaleString('en-IN')} shares &middot;{' '}
                       {formatDate(candidate.firstDealDate)} - {formatDate(candidate.latestDealDate)}
                       {candidate.largestDealToAdtvRatio != null && (
                         <> &middot; largest deal {formatRatio(candidate.largestDealToAdtvRatio)} ADTV</>
@@ -105,9 +106,20 @@ export function DiscoveryPage() {
                           {candidate.eventStructure && formatEventStructure(candidate.eventStructure)}
                         </span>
                         <InstitutionalStateBadge state={candidate.institutionalState} />
-                        <ConfirmationBadge state={candidate.discoveryConfirmationState} />
+                        <ConfirmationBadge
+                          state={candidate.discoveryConfirmationState}
+                          sessionsElapsed={candidate.confirmationSessionsElapsed}
+                        />
                         {candidate.interpretationConfidence != null && (
                           <span className="text-xs text-text-muted">confidence {candidate.interpretationConfidence.toFixed(0)}%</span>
+                        )}
+                        {candidate.interpretationReadiness === 'PENDING_DATA' && (
+                          <span
+                            className="inline-flex items-center rounded-full bg-neutral-signal-soft px-2.5 py-0.5 text-xs font-semibold text-neutral-signal"
+                            title="At least one deal behind this call hasn't been scored yet - usually because its symbol doesn't have 20 real trading sessions of price history before the deal date. This state may still change once that data arrives."
+                          >
+                            Data pending
+                          </span>
                         )}
                       </div>
                     )}
@@ -235,13 +247,23 @@ function DealList({ symbol }: { symbol: string }) {
           </thead>
           <tbody>
             {dealsQuery.data.map((deal) => (
-              <tr key={deal.id} className="border-t border-border">
+              <tr key={deal.id} className={`border-t border-border ${deal.isDuplicate ? 'opacity-50' : ''}`}>
                 <td className="px-3 py-2 text-text-muted">{formatDate(deal.dealDate)}</td>
                 <td className="px-3 py-2 text-text">{deal.clientName}</td>
                 <td className={`px-3 py-2 font-semibold ${deal.buySell === 'BUY' ? 'text-gain' : 'text-loss'}`}>{deal.buySell}</td>
                 <td className="px-3 py-2 text-text-muted">{deal.quantity.toLocaleString('en-IN')}</td>
                 <td className="px-3 py-2 text-text-muted">{formatRupees(deal.dealValue)}</td>
-                <td className="px-3 py-2 text-text-muted">{deal.dealType}</td>
+                <td className="px-3 py-2 text-text-muted">
+                  {deal.dealType}
+                  {deal.isDuplicate && (
+                    <span
+                      className="ml-1.5 inline-flex items-center rounded-full bg-bg px-1.5 py-0.5 text-[10px] font-semibold text-text-muted"
+                      title="NSE's bulk and block deal feeds both reported this same real trade - excluded from every symbol-level total, shown here for audit only."
+                    >
+                      duplicate
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1.5">
                     <MaterialityBadge level={deal.materialityLevel} />

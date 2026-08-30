@@ -27,6 +27,7 @@ class MarketPriceBackfillOrchestratorTest {
     private static final Clock FIXED_CLOCK = Clock.fixed(
         Instant.parse("2026-07-24T12:00:00Z"), ZoneId.of("Asia/Kolkata")
     );
+    private static final LocalDate TODAY = LocalDate.of(2026, 7, 24);
     private static final DateTimeFormatter ROW_DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MMM-yyyy", Locale.ENGLISH);
 
     private final BackfillCandidateReader candidateReader = mock(BackfillCandidateReader.class);
@@ -50,7 +51,7 @@ class MarketPriceBackfillOrchestratorTest {
 
     @Test
     void noCandidatesMeansNoFetchingAtAll() {
-        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS)).thenReturn(List.of());
+        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS, TODAY)).thenReturn(List.of());
 
         orchestrator.backfillDiscoveryCandidates();
 
@@ -59,8 +60,10 @@ class MarketPriceBackfillOrchestratorTest {
 
     @Test
     void stopsFetchingASymbolAsSoonAsItReachesTargetRows() {
-        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS))
-            .thenReturn(List.of("AASTHA"));
+        // No unscored deal constraining this symbol - target defaults to today, so every date the
+        // backward walk encounters (all < today) qualifies, same as the old unconstrained behavior.
+        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS, TODAY))
+            .thenReturn(List.of(new BackfillTarget("AASTHA", TODAY)));
         when(candidateReader.findExistingTradeDates(List.of("AASTHA"))).thenReturn(Map.of());
         // Every fetched day returns a genuinely new row for AASTHA (its own real trade date).
         when(backfillService.fetchEquityRows(any(LocalDate.class)))
@@ -74,8 +77,8 @@ class MarketPriceBackfillOrchestratorTest {
 
     @Test
     void neverFoundSymbolStopsAtMaxLookbackDaysRatherThanWalkingForever() {
-        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS))
-            .thenReturn(List.of("JUSTIPOED"));
+        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS, TODAY))
+            .thenReturn(List.of(new BackfillTarget("JUSTIPOED", TODAY)));
         when(candidateReader.findExistingTradeDates(List.of("JUSTIPOED"))).thenReturn(Map.of());
         when(backfillService.fetchEquityRows(any(LocalDate.class))).thenReturn(List.of());
 
@@ -92,8 +95,8 @@ class MarketPriceBackfillOrchestratorTest {
         for (int i = 0; i < 19; i++) {
             nineteenExistingDates.add(d.plusDays(i));
         }
-        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS))
-            .thenReturn(List.of("SUNSHINE"));
+        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS, TODAY))
+            .thenReturn(List.of(new BackfillTarget("SUNSHINE", TODAY)));
         when(candidateReader.findExistingTradeDates(List.of("SUNSHINE")))
             .thenReturn(Map.of("SUNSHINE", nineteenExistingDates));
         // The first (and only) day fetched hands back a brand-new date - exactly one more row closes the gap to 20.
@@ -109,8 +112,8 @@ class MarketPriceBackfillOrchestratorTest {
     @Test
     void aRowForADateAlreadyOnRecordIsNotCapturedOrCountedAsProgress() {
         LocalDate alreadyKnown = LocalDate.of(2026, 7, 23);
-        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS))
-            .thenReturn(List.of("AASTHA"));
+        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS, TODAY))
+            .thenReturn(List.of(new BackfillTarget("AASTHA", TODAY)));
         when(candidateReader.findExistingTradeDates(List.of("AASTHA")))
             .thenReturn(Map.of("AASTHA", new HashSet<>(Set.of(alreadyKnown))));
         // NSE's "holiday re-serves the prior file" quirk: every day fetched hands back the SAME
@@ -122,5 +125,35 @@ class MarketPriceBackfillOrchestratorTest {
 
         verify(backfillService, times(MarketPriceBackfillOrchestrator.MAX_LOOKBACK_DAYS)).fetchEquityRows(any(LocalDate.class));
         verifyNoInteractions(discoveredPriceWriter);
+    }
+
+    @Test
+    void theLenskartShapeTwentyTotalRowsButOnlyNineteenBeforeTheTargetDateKeepsWalking() {
+        // The exact real bug: a symbol has 20 total discovered_prices rows, but one of them IS the
+        // target date itself (not strictly before it) - only 19 genuinely qualify. The walk must
+        // keep going until a 20th *qualifying* (strictly-before) session is found, not stop at 20 total.
+        LocalDate targetBeforeDate = LocalDate.of(2026, 7, 23); // the symbol's earliest unscored deal date
+        Set<LocalDate> existingDates = new HashSet<>();
+        LocalDate d = LocalDate.of(2026, 6, 1);
+        for (int i = 0; i < 19; i++) {
+            existingDates.add(d.plusDays(i)); // 19 dates, all strictly before targetBeforeDate
+        }
+        existingDates.add(targetBeforeDate); // the 20th row - ON the target date itself, doesn't qualify
+
+        when(candidateReader.findSymbolsNeedingBackfill(MarketPriceBackfillOrchestrator.TARGET_ROWS, TODAY))
+            .thenReturn(List.of(new BackfillTarget("LENSKART", targetBeforeDate)));
+        when(candidateReader.findExistingTradeDates(List.of("LENSKART")))
+            .thenReturn(Map.of("LENSKART", existingDates));
+        // Every fetched day hands back its own real date (a genuinely new row each time).
+        when(backfillService.fetchEquityRows(any(LocalDate.class)))
+            .thenAnswer(invocation -> List.<String[]>of(rowFor("LENSKART", invocation.getArgument(0))));
+
+        orchestrator.backfillDiscoveryCandidates();
+
+        // Walk starts at TODAY.minusDays(1) = targetBeforeDate (2026-07-23, already known, no new
+        // capture, still doesn't qualify) then 2026-07-22 (a genuinely new, qualifying date) closes
+        // the gap to 20 qualifying sessions - exactly 2 days walked, exactly 1 new capture.
+        verify(backfillService, times(2)).fetchEquityRows(any(LocalDate.class));
+        verify(discoveredPriceWriter, times(1)).capture(any());
     }
 }

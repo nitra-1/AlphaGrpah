@@ -43,6 +43,9 @@ class InstitutionalInterpretationEngine {
         List<ReasonCode> reasons = reasonCodes(input);
 
         DiscoveryConfirmationResult confirmation = input.confirmation();
+        InterpretationReadiness readiness = input.allDealsInWindowScored()
+            ? InterpretationReadiness.READY
+            : InterpretationReadiness.PENDING_DATA;
         return new InstitutionalInterpretationResult(
             input.symbol(), input.asOfDate(), input.eventStructure(), input.institutionalState(),
             confirmation.state(), confirmation.frozen(), confirmation.anchorDate(), confirmation.sessionsElapsed(),
@@ -51,7 +54,7 @@ class InstitutionalInterpretationEngine {
             round2Double(confidence), input.materialityScore(), input.reportedFlowState(), input.flowSummary().churnState(),
             input.flowSummary().institutionalBuyValue(), input.flowSummary().institutionalSellValue(),
             input.flowSummary().institutionalBuyerCount(), input.flowSummary().institutionalSellerCount(),
-            input.ruleVersion(), Instant.now(), reasons
+            readiness, input.ruleVersion(), Instant.now(), reasons
         );
     }
 
@@ -96,9 +99,16 @@ class InstitutionalInterpretationEngine {
         return weightedSum.divide(totalValue, 6, RoundingMode.HALF_UP).doubleValue();
     }
 
-    /** Distance from the nearest churn-band boundary (0.30/0.60/0.80), scaled so a ratio well inside a band reads confidently and one sitting right on a boundary reads uncertainly. */
+    /**
+     * Distance from the nearest *real* churn-band boundary (0.30/0.60/0.80 - the only actual
+     * decision points in {@link ParticipantFlowAnalyzer#bandChurn}), scaled so a ratio well inside
+     * a band reads confidently and one sitting right on a boundary reads uncertainly. Real bug
+     * caught live: the range's natural extremes (0.0/1.0) used to be included as if they were
+     * decision boundaries too, so a churn ratio of exactly 0.0 - the cleanest possible directional
+     * case - scored as having *zero* clarity instead of the most clarity possible.
+     */
     private static double churnClarity(double churnRatio) {
-        double[] boundaries = {0.0, 0.30, 0.60, 0.80, 1.0};
+        double[] boundaries = {0.30, 0.60, 0.80};
         double minDistance = Double.MAX_VALUE;
         for (double boundary : boundaries) {
             minDistance = Math.min(minDistance, Math.abs(churnRatio - boundary));

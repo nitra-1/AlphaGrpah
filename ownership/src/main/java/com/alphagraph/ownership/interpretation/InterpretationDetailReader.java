@@ -29,7 +29,7 @@ public class InterpretationDetailReader {
                    price_confirmation_score, delivery_confirmation_score, volume_confirmation_score,
                    repeat_activity_confirmation_score, confirmation_coverage_pct, confidence, materiality_score,
                    reported_flow_state, churn_state, institutional_buy_value, institutional_sell_value,
-                   institutional_buyer_count, institutional_seller_count
+                   institutional_buyer_count, institutional_seller_count, interpretation_readiness
             FROM ownership.institutional_interpretations
             WHERE symbol = ?
             ORDER BY as_of_date DESC
@@ -45,7 +45,8 @@ public class InterpretationDetailReader {
                 rs.getBigDecimal("volume_confirmation_score"), rs.getBigDecimal("repeat_activity_confirmation_score"),
                 rs.getBigDecimal("confirmation_coverage_pct"), rs.getDouble("confidence"), rs.getBigDecimal("materiality_score"),
                 rs.getString("reported_flow_state"), rs.getString("churn_state"), rs.getBigDecimal("institutional_buy_value"),
-                rs.getBigDecimal("institutional_sell_value"), rs.getInt("institutional_buyer_count"), rs.getInt("institutional_seller_count")
+                rs.getBigDecimal("institutional_sell_value"), rs.getInt("institutional_buyer_count"), rs.getInt("institutional_seller_count"),
+                rs.getString("interpretation_readiness")
             ),
             symbol
         );
@@ -68,7 +69,7 @@ public class InterpretationDetailReader {
             row.priceConfirmationScore, row.deliveryConfirmationScore, row.volumeConfirmationScore,
             row.repeatActivityConfirmationScore, row.confirmationCoveragePct, row.confidence, toDouble(row.materialityScore),
             row.reportedFlowState, row.churnState, row.institutionalBuyValue, row.institutionalSellValue,
-            row.institutionalBuyerCount, row.institutionalSellerCount, reasons
+            row.institutionalBuyerCount, row.institutionalSellerCount, row.interpretationReadiness, reasons
         ));
     }
 
@@ -83,7 +84,7 @@ public class InterpretationDetailReader {
         BigDecimal deliveryConfirmationScore, BigDecimal volumeConfirmationScore, BigDecimal repeatActivityConfirmationScore,
         BigDecimal confirmationCoveragePct, double confidence, BigDecimal materialityScore, String reportedFlowState,
         String churnState, BigDecimal institutionalBuyValue, BigDecimal institutionalSellValue,
-        int institutionalBuyerCount, int institutionalSellerCount
+        int institutionalBuyerCount, int institutionalSellerCount, String interpretationReadiness
     ) {
     }
 }

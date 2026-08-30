@@ -9,6 +9,6 @@ record InstitutionalInterpretationInput(
     SymbolFlowSummary flowSummary, EventStructure eventStructure, InstitutionalState institutionalState,
     MaterialityLevel materialityLevel, Double materialityScore, String reportedFlowState,
     List<AnchorCandidateDeal> windowDeals, DiscoveryConfirmationResult confirmation,
-    List<DiscoveredPriceRow> preAnchorBaselineSessions, int ruleVersion
+    List<DiscoveredPriceRow> preAnchorBaselineSessions, boolean allDealsInWindowScored, int ruleVersion
 ) {
 }
