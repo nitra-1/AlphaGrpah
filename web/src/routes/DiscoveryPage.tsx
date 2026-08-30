@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
@@ -26,11 +26,22 @@ function formatEventStructure(value: string) {
   return value.replace(/_/g, ' ')
 }
 
+type SortOption = 'latest' | 'confidence' | 'materiality'
+
+const NO_STATE_VALUE = 'NONE'
+
 export function DiscoveryPage() {
   const queryClient = useQueryClient()
   const [actioningSymbol, setActioningSymbol] = useState<string | null>(null)
   const [expandedDeals, setExpandedDeals] = useState<string | null>(null)
   const [expandedWhy, setExpandedWhy] = useState<string | null>(null)
+  const [legendOpen, setLegendOpen] = useState(false)
+
+  const [stateFilter, setStateFilter] = useState('ALL')
+  const [confirmationFilter, setConfirmationFilter] = useState('ALL')
+  const [materialityFilter, setMaterialityFilter] = useState('ALL')
+  const [pendingDataOnly, setPendingDataOnly] = useState(false)
+  const [sortBy, setSortBy] = useState<SortOption>('latest')
 
   const listQuery = useQuery({
     queryKey: ['discovery'],
@@ -43,6 +54,37 @@ export function DiscoveryPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['discovery'] }),
     onSettled: () => setActioningSymbol(null),
   })
+
+  const filtersActive =
+    stateFilter !== 'ALL' || confirmationFilter !== 'ALL' || materialityFilter !== 'ALL' || pendingDataOnly
+
+  function resetFilters() {
+    setStateFilter('ALL')
+    setConfirmationFilter('ALL')
+    setMaterialityFilter('ALL')
+    setPendingDataOnly(false)
+  }
+
+  // All filtering/sorting happens client-side over the already-fetched list - the backend already
+  // returns every field these filters key off, so there's no reason to round-trip the server again
+  // just to narrow a list the client already has in memory.
+  const filteredCandidates = useMemo(() => {
+    const all = listQuery.data ?? []
+    const filtered = all.filter((c) => {
+      if (stateFilter !== 'ALL' && (c.institutionalState ?? NO_STATE_VALUE) !== stateFilter) return false
+      if (confirmationFilter !== 'ALL' && (c.discoveryConfirmationState ?? NO_STATE_VALUE) !== confirmationFilter) return false
+      if (materialityFilter !== 'ALL' && (c.maxMaterialityLevel ?? NO_STATE_VALUE) !== materialityFilter) return false
+      if (pendingDataOnly && c.interpretationReadiness !== 'PENDING_DATA') return false
+      return true
+    })
+    if (sortBy === 'confidence') {
+      return [...filtered].sort((a, b) => (b.interpretationConfidence ?? -1) - (a.interpretationConfidence ?? -1))
+    }
+    if (sortBy === 'materiality') {
+      return [...filtered].sort((a, b) => (b.maxMaterialityScore ?? -1) - (a.maxMaterialityScore ?? -1))
+    }
+    return filtered // 'latest' keeps the server's own order (latest activity, then materiality, then symbol)
+  }, [listQuery.data, stateFilter, confirmationFilter, materialityFilter, pendingDataOnly, sortBy])
 
   return (
     <div>
@@ -74,8 +116,98 @@ export function DiscoveryPage() {
       )}
 
       {listQuery.data && listQuery.data.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-border bg-surface p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <FilterSelect
+              label="Institutional pattern"
+              value={stateFilter}
+              onChange={setStateFilter}
+              options={[
+                { value: 'ALL', label: 'All' },
+                { value: 'POSSIBLE_ACCUMULATION', label: 'Possible accumulation' },
+                { value: 'POSSIBLE_DISTRIBUTION', label: 'Possible distribution' },
+                { value: 'HIGH_CHURN', label: 'High churn' },
+                { value: 'MIXED_ACTIVITY', label: 'Mixed activity' },
+                { value: 'NO_CLEAR_SIGNAL', label: 'No clear signal' },
+                { value: NO_STATE_VALUE, label: 'Not yet interpreted' },
+              ]}
+            />
+            <FilterSelect
+              label="Confirmation"
+              value={confirmationFilter}
+              onChange={setConfirmationFilter}
+              options={[
+                { value: 'ALL', label: 'All' },
+                { value: 'PENDING', label: 'Awaiting confirmation' },
+                { value: 'PARTIALLY_CONFIRMED', label: 'Partially confirmed' },
+                { value: 'CONFIRMED', label: 'Confirmed' },
+                { value: 'FAILED', label: 'Failed' },
+                { value: 'NOT_APPLICABLE', label: 'Not applicable' },
+              ]}
+            />
+            <FilterSelect
+              label="Materiality"
+              value={materialityFilter}
+              onChange={setMaterialityFilter}
+              options={[
+                { value: 'ALL', label: 'All' },
+                { value: 'VERY_HIGH', label: 'Very high' },
+                { value: 'HIGH', label: 'High' },
+                { value: 'MEDIUM', label: 'Medium' },
+                { value: 'LOW', label: 'Low' },
+                { value: NO_STATE_VALUE, label: 'Not yet scored' },
+              ]}
+            />
+            <FilterSelect
+              label="Sort by"
+              value={sortBy}
+              onChange={(value) => setSortBy(value as SortOption)}
+              options={[
+                { value: 'latest', label: 'Latest activity' },
+                { value: 'confidence', label: 'Highest confidence' },
+                { value: 'materiality', label: 'Highest materiality' },
+              ]}
+            />
+            <label className="flex items-center gap-1.5 pb-1.5 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                className="rounded border-border"
+                checked={pendingDataOnly}
+                onChange={(e) => setPendingDataOnly(e.target.checked)}
+              />
+              Data pending only
+            </label>
+            <button
+              className="ml-auto pb-1.5 text-sm font-semibold text-accent hover:text-accent-hover"
+              onClick={() => setLegendOpen((open) => !open)}
+            >
+              {legendOpen ? 'Hide flag meanings' : 'What do these flags mean?'}
+            </button>
+          </div>
+          {filtersActive && (
+            <p className="mt-2 text-xs text-text-muted">
+              Showing {filteredCandidates.length} of {listQuery.data.length} candidates.{' '}
+              <button className="font-semibold text-accent hover:text-accent-hover" onClick={resetFilters}>
+                Clear filters
+              </button>
+            </p>
+          )}
+          {legendOpen && <FlagLegend />}
+        </div>
+      )}
+
+      {listQuery.data && listQuery.data.length > 0 && filteredCandidates.length === 0 && (
+        <p className="mt-8 text-sm text-text-muted">
+          No candidates match your filters.{' '}
+          <button className="font-semibold text-accent hover:text-accent-hover" onClick={resetFilters}>
+            Clear filters
+          </button>
+        </p>
+      )}
+
+      {filteredCandidates.length > 0 && (
         <div className="mt-6 space-y-3">
-          {listQuery.data.map((candidate) => {
+          {filteredCandidates.map((candidate) => {
             const isActioning = actioningSymbol === candidate.symbol && discardMutation.isPending
             const dealsExpanded = expandedDeals === candidate.symbol
             const whyExpanded = expandedWhy === candidate.symbol
@@ -277,6 +409,105 @@ function DealList({ symbol }: { symbol: string }) {
           </tbody>
         </table>
       )}
+    </div>
+  )
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs font-medium text-text-muted">
+      {label}
+      <select
+        className="rounded-lg border border-border bg-bg px-2.5 py-1.5 text-sm text-text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+// Plain-English explanations of the badges shown on every row - the same wording an admin would
+// need spelled out the first time they see HIGH_CHURN or PARTIALLY_CONFIRMED and aren't sure what
+// it implies for whether to act on it.
+function FlagLegend() {
+  return (
+    <div className="mt-3 grid gap-4 border-t border-border pt-3 sm:grid-cols-3">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Institutional pattern</h3>
+        <dl className="mt-2 space-y-2 text-xs text-text-muted">
+          <LegendRow badge={<InstitutionalStateBadge state="POSSIBLE_ACCUMULATION" />}>
+            Real institutions appear to be building a position - persistent buying, not a one-off trade.
+          </LegendRow>
+          <LegendRow badge={<InstitutionalStateBadge state="POSSIBLE_DISTRIBUTION" />}>
+            Real institutions appear to be reducing a position - persistent selling.
+          </LegendRow>
+          <LegendRow badge={<InstitutionalStateBadge state="HIGH_CHURN" />}>
+            A lot of buying and selling with no clear net direction - not a buy or sell signal, just active trading.
+          </LegendRow>
+          <LegendRow badge={<InstitutionalStateBadge state="MIXED_ACTIVITY" />}>
+            Some buying, some selling - no single pattern dominates enough to call it either way.
+          </LegendRow>
+          <LegendRow badge={<InstitutionalStateBadge state="NO_CLEAR_SIGNAL" />}>
+            Not enough real evidence yet to classify the activity as any of the above.
+          </LegendRow>
+        </dl>
+      </div>
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Confirmation</h3>
+        <dl className="mt-2 space-y-2 text-xs text-text-muted">
+          <LegendRow badge={<ConfirmationBadge state="PENDING" sessionsElapsed={0} />}>
+            Too early to tell - still checking the next 5 trading sessions for follow-through.
+          </LegendRow>
+          <LegendRow badge={<ConfirmationBadge state="PARTIALLY_CONFIRMED" sessionsElapsed={3} />}>
+            Some real follow-through so far (price/delivery/volume), but not enough yet to call it confirmed.
+          </LegendRow>
+          <LegendRow badge={<ConfirmationBadge state="CONFIRMED" sessionsElapsed={5} />}>
+            The pattern held up over the full 5-session window that followed it.
+          </LegendRow>
+          <LegendRow badge={<ConfirmationBadge state="FAILED" sessionsElapsed={5} />}>
+            The pattern did not hold up - treat the original call skeptically.
+          </LegendRow>
+          <LegendRow badge={<ConfirmationBadge state="NOT_APPLICABLE" sessionsElapsed={0} />}>
+            There's no clear direction (churn/mixed/no-signal) to confirm in the first place.
+          </LegendRow>
+        </dl>
+      </div>
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Materiality</h3>
+        <dl className="mt-2 space-y-2 text-xs text-text-muted">
+          <LegendRow badge={<MaterialityBadge level="VERY_HIGH" />}>
+            An exceptionally large deal relative to this stock's normal trading volume.
+          </LegendRow>
+          <LegendRow badge={<MaterialityBadge level="HIGH" />}>A notably large deal - well above the stock's usual daily activity.</LegendRow>
+          <LegendRow badge={<MaterialityBadge level="MEDIUM" />}>A moderately sized deal - somewhat above normal.</LegendRow>
+          <LegendRow badge={<MaterialityBadge level="LOW" />}>A routine-sized deal - close to or below the stock's normal daily activity.</LegendRow>
+        </dl>
+      </div>
+    </div>
+  )
+}
+
+function LegendRow({ badge, children }: { badge: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-0.5 shrink-0">{badge}</span>
+      <span>{children}</span>
     </div>
   )
 }
