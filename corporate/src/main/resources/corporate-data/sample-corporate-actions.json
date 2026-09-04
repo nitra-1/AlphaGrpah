@@ -1,0 +1,51 @@
+[
+  {
+    "symbol": "RELIANCE",
+    "subject": "Dividend - Rs 5.50 Per Share",
+    "exDate": "14-Aug-2025",
+    "recDate": "14-Aug-2025",
+    "caBroadcastDate": null
+  },
+  {
+    "symbol": "TCS",
+    "subject": "Dividend - Rs 30.00 Per Share",
+    "exDate": "04-Jun-2025",
+    "recDate": "04-Jun-2025",
+    "caBroadcastDate": "10-Apr-2025"
+  },
+  {
+    "symbol": "INFY",
+    "subject": "Dividend - Rs 22.00 Per Share",
+    "exDate": "30-May-2025",
+    "recDate": "30-May-2025",
+    "caBroadcastDate": null
+  },
+  {
+    "symbol": "HDFCBANK",
+    "subject": "Dividend - Rs 22.00 Per Share",
+    "exDate": "27-Jun-2025",
+    "recDate": "27-Jun-2025",
+    "caBroadcastDate": null
+  },
+  {
+    "symbol": "ICICIBANK",
+    "subject": "Dividend - Rs 11.00 Per Share",
+    "exDate": "12-Aug-2025",
+    "recDate": "12-Aug-2025",
+    "caBroadcastDate": null
+  },
+  {
+    "symbol": "ESCORTS",
+    "subject": "Dividend - Rs 18.00 Per Share",
+    "exDate": "04-Jul-2025",
+    "recDate": "04-Jul-2025",
+    "caBroadcastDate": null
+  },
+  {
+    "symbol": "ZOMATO",
+    "subject": "Dividend - Rs 1.00 Per Share",
+    "exDate": "30-Jun-2025",
+    "recDate": "30-Jun-2025",
+    "caBroadcastDate": null
+  }
+]

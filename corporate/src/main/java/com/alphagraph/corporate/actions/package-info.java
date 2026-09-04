@@ -1,10 +1,12 @@
 /**
- * Module 1.4: the corporate actions pipeline. Same real-world gap as ownership (1.2) and
- * financial (1.3): NSE's bulk corporate actions report goes out over its Extranet to clearing
- * members only, not publicly - and the interactive site's per-symbol actions API is unofficial,
- * requires a browser session, and isn't a stable free bulk source either. Collector reads a
- * manually-compiled sample CSV (real dividend ex-dates/record-dates/amounts looked up per
- * company; see the pipeline class javadoc) until a real automated source is chosen. Internal
- * wiring only; the public domain type is {@link com.alphagraph.corporate.api.CorporateAction}.
+ * Module 1.4: the corporate actions pipeline. The original real-world-gap assessment (NSE's bulk
+ * corporate actions report only going out over its Extranet to clearing members) turned out to be
+ * outdated - {@code https://www.nseindia.com/api/corporates-corporateActions} is a real, free,
+ * live, whole-market JSON feed (confirmed live 2026-09-03, same {@code nseindia.com/api/*}
+ * anti-bot-cookie-handshake family as this module's own corporate-announcements feed). Now sourced
+ * live via {@link com.alphagraph.corporate.actions.HttpCorporateActionsCollector}, active in
+ * {@code local}/{@code docker}/{@code prod}; {@link com.alphagraph.corporate.actions.CorporateActionsCollector}
+ * (a bundled sample) is only the fallback for a profile with no live source wired. Internal wiring
+ * only; the public domain type is {@link com.alphagraph.corporate.api.CorporateAction}.
  */
 package com.alphagraph.corporate.actions;

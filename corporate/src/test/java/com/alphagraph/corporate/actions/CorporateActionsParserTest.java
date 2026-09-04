@@ -11,35 +11,34 @@ class CorporateActionsParserTest {
     private final CorporateActionsParser parser = new CorporateActionsParser();
 
     @Test
-    void parsesRowsAndTreatsBlankOptionalFieldsAsNull() {
-        List<String> lines = List.of(
-            "SYMBOL,ACTION_TYPE,ANNOUNCEMENT_DATE,EX_DATE,RECORD_DATE,DIVIDEND_AMOUNT,RATIO_NUMERATOR,RATIO_DENOMINATOR,PRICE",
-            "TCS,DIVIDEND,2025-04-10,2025-06-04,2025-06-04,30.00,,,",
-            "RELIANCE,DIVIDEND,,2025-08-14,2025-08-14,5.50,,,"
-        );
+    void parsesRealShapedRowsAndNormalizesDashPlaceholdersToNull() {
+        String json = """
+            [
+              {"symbol": "TCS", "subject": "Dividend - Rs 30.00 Per Share", "exDate": "04-Jun-2025",
+               "recDate": "04-Jun-2025", "caBroadcastDate": "10-Apr-2025"},
+              {"symbol": "GOODLUCK", "subject": "Bonus 2:1", "exDate": "21-Aug-2026",
+               "recDate": "-", "caBroadcastDate": null}
+            ]
+            """;
 
-        List<RawCorporateActionRow> parsed = parser.parse(lines);
+        List<RawCorporateActionRow> parsed = parser.parse(json);
 
         assertThat(parsed).hasSize(2);
         RawCorporateActionRow tcs = parsed.get(0);
         assertThat(tcs.symbol()).isEqualTo("TCS");
-        assertThat(tcs.actionType()).isEqualTo("DIVIDEND");
-        assertThat(tcs.announcementDate()).isEqualTo("2025-04-10");
-        assertThat(tcs.exDate()).isEqualTo("2025-06-04");
-        assertThat(tcs.dividendAmount()).isEqualTo("30.00");
-        assertThat(tcs.ratioNumerator()).isNull();
-        assertThat(tcs.price()).isNull();
+        assertThat(tcs.subject()).isEqualTo("Dividend - Rs 30.00 Per Share");
+        assertThat(tcs.exDate()).isEqualTo("04-Jun-2025");
+        assertThat(tcs.recordDate()).isEqualTo("04-Jun-2025");
+        assertThat(tcs.announcementDate()).isEqualTo("10-Apr-2025");
 
-        RawCorporateActionRow reliance = parsed.get(1);
-        assertThat(reliance.announcementDate()).isNull();
-        assertThat(reliance.dividendAmount()).isEqualTo("5.50");
+        RawCorporateActionRow goodluck = parsed.get(1);
+        assertThat(goodluck.subject()).isEqualTo("Bonus 2:1");
+        assertThat(goodluck.recordDate()).isNull(); // "-" placeholder normalized to null
+        assertThat(goodluck.announcementDate()).isNull(); // real JSON null
     }
 
     @Test
-    void emptyInputProducesNoRows() {
-        assertThat(parser.parse(List.of())).isEmpty();
-        assertThat(parser.parse(List.of(
-            "SYMBOL,ACTION_TYPE,ANNOUNCEMENT_DATE,EX_DATE,RECORD_DATE,DIVIDEND_AMOUNT,RATIO_NUMERATOR,RATIO_DENOMINATOR,PRICE"
-        ))).isEmpty();
+    void emptyArrayProducesNoRows() {
+        assertThat(parser.parse("[]")).isEmpty();
     }
 }

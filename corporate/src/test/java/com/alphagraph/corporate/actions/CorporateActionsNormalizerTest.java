@@ -18,12 +18,12 @@ class CorporateActionsNormalizerTest {
     private final CorporateActionsNormalizer normalizer = new CorporateActionsNormalizer(instrumentLookup);
 
     @Test
-    void resolvesKnownSymbolAndParsesAllFields() {
+    void resolvesKnownSymbolAndClassifiesTheSubject() {
         UUID instrumentId = UUID.randomUUID();
         when(instrumentLookup.findIdBySymbol("TCS")).thenReturn(Optional.of(instrumentId));
 
         RawCorporateActionRow raw = new RawCorporateActionRow(
-            "TCS", "DIVIDEND", "2025-04-10", "2025-06-04", "2025-06-04", "30.00", null, null, null
+            "TCS", "Dividend - Rs 30.00 Per Share", "04-Jun-2025", "04-Jun-2025", "10-Apr-2025"
         );
 
         CorporateAction action = normalizer.normalize(raw);
@@ -44,7 +44,7 @@ class CorporateActionsNormalizerTest {
         when(instrumentLookup.findIdBySymbol("ZOMATO")).thenReturn(Optional.empty());
 
         RawCorporateActionRow raw = new RawCorporateActionRow(
-            "ZOMATO", "DIVIDEND", null, "2025-06-30", "2025-06-30", "1.00", null, null, null
+            "ZOMATO", "Dividend - Rs 1.00 Per Share", "30-Jun-2025", "30-Jun-2025", null
         );
 
         assertThatIllegalStateException()
@@ -53,11 +53,24 @@ class CorporateActionsNormalizerTest {
     }
 
     @Test
+    void unclassifiableSubjectThrowsRatherThanGuessingAnActionType() {
+        when(instrumentLookup.findIdBySymbol("RELIANCE")).thenReturn(Optional.of(UUID.randomUUID()));
+
+        RawCorporateActionRow raw = new RawCorporateActionRow(
+            "RELIANCE", "Change in Registrar and Share Transfer Agent", "14-Aug-2025", null, null
+        );
+
+        assertThatIllegalStateException()
+            .isThrownBy(() -> normalizer.normalize(raw))
+            .withMessageContaining("Change in Registrar");
+    }
+
+    @Test
     void nullOptionalFieldsStayNull() {
         when(instrumentLookup.findIdBySymbol("RELIANCE")).thenReturn(Optional.of(UUID.randomUUID()));
 
         RawCorporateActionRow raw = new RawCorporateActionRow(
-            "RELIANCE", "DIVIDEND", null, "2025-08-14", "2025-08-14", "5.50", null, null, null
+            "RELIANCE", "Dividend - Rs 5.50 Per Share", "14-Aug-2025", "14-Aug-2025", null
         );
 
         CorporateAction action = normalizer.normalize(raw);
@@ -66,5 +79,19 @@ class CorporateActionsNormalizerTest {
         assertThat(action.ratioNumerator()).isNull();
         assertThat(action.ratioDenominator()).isNull();
         assertThat(action.price()).isNull();
+    }
+
+    @Test
+    void bonusSubjectYieldsRatioAndNoDividendAmount() {
+        when(instrumentLookup.findIdBySymbol("GOODLUCK")).thenReturn(Optional.of(UUID.randomUUID()));
+
+        RawCorporateActionRow raw = new RawCorporateActionRow("GOODLUCK", "Bonus 2:1", "21-Aug-2026", null, null);
+
+        CorporateAction action = normalizer.normalize(raw);
+
+        assertThat(action.actionType()).isEqualTo("BONUS");
+        assertThat(action.ratioNumerator()).isEqualTo(2);
+        assertThat(action.ratioDenominator()).isEqualTo(1);
+        assertThat(action.dividendAmount()).isNull();
     }
 }
