@@ -3,6 +3,7 @@ package com.alphagraph.ownership.pattern;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,5 +30,13 @@ public class OwnershipInstrumentLookup {
             (rs, rowNum) -> (UUID) rs.getObject("id"),
             symbol
         ).stream().findFirst();
+    }
+
+    /** The whole tracked universe, for {@link HttpShareholdingCollector}'s per-symbol fetch loop. */
+    public List<String> findAllSymbols() {
+        return jdbcTemplate.query(
+            "SELECT symbol FROM reference.instruments ORDER BY symbol",
+            (rs, rowNum) -> rs.getString("symbol")
+        );
     }
 }

@@ -20,6 +20,8 @@ import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
 import com.alphagraph.market.pricing.MarketPriceBackfillScheduler;
 import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
+import com.alphagraph.ownership.pattern.XbrlEnrichmentScheduler;
+import com.alphagraph.ownership.transformation.OwnershipTransformationScheduler;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -60,11 +62,15 @@ class JobRegistry {
         DecisionScoringScheduler decisionScoringScheduler,
         DecisionSnapshotScheduler decisionSnapshotScheduler,
         ForwardOutcomeScheduler forwardOutcomeScheduler,
-        DailyReportScheduler dailyReportScheduler
+        DailyReportScheduler dailyReportScheduler,
+        XbrlEnrichmentScheduler xbrlEnrichmentScheduler,
+        OwnershipTransformationScheduler ownershipTransformationScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
         jobs.put("institutional-interpretation", institutionalInterpretationScheduler::runInstitutionalInterpretation);
+        jobs.put("xbrl-shareholding-enrichment", xbrlEnrichmentScheduler::runXbrlShareholdingEnrichment);
+        jobs.put("ownership-transformation", ownershipTransformationScheduler::runOwnershipTransformation);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

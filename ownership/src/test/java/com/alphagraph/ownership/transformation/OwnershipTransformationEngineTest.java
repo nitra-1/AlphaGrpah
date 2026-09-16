@@ -1,0 +1,134 @@
+package com.alphagraph.ownership.transformation;
+
+import com.alphagraph.common.rules.Rule;
+import com.alphagraph.common.rules.RuleCondition;
+import com.alphagraph.common.rules.RuleOperator;
+import com.alphagraph.common.rules.RuleSet;
+import com.alphagraph.ownership.api.BulkDeal;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class OwnershipTransformationEngineTest {
+
+    private static final UUID INSTRUMENT_ID = UUID.randomUUID();
+    private static final String SYMBOL = "RELIANCE";
+    private static final LocalDate PRIOR_PERIOD_END = LocalDate.of(2026, 3, 31);
+    private static final LocalDate CURRENT_PERIOD_END = LocalDate.of(2026, 6, 30);
+
+    private final OwnershipTransformationEngine engine = new OwnershipTransformationEngine();
+
+    @Test
+    void cleanInstitutionalExpansionFiresWhenBothFiiAndDiiRise() {
+        // promoter flat (0 change), FII +0.60pp, DII +0.60pp - both cross the signal threshold (a
+        // ladder score of 45 at absChangePp=0.60, well above the 30 threshold).
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "16.60", "18.60")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.INSTITUTIONAL_OWNERSHIP_EXPANSION);
+        assertThat(reasonCodes(calculation)).contains("FII_ACCUMULATION", "DII_ACCUMULATION", "INSTITUTIONAL_OWNERSHIP_EXPANSION");
+        assertThat(calculation.evidence()).isNotEmpty();
+    }
+
+    @Test
+    void promoterDilutionFiresOnItsOwn() {
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "49.40", "16.00", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.PROMOTER_DILUTION);
+        assertThat(reasonCodes(calculation)).containsExactly("PROMOTER_DILUTION");
+    }
+
+    @Test
+    void contradictionWinsThePriorityLadderButStillRecordsTheAccumulationReason() {
+        // Institutions accumulating while the promoter dilutes in the same quarter - a real
+        // tension worth flagging first, but FII_ACCUMULATION must still show up as a reason so it
+        // isn't hidden behind the higher-priority contradiction label.
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "49.40", "16.60", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.OWNERSHIP_CONTRADICTION);
+        assertThat(reasonCodes(calculation)).contains("OWNERSHIP_CONTRADICTION", "FII_ACCUMULATION", "PROMOTER_DILUTION");
+    }
+
+    @Test
+    void missingPriorPeriodStillEvidencesEveryMetricAtLowerConfidenceWithNoStateFiring() {
+        var periods = List.of(period(CURRENT_PERIOD_END, "50.00", "16.00", "18.00"));
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.NO_CLEAR_SIGNAL);
+        assertThat(calculation.result().confidence()).isEqualTo(40.0);
+        assertThat(calculation.evidence()).isNotEmpty();
+        assertThat(calculation.evidence()).allSatisfy(observation -> {
+            assertThat(observation.changePp()).isNull();
+            assertThat(observation.priorValue()).isNull();
+            assertThat(observation.confidence()).isEqualTo(40.0);
+        });
+    }
+
+    @Test
+    void bulkBuyingWithOwnershipExpansionFiresWhenRealNetBuyingPrecedesAnFiiIncrease() {
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "16.60", "18.00")
+        );
+        List<BulkDeal> bulkDeals = List.of(
+            new BulkDeal(INSTRUMENT_ID, SYMBOL, PRIOR_PERIOD_END.plusDays(10), "SOME FUND", "BUY", 100_000L, BigDecimal.valueOf(50), "BULK")
+        );
+
+        var calculation = engine.calculate(periods, bulkDeals, ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.BULK_BUYING_WITH_OWNERSHIP_EXPANSION);
+        assertThat(reasonCodes(calculation)).contains("BULK_BUYING_WITH_OWNERSHIP_EXPANSION", "FII_ACCUMULATION");
+    }
+
+    @Test
+    void emptyPeriodsReturnsEmpty() {
+        assertThat(engine.calculate(List.of(), List.of(), ruleSet())).isEmpty();
+    }
+
+    private static List<String> reasonCodes(TransformationCalculation calculation) {
+        return calculation.result().reasons().stream().map(ReasonCode::code).toList();
+    }
+
+    private static TransformationShareholdingPeriod period(LocalDate periodEnd, String promoter, String fii, String dii) {
+        return new TransformationShareholdingPeriod(
+            INSTRUMENT_ID, SYMBOL, periodEnd,
+            new BigDecimal(promoter), new BigDecimal(fii), new BigDecimal(dii),
+            null, null, null, null, null, null
+        );
+    }
+
+    private static RuleSet ruleSet() {
+        List<RuleCondition> ladder = List.of(
+            new RuleCondition(RuleOperator.ALWAYS, 0, 10),
+            new RuleCondition(RuleOperator.GTE, 0.25, 15),
+            new RuleCondition(RuleOperator.GTE, 0.50, 20),
+            new RuleCondition(RuleOperator.GTE, 1.00, 25),
+            new RuleCondition(RuleOperator.GTE, 2.00, 30)
+        );
+        return new RuleSet(1, List.of(
+            new Rule("ownership-transformation-promoter-change", "absChangePp", 1, ladder),
+            new Rule("ownership-transformation-fii-change", "absChangePp", 1, ladder),
+            new Rule("ownership-transformation-dii-change", "absChangePp", 1, ladder)
+        ));
+    }
+}
