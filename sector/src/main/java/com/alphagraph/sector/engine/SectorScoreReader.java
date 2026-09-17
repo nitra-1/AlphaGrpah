@@ -84,6 +84,14 @@ public class SectorScoreReader {
         return rows.stream().findFirst();
     }
 
+    /** The most recent {@code limit} scores for the sector a tracked instrument belongs to, most recent first - used by {@code intelligence.sectorcontext} to compute day-over-day change without a second round trip. */
+    public List<SectorScore> findRecentForInstrument(UUID instrumentId, int limit) {
+        return jdbcTemplate.query(
+            SELECT_COLUMNS_FOR_INSTRUMENT + " WHERE i.id = ? ORDER BY ss.as_of_date DESC LIMIT ?",
+            ROW_MAPPER, instrumentId, limit
+        );
+    }
+
     /** Every sector's latest score, one row per sector - the input to a cross-sector ranking. */
     public List<SectorScore> findAllLatest() {
         return jdbcTemplate.query(

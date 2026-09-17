@@ -52,6 +52,7 @@ public class CronMonitoringRepository {
         JOB_SCHEDULES.put("corporate-event-extraction", "0 45 18 * * *");
         JOB_SCHEDULES.put("institutional-analysis", "0 50 18 * * *");
         JOB_SCHEDULES.put("sector-analysis", "0 55 18 * * *");
+        JOB_SCHEDULES.put("sector-context-evidence", "0 57 18 * * *");
         JOB_SCHEDULES.put("risk-analysis", "0 0 19 * * *");
         JOB_SCHEDULES.put("order-book", "0 0 19 * * *");
         JOB_SCHEDULES.put("management-commentary", "0 15 19 * * *");

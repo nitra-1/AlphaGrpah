@@ -16,6 +16,7 @@ import com.alphagraph.intelligence.financial.FinancialResultsBridgeScheduler;
 import com.alphagraph.intelligence.institutional.InstitutionalAnalysisScheduler;
 import com.alphagraph.intelligence.risk.RiskAnalysisScheduler;
 import com.alphagraph.intelligence.sector.SectorAnalysisScheduler;
+import com.alphagraph.intelligence.sectorcontext.SectorContextScheduler;
 import com.alphagraph.intelligence.technical.TechnicalAnalysisScheduler;
 import com.alphagraph.learning.outcomes.ForwardOutcomeScheduler;
 import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
@@ -31,7 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for the 25 standalone {@code @Scheduled} jobs - the {@code
+ * Manual re-trigger dispatch for the 26 standalone {@code @Scheduled} jobs - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
  * Scheduler bean method Spring's own cron trigger would call, so a manual retry gets identical
@@ -70,7 +71,8 @@ class JobRegistry {
         OwnershipTransformationScheduler ownershipTransformationScheduler,
         MarketAccumulationScheduler marketAccumulationScheduler,
         FinancialTransformationScheduler financialTransformationScheduler,
-        CapitalAllocationScheduler capitalAllocationScheduler
+        CapitalAllocationScheduler capitalAllocationScheduler,
+        SectorContextScheduler sectorContextScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -80,6 +82,7 @@ class JobRegistry {
         jobs.put("market-accumulation-evidence", marketAccumulationScheduler::runMarketAccumulationEvidence);
         jobs.put("financial-results-comparision-fetch", financialTransformationScheduler::runFinancialResultsComparisionFetch);
         jobs.put("capital-allocation-evidence", capitalAllocationScheduler::runCapitalAllocationEvidence);
+        jobs.put("sector-context-evidence", sectorContextScheduler::runSectorContextEvidence);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);
