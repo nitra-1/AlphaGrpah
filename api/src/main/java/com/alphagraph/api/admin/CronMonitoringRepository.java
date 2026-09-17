@@ -46,6 +46,7 @@ public class CronMonitoringRepository {
         JOB_SCHEDULES.put("knowledge-extraction", "0 30 18 * * *");
         JOB_SCHEDULES.put("technical-analysis", "0 30 18 * * *");
         JOB_SCHEDULES.put("financial-results-bridge", "0 35 18 * * *");
+        JOB_SCHEDULES.put("financial-results-comparision-fetch", "0 37 18 * * *");
         JOB_SCHEDULES.put("fundamental-analysis", "0 40 18 * * *");
         JOB_SCHEDULES.put("corporate-event-extraction", "0 45 18 * * *");
         JOB_SCHEDULES.put("institutional-analysis", "0 50 18 * * *");

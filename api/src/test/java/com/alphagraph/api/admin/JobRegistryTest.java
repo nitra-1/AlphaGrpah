@@ -10,6 +10,7 @@ import com.alphagraph.corporate.signal.CorporateSignalScheduler;
 import com.alphagraph.decision.engine.DecisionScoringScheduler;
 import com.alphagraph.decision.report.DailyReportScheduler;
 import com.alphagraph.financial.engine.FundamentalAnalysisScheduler;
+import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
 import com.alphagraph.intelligence.financial.FinancialResultsBridgeScheduler;
 import com.alphagraph.intelligence.institutional.InstitutionalAnalysisScheduler;
 import com.alphagraph.intelligence.risk.RiskAnalysisScheduler;
@@ -57,6 +58,7 @@ class JobRegistryTest {
     private final XbrlEnrichmentScheduler xbrlEnrichmentScheduler = mock(XbrlEnrichmentScheduler.class);
     private final OwnershipTransformationScheduler ownershipTransformationScheduler = mock(OwnershipTransformationScheduler.class);
     private final MarketAccumulationScheduler marketAccumulationScheduler = mock(MarketAccumulationScheduler.class);
+    private final FinancialTransformationScheduler financialTransformationScheduler = mock(FinancialTransformationScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
         marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
@@ -65,21 +67,22 @@ class JobRegistryTest {
         institutionalAnalysisScheduler, sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler,
         managementCommentaryScheduler, newsCatalystScheduler, corporateSignalScheduler, decisionScoringScheduler,
         decisionSnapshotScheduler, forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler,
-        ownershipTransformationScheduler, marketAccumulationScheduler
+        ownershipTransformationScheduler, marketAccumulationScheduler, financialTransformationScheduler
     );
 
-    private static final List<String> ALL_23_JOB_NAMES = List.of(
+    private static final List<String> ALL_24_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
         "risk-analysis", "order-book", "management-commentary", "news-catalyst", "corporate-signal",
         "decision-scoring", "decision-snapshot-archive", "forward-outcome-tracking", "daily-ai-report",
-        "xbrl-shareholding-enrichment", "ownership-transformation", "market-accumulation-evidence"
+        "xbrl-shareholding-enrichment", "ownership-transformation", "market-accumulation-evidence",
+        "financial-results-comparision-fetch"
     );
 
     @Test
-    void containsExactlyAllTwentyThreeRealJobNames() {
-        for (String jobName : ALL_23_JOB_NAMES) {
+    void containsExactlyAllTwentyFourRealJobNames() {
+        for (String jobName : ALL_24_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -97,7 +100,7 @@ class JobRegistryTest {
             sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler, managementCommentaryScheduler,
             newsCatalystScheduler, corporateSignalScheduler, decisionScoringScheduler, decisionSnapshotScheduler,
             forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler, ownershipTransformationScheduler,
-            marketAccumulationScheduler
+            marketAccumulationScheduler, financialTransformationScheduler
         );
     }
 
@@ -125,6 +128,7 @@ class JobRegistryTest {
         registry.trigger("xbrl-shareholding-enrichment");
         registry.trigger("ownership-transformation");
         registry.trigger("market-accumulation-evidence");
+        registry.trigger("financial-results-comparision-fetch");
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
@@ -148,5 +152,6 @@ class JobRegistryTest {
         verify(xbrlEnrichmentScheduler).runXbrlShareholdingEnrichment();
         verify(ownershipTransformationScheduler).runOwnershipTransformation();
         verify(marketAccumulationScheduler).runMarketAccumulationEvidence();
+        verify(financialTransformationScheduler).runFinancialResultsComparisionFetch();
     }
 }
