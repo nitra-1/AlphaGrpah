@@ -79,4 +79,20 @@ public class JdbcCorporateActionsReader implements CorporateActionsReader {
             MAPPER, since
         );
     }
+
+    @Override
+    public List<CorporateAction> findAllActions(UUID instrumentId) {
+        return jdbcTemplate.query(
+            """
+            SELECT ca.instrument_id, i.symbol, ca.action_type, ca.ex_date, ca.record_date,
+                   ca.announcement_date, ca.dividend_amount, ca.ratio_numerator, ca.ratio_denominator, ca.price,
+                   ca.created_at
+            FROM corporate.corporate_actions ca
+            JOIN reference.instruments i ON i.id = ca.instrument_id
+            WHERE ca.instrument_id = ?
+            ORDER BY ca.ex_date ASC
+            """,
+            MAPPER, instrumentId
+        );
+    }
 }

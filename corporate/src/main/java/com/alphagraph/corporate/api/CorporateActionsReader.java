@@ -19,4 +19,7 @@ public interface CorporateActionsReader {
 
     /** BONUS/SPLIT actions with an ex-date in the last {@code lookbackDays} days, across every instrument - the dashboard "recent price adjustments" surface. */
     List<CorporateAction> findRecentPriceAffectingActions(int lookbackDays);
+
+    /** Every action of every type for one instrument, ordered ascending by ex-date - unlike the other methods here, not filtered to BONUS/SPLIT. */
+    List<CorporateAction> findAllActions(UUID instrumentId);
 }
