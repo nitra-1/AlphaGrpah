@@ -34,6 +34,8 @@ class SectorContextOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(SectorContextOrchestrator.class);
     private static final int SERIES_LIMIT = 25;
+    /** Comfortably covers every real trading day in market.daily_prices (111 as of this writing) for a one-off backfill. */
+    private static final int BACKFILL_SERIES_LIMIT = 500;
 
     private final InstrumentReader instrumentReader;
     private final MarketPriceReturnLookup priceReturnLookup;
@@ -61,45 +63,17 @@ class SectorContextOrchestrator {
         List<TrackedInstrumentSummary> instruments = instrumentReader.listAll();
         Optional<UUID> niftyId = instrumentReader.findIdBySymbol(niftySymbol);
         List<PriceReturnPoint> niftySeries = niftyId.map(id -> priceReturnLookup.findRecentAscending(id, SERIES_LIMIT)).orElse(List.of());
-
         Map<UUID, List<PriceReturnPoint>> benchmarkSeriesCache = new HashMap<>();
 
         int succeeded = 0;
         int failed = 0;
         for (TrackedInstrumentSummary instrument : instruments) {
             try {
-                List<PriceReturnPoint> instrumentSeries = priceReturnLookup.findRecentAscending(instrument.id(), SERIES_LIMIT);
-                if (instrumentSeries.isEmpty()) {
-                    continue;
-                }
-
-                if (!niftySeries.isEmpty() && !instrument.id().equals(niftyId.orElse(null))) {
-                    engine.calculate(
-                        SectorContextMetric.INSTRUMENT_RELATIVE_STRENGTH_VS_NIFTY, instrument.id(), instrument.symbol(),
-                        spreadSeries(instrumentSeries, niftySeries)
-                    ).ifPresent(this::write);
-                }
-
-                Optional<UUID> sectorBenchmarkId = sectorBenchmarkReader.findBenchmarkInstrumentIdForInstrument(instrument.id());
-                if (sectorBenchmarkId.isPresent()) {
-                    List<PriceReturnPoint> benchmarkSeries = benchmarkSeriesCache.computeIfAbsent(
-                        sectorBenchmarkId.get(), id -> priceReturnLookup.findRecentAscending(id, SERIES_LIMIT)
-                    );
-                    if (!benchmarkSeries.isEmpty()) {
-                        engine.calculate(
-                            SectorContextMetric.INSTRUMENT_RELATIVE_STRENGTH_VS_SECTOR, instrument.id(), instrument.symbol(),
-                            spreadSeries(instrumentSeries, benchmarkSeries)
-                        ).ifPresent(this::write);
+                for (InstrumentSeries series : buildSeries(instrument, niftyId, niftySeries, benchmarkSeriesCache, SERIES_LIMIT)) {
+                    if (!series.values().isEmpty()) {
+                        engine.calculate(series.metric(), instrument.id(), instrument.symbol(), series.values()).ifPresent(this::write);
                     }
                 }
-
-                List<SectorScore> recentScores = sectorScoreReader.findRecentForInstrument(instrument.id(), SERIES_LIMIT);
-                List<DatedValue> relativeStrengthSeries = relativeStrengthSeries(recentScores);
-                if (!relativeStrengthSeries.isEmpty()) {
-                    engine.calculate(SectorContextMetric.SECTOR_RELATIVE_STRENGTH, instrument.id(), instrument.symbol(), relativeStrengthSeries)
-                        .ifPresent(this::write);
-                }
-
                 succeeded++;
             } catch (Exception e) {
                 failed++;
@@ -108,6 +82,77 @@ class SectorContextOrchestrator {
         }
 
         log.info("Sector context evidence run complete: {} instruments succeeded, {} failed", succeeded, failed);
+    }
+
+    /**
+     * One-off historical catch-up, not a daily concern - fetches a much longer real series per
+     * instrument (comfortably covering every real trading day, not just the last 25) and replays
+     * {@link SectorContextEngine#calculate} unchanged against every valid prefix of it, instead of
+     * only the most recent point. Must be triggered after {@code market-accumulation-evidence-backfill}
+     * has completed - {@code VS_NIFTY}/{@code VS_SECTOR} read {@code market.transformation_evidence}
+     * directly, so there is nothing to replay against until that table has real historical depth.
+     */
+    void backfill() {
+        List<TrackedInstrumentSummary> instruments = instrumentReader.listAll();
+        Optional<UUID> niftyId = instrumentReader.findIdBySymbol(niftySymbol);
+        List<PriceReturnPoint> niftySeries = niftyId.map(id -> priceReturnLookup.findRecentAscending(id, BACKFILL_SERIES_LIMIT)).orElse(List.of());
+        Map<UUID, List<PriceReturnPoint>> benchmarkSeriesCache = new HashMap<>();
+
+        int succeeded = 0;
+        int failed = 0;
+        int pointsWritten = 0;
+        for (TrackedInstrumentSummary instrument : instruments) {
+            try {
+                for (InstrumentSeries series : buildSeries(instrument, niftyId, niftySeries, benchmarkSeriesCache, BACKFILL_SERIES_LIMIT)) {
+                    List<DatedValue> values = series.values();
+                    for (int i = 1; i < values.size(); i++) {
+                        engine.calculate(series.metric(), instrument.id(), instrument.symbol(), values.subList(0, i + 1)).ifPresent(this::write);
+                        pointsWritten++;
+                    }
+                }
+                succeeded++;
+            } catch (Exception e) {
+                failed++;
+                log.warn("Failed to backfill sector context evidence for instrument {}: {}", instrument.id(), e.getMessage());
+            }
+        }
+
+        log.info("Sector context evidence backfill complete: {} instruments succeeded, {} failed, {} evidence points replayed", succeeded, failed, pointsWritten);
+    }
+
+    /** The three metrics' aligned series for one instrument, built the same way regardless of whether the caller wants just the latest point or every point to replay. */
+    private List<InstrumentSeries> buildSeries(
+        TrackedInstrumentSummary instrument, Optional<UUID> niftyId, List<PriceReturnPoint> niftySeries,
+        Map<UUID, List<PriceReturnPoint>> benchmarkSeriesCache, int limit
+    ) {
+        List<InstrumentSeries> series = new ArrayList<>();
+
+        List<PriceReturnPoint> instrumentSeries = priceReturnLookup.findRecentAscending(instrument.id(), limit);
+        if (instrumentSeries.isEmpty()) {
+            return series;
+        }
+
+        if (!niftySeries.isEmpty() && !instrument.id().equals(niftyId.orElse(null))) {
+            series.add(new InstrumentSeries(SectorContextMetric.INSTRUMENT_RELATIVE_STRENGTH_VS_NIFTY, spreadSeries(instrumentSeries, niftySeries)));
+        }
+
+        Optional<UUID> sectorBenchmarkId = sectorBenchmarkReader.findBenchmarkInstrumentIdForInstrument(instrument.id());
+        if (sectorBenchmarkId.isPresent()) {
+            List<PriceReturnPoint> benchmarkSeries = benchmarkSeriesCache.computeIfAbsent(
+                sectorBenchmarkId.get(), id -> priceReturnLookup.findRecentAscending(id, limit)
+            );
+            if (!benchmarkSeries.isEmpty()) {
+                series.add(new InstrumentSeries(SectorContextMetric.INSTRUMENT_RELATIVE_STRENGTH_VS_SECTOR, spreadSeries(instrumentSeries, benchmarkSeries)));
+            }
+        }
+
+        List<SectorScore> recentScores = sectorScoreReader.findRecentForInstrument(instrument.id(), limit);
+        series.add(new InstrumentSeries(SectorContextMetric.SECTOR_RELATIVE_STRENGTH, relativeStrengthSeries(recentScores)));
+
+        return series;
+    }
+
+    private record InstrumentSeries(SectorContextMetric metric, List<DatedValue> values) {
     }
 
     private void write(SectorContextEvidenceObservation observation) {

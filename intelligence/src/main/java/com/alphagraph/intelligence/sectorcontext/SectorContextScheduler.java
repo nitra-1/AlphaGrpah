@@ -10,6 +10,7 @@ public class SectorContextScheduler {
 
     private static final String CRON_657PM_IST = "0 57 18 * * *";
     private static final String JOB_NAME = "sector-context-evidence";
+    private static final String BACKFILL_JOB_NAME = "sector-context-evidence-backfill";
 
     private final SectorContextOrchestrator orchestrator;
     private final JobRunTracker tracker;
@@ -22,5 +23,13 @@ public class SectorContextScheduler {
     @Scheduled(cron = CRON_657PM_IST, zone = "Asia/Kolkata")
     public void runSectorContextEvidence() {
         tracker.run(JOB_NAME, orchestrator::run, "sector.transformation_evidence", "computed_at");
+    }
+
+    /**
+     * One-off historical catch-up, manually triggered only (no {@code @Scheduled} - never fires on
+     * its own, see claude.md). Must be triggered after {@code market-accumulation-evidence-backfill}.
+     */
+    public void runSectorContextEvidenceBackfill() {
+        tracker.run(BACKFILL_JOB_NAME, orchestrator::backfill, "sector.transformation_evidence", "computed_at");
     }
 }

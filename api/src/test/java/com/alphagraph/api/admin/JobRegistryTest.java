@@ -75,19 +75,21 @@ class JobRegistryTest {
         capitalAllocationScheduler, sectorContextScheduler
     );
 
-    private static final List<String> ALL_26_JOB_NAMES = List.of(
+    private static final List<String> ALL_30_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
         "risk-analysis", "order-book", "management-commentary", "news-catalyst", "corporate-signal",
         "decision-scoring", "decision-snapshot-archive", "forward-outcome-tracking", "daily-ai-report",
         "xbrl-shareholding-enrichment", "ownership-transformation", "market-accumulation-evidence",
-        "financial-results-comparision-fetch", "capital-allocation-evidence", "sector-context-evidence"
+        "financial-results-comparision-fetch", "capital-allocation-evidence", "sector-context-evidence",
+        "market-accumulation-evidence-backfill", "financial-results-comparision-fetch-backfill",
+        "ownership-transformation-backfill", "sector-context-evidence-backfill"
     );
 
     @Test
-    void containsExactlyAllTwentySixRealJobNames() {
-        for (String jobName : ALL_26_JOB_NAMES) {
+    void containsExactlyAllThirtyRealJobNames() {
+        for (String jobName : ALL_30_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -137,6 +139,10 @@ class JobRegistryTest {
         registry.trigger("financial-results-comparision-fetch");
         registry.trigger("capital-allocation-evidence");
         registry.trigger("sector-context-evidence");
+        registry.trigger("market-accumulation-evidence-backfill");
+        registry.trigger("financial-results-comparision-fetch-backfill");
+        registry.trigger("ownership-transformation-backfill");
+        registry.trigger("sector-context-evidence-backfill");
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
@@ -163,5 +169,9 @@ class JobRegistryTest {
         verify(financialTransformationScheduler).runFinancialResultsComparisionFetch();
         verify(capitalAllocationScheduler).runCapitalAllocationEvidence();
         verify(sectorContextScheduler).runSectorContextEvidence();
+        verify(marketAccumulationScheduler).runMarketAccumulationEvidenceBackfill();
+        verify(financialTransformationScheduler).runFinancialResultsComparisionFetchBackfill();
+        verify(ownershipTransformationScheduler).runOwnershipTransformationBackfill();
+        verify(sectorContextScheduler).runSectorContextEvidenceBackfill();
     }
 }

@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -67,5 +68,46 @@ class OwnershipTransformationOrchestrator {
         }
 
         log.info("Ownership transformation run complete: {} instruments succeeded, {} failed", succeeded, failed);
+    }
+
+    /**
+     * One-off historical catch-up, not a daily concern - replays {@link OwnershipTransformationEngine#calculate}
+     * unchanged against every real quarter transition in a symbol's full shareholding history
+     * (up to 21 for a symbol with 22 real quarters), not just the newest. Deliberately writes only
+     * {@code calculation.evidence()} via the existing append-only {@link TransformationEvidenceWriter}
+     * - never calls {@link OwnershipTransformationWriter#write}, since {@code transformation_states}
+     * is explicitly a "latest state today" upsert table, not a historical ledger; replaying old
+     * states into it would just be overwritten by the real daily run's own state anyway.
+     */
+    void backfill() {
+        RuleSet rules = ruleSetLoader.loadActiveRules();
+        List<UUID> instrumentIds = shareholdingReader.instrumentIdsWithShareholdingData();
+
+        int succeeded = 0;
+        int failed = 0;
+        int transitionsWritten = 0;
+        for (UUID instrumentId : instrumentIds) {
+            try {
+                var periods = historyReader.findPeriods(instrumentId);
+                var bulkDeals = bulkDealsReader.findRecentDeals(instrumentId);
+                for (int i = 1; i < periods.size(); i++) {
+                    var periodsThroughQuarter = periods.subList(0, i + 1);
+                    Optional<TransformationCalculation> calculation = engine.calculate(periodsThroughQuarter, bulkDeals, rules);
+                    if (calculation.isEmpty()) {
+                        continue;
+                    }
+                    for (EvidenceObservation observation : calculation.get().evidence()) {
+                        evidenceWriter.write(observation, rules.version());
+                    }
+                    transitionsWritten++;
+                }
+                succeeded++;
+            } catch (Exception e) {
+                failed++;
+                log.warn("Failed to backfill ownership transformation for instrument {}: {}", instrumentId, e.getMessage());
+            }
+        }
+
+        log.info("Ownership transformation backfill complete: {} instruments succeeded, {} failed, {} quarter transitions replayed", succeeded, failed, transitionsWritten);
     }
 }

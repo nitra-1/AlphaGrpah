@@ -10,6 +10,7 @@ public class OwnershipTransformationScheduler {
 
     private static final String CRON_710PM_IST = "0 10 19 * * *";
     private static final String JOB_NAME = "ownership-transformation";
+    private static final String BACKFILL_JOB_NAME = "ownership-transformation-backfill";
 
     private final OwnershipTransformationOrchestrator orchestrator;
     private final JobRunTracker tracker;
@@ -22,5 +23,10 @@ public class OwnershipTransformationScheduler {
     @Scheduled(cron = CRON_710PM_IST, zone = "Asia/Kolkata")
     public void runOwnershipTransformation() {
         tracker.run(JOB_NAME, orchestrator::run, "ownership.transformation_states", "computed_at");
+    }
+
+    /** One-off historical catch-up, manually triggered only (no {@code @Scheduled} - never fires on its own, see claude.md). */
+    public void runOwnershipTransformationBackfill() {
+        tracker.run(BACKFILL_JOB_NAME, orchestrator::backfill, "ownership.transformation_evidence", "computed_at");
     }
 }

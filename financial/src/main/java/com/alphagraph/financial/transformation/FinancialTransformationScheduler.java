@@ -10,6 +10,7 @@ public class FinancialTransformationScheduler {
 
     private static final String CRON_637PM_IST = "0 37 18 * * *";
     private static final String JOB_NAME = "financial-results-comparision-fetch";
+    private static final String BACKFILL_JOB_NAME = "financial-results-comparision-fetch-backfill";
 
     private final FinancialTransformationOrchestrator orchestrator;
     private final JobRunTracker tracker;
@@ -22,5 +23,10 @@ public class FinancialTransformationScheduler {
     @Scheduled(cron = CRON_637PM_IST, zone = "Asia/Kolkata")
     public void runFinancialResultsComparisionFetch() {
         tracker.run(JOB_NAME, orchestrator::run, "financial.transformation_evidence", "computed_at");
+    }
+
+    /** One-off historical catch-up, manually triggered only (no {@code @Scheduled} - never fires on its own, see claude.md). */
+    public void runFinancialResultsComparisionFetchBackfill() {
+        tracker.run(BACKFILL_JOB_NAME, orchestrator::backfill, "financial.transformation_evidence", "computed_at");
     }
 }

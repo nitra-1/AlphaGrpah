@@ -41,6 +41,62 @@ class FinancialTransformationOrchestrator {
     }
 
     void run() {
+        FetchResult fetched = fetchAndGroup();
+
+        int succeeded = 0;
+        int failed = 0;
+        for (Map.Entry<String, List<FinancialResultsPeriod>> entry : fetched.periodsBySymbol().entrySet()) {
+            try {
+                List<FinancialResultsPeriod> ascending = entry.getValue();
+                for (FinancialEvidenceObservation observation : engine.calculate(ascending)) {
+                    evidenceWriter.write(observation);
+                }
+                succeeded++;
+            } catch (Exception e) {
+                failed++;
+                log.warn("Failed to compute financial transformation for symbol {}: {}", entry.getKey(), e.getMessage());
+            }
+        }
+
+        log.info("Financial transformation run complete: {} symbols succeeded, {} failed, {} quarters failed to normalize", succeeded, failed, fetched.normalizeFailed());
+    }
+
+    /**
+     * One-off historical catch-up, not a daily concern - the live feed's 5 real quarters per
+     * symbol are fetched exactly the same way {@link #run()} does, but every real transition in
+     * that window is replayed through {@link FinancialTransformationEngine#calculate} unchanged
+     * (not just the newest), giving up to 4 real evidence points per metric per symbol instead of 1.
+     */
+    void backfill() {
+        FetchResult fetched = fetchAndGroup();
+
+        int succeeded = 0;
+        int failed = 0;
+        int transitionsWritten = 0;
+        for (Map.Entry<String, List<FinancialResultsPeriod>> entry : fetched.periodsBySymbol().entrySet()) {
+            try {
+                List<FinancialResultsPeriod> ascending = entry.getValue();
+                for (int i = 1; i < ascending.size(); i++) {
+                    List<FinancialResultsPeriod> periodsThroughQuarter = ascending.subList(0, i + 1);
+                    for (FinancialEvidenceObservation observation : engine.calculate(periodsThroughQuarter)) {
+                        evidenceWriter.write(observation);
+                    }
+                    transitionsWritten++;
+                }
+                succeeded++;
+            } catch (Exception e) {
+                failed++;
+                log.warn("Failed to backfill financial transformation for symbol {}: {}", entry.getKey(), e.getMessage());
+            }
+        }
+
+        log.info(
+            "Financial transformation backfill complete: {} symbols succeeded, {} failed, {} quarter transitions replayed, {} quarters failed to normalize",
+            succeeded, failed, transitionsWritten, fetched.normalizeFailed()
+        );
+    }
+
+    private FetchResult fetchAndGroup() {
         String rawJson = collector.fetch();
         List<RawResultsComparisionRow> rawRows = parser.parse(rawJson);
 
@@ -57,23 +113,13 @@ class FinancialTransformationOrchestrator {
             }
         }
 
-        int succeeded = 0;
-        int failed = 0;
         for (Map.Entry<String, List<FinancialResultsPeriod>> entry : periodsBySymbol.entrySet()) {
-            try {
-                List<FinancialResultsPeriod> ascending = entry.getValue().stream()
-                    .sorted(java.util.Comparator.comparing(FinancialResultsPeriod::periodEnd))
-                    .toList();
-                for (FinancialEvidenceObservation observation : engine.calculate(ascending)) {
-                    evidenceWriter.write(observation);
-                }
-                succeeded++;
-            } catch (Exception e) {
-                failed++;
-                log.warn("Failed to compute financial transformation for symbol {}: {}", entry.getKey(), e.getMessage());
-            }
+            entry.setValue(entry.getValue().stream().sorted(java.util.Comparator.comparing(FinancialResultsPeriod::periodEnd)).toList());
         }
 
-        log.info("Financial transformation run complete: {} symbols succeeded, {} failed, {} quarters failed to normalize", succeeded, failed, normalizeFailed);
+        return new FetchResult(periodsBySymbol, normalizeFailed);
+    }
+
+    private record FetchResult(Map<String, List<FinancialResultsPeriod>> periodsBySymbol, int normalizeFailed) {
     }
 }

@@ -32,14 +32,19 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for the 26 standalone {@code @Scheduled} jobs - the {@code
+ * Manual re-trigger dispatch for 30 jobs - 26 standalone {@code @Scheduled} jobs plus 4 one-off
+ * historical backfills (market/financial/ownership/sector-context) that have no {@code @Scheduled}
+ * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
- * Scheduler bean method Spring's own cron trigger would call, so a manual retry gets identical
- * {@code JobRunTracker} bookkeeping (a real RUNNING -> SUCCESS/FAILED row in
- * {@code scheduler.job_runs}) as a real cron firing - no separate retry-tracking mechanism
- * invented, and this can never drift from what each scheduler actually does since it calls the
- * scheduler directly rather than reimplementing its body.
+ * Scheduler bean method Spring's own cron trigger would call (or, for the 4 backfills, the only
+ * way that method is ever called), so a manual retry gets identical {@code JobRunTracker}
+ * bookkeeping (a real RUNNING -> SUCCESS/FAILED row in {@code scheduler.job_runs}) as a real cron
+ * firing - no separate retry-tracking mechanism invented, and this can never drift from what each
+ * scheduler actually does since it calls the scheduler directly rather than reimplementing its
+ * body. The 4 backfills are deliberately absent from {@code CronMonitoringRepository.JOB_SCHEDULES} -
+ * they're one-off catch-up operations, not recurring crons, and showing a fake "next scheduled
+ * run" time for one on the admin dashboard would be misleading.
  */
 @Component
 class JobRegistry {
@@ -83,6 +88,10 @@ class JobRegistry {
         jobs.put("financial-results-comparision-fetch", financialTransformationScheduler::runFinancialResultsComparisionFetch);
         jobs.put("capital-allocation-evidence", capitalAllocationScheduler::runCapitalAllocationEvidence);
         jobs.put("sector-context-evidence", sectorContextScheduler::runSectorContextEvidence);
+        jobs.put("market-accumulation-evidence-backfill", marketAccumulationScheduler::runMarketAccumulationEvidenceBackfill);
+        jobs.put("financial-results-comparision-fetch-backfill", financialTransformationScheduler::runFinancialResultsComparisionFetchBackfill);
+        jobs.put("ownership-transformation-backfill", ownershipTransformationScheduler::runOwnershipTransformationBackfill);
+        jobs.put("sector-context-evidence-backfill", sectorContextScheduler::runSectorContextEvidenceBackfill);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);
