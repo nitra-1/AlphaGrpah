@@ -40,6 +40,78 @@ class OwnershipTransformationEngineTest {
     }
 
     @Test
+    void institutionalExpansionPicksTheLargerOfTwoPositiveDrivingMetrics() {
+        // Both FII and DII rise (equal signal shape to the test above), but DII rises further -
+        // driving metric must be DII, the larger of the two positive changes, not FII.
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "16.60", "19.50")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.INSTITUTIONAL_OWNERSHIP_EXPANSION);
+        assertThat(calculation.result().drivingMetric()).isEqualTo(TransformationMetric.DII);
+        assertThat(calculation.result().level()).isEqualByComparingTo("19.50");
+        assertThat(calculation.result().change()).isEqualByComparingTo("1.50");
+        assertThat(calculation.result().velocityBand()).isEqualTo(com.alphagraph.common.inflection.VelocityBand.MODERATE);
+    }
+
+    @Test
+    void contradictionDrivingMetricIsWhicheverSideActuallyParticipated() {
+        // FII rises past the signal threshold, DII doesn't move at all (never signals) - even
+        // though picking by raw magnitude alone could favor a non-participating metric in other
+        // shapes, here the driving metric must be FII specifically because it's the only one that
+        // actually participated in the contradiction.
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "49.40", "16.60", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.OWNERSHIP_CONTRADICTION);
+        assertThat(calculation.result().drivingMetric()).isEqualTo(TransformationMetric.FII);
+    }
+
+    @Test
+    void drivingConfidenceCombinesBaseAndPersistenceBonusThenClamps() {
+        // FII (base confidence 75, not PROMOTER/PUBLIC) rises 2.50pp over exactly one quarter -
+        // velocity 2.50 bands STRONG. Two periods means persistence=1 (the only transition matches
+        // itself) - persistenceBonus = min(10, 2*1) = 2. No thinness penalty (a real prior exists).
+        // Expected: 75 + 2 - 0 = 77.
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "18.50", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.FII_ACCUMULATION);
+        assertThat(calculation.result().drivingMetric()).isEqualTo(TransformationMetric.FII);
+        assertThat(calculation.result().velocityBand()).isEqualTo(com.alphagraph.common.inflection.VelocityBand.STRONG);
+        assertThat(calculation.result().persistence()).isEqualTo(1);
+        assertThat(calculation.result().confidence()).isEqualTo(77.0);
+    }
+
+    @Test
+    void noClearSignalHasNoDrivingMetricOrInflectionFields() {
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "16.00", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.NO_CLEAR_SIGNAL);
+        assertThat(calculation.result().drivingMetric()).isNull();
+        assertThat(calculation.result().level()).isNull();
+        assertThat(calculation.result().change()).isNull();
+        assertThat(calculation.result().velocityBand()).isNull();
+        assertThat(calculation.result().persistence()).isEqualTo(0);
+    }
+
+    @Test
     void promoterDilutionFiresOnItsOwn() {
         var periods = List.of(
             period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),

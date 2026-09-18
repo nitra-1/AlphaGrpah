@@ -1,5 +1,6 @@
 package com.alphagraph.ownership.transformation;
 
+import com.alphagraph.common.inflection.VelocityBand;
 import com.alphagraph.common.rules.ArithmeticRuleEvaluator;
 import com.alphagraph.common.rules.EvaluationResult;
 import com.alphagraph.common.rules.MetricContext;
@@ -179,12 +180,85 @@ class OwnershipTransformationEngine {
         }
 
         TransformationState primaryState = PRIORITY_LADDER.stream().filter(fired::contains).findFirst().orElse(TransformationState.NO_CLEAR_SIGNAL);
-        double confidence = averageConfidence(observations, TransformationMetric.PROMOTER, TransformationMetric.FII, TransformationMetric.DII);
+
+        TransformationMetric drivingMetric = drivingMetricFor(primaryState, fiiUp, diiUp, observations);
+        EvidenceObservation drivingObservation = drivingMetric == null ? null : observations.get(drivingMetric);
+
+        double confidence = drivingObservation != null
+            ? drivingConfidence(drivingObservation)
+            : averageConfidence(observations, TransformationMetric.PROMOTER, TransformationMetric.FII, TransformationMetric.DII);
+        BigDecimal level = drivingObservation != null ? drivingObservation.value() : null;
+        BigDecimal change = drivingObservation != null ? drivingObservation.changePp() : null;
+        VelocityBand velocityBand = (drivingObservation != null && drivingObservation.velocityPpPerQuarter() != null)
+            ? VelocityBanding.band(drivingObservation.velocityPpPerQuarter())
+            : null;
+        int persistence = drivingObservation != null ? drivingObservation.persistenceQuarters() : 0;
 
         return new OwnershipTransformationResult(
             current.instrumentId(), current.symbol(), LocalDate.now(), current.periodEnd(), priorPeriodEnd,
-            primaryState, confidence, rules.version(), Instant.now(), reasons
+            primaryState, confidence, rules.version(), Instant.now(), reasons,
+            drivingMetric, level, change, velocityBand, persistence
         );
+    }
+
+    /**
+     * Stage 2's level/change/velocity/persistence pass through from whichever metric actually
+     * *drove* the winning state - picked by participation (which metric's own signal fired), not
+     * merely by raw magnitude, so an accumulation state never ends up attached to a metric that
+     * was moving the wrong way. {@code NO_CLEAR_SIGNAL} has no driving metric at all - honest
+     * "nothing to report", not a guessed one.
+     */
+    private static TransformationMetric drivingMetricFor(
+        TransformationState primaryState, Boolean fiiUp, Boolean diiUp, Map<TransformationMetric, EvidenceObservation> observations
+    ) {
+        return switch (primaryState) {
+            case PROMOTER_HOLDING_INCREASE, PROMOTER_DILUTION -> TransformationMetric.PROMOTER;
+            case FII_ACCUMULATION -> TransformationMetric.FII;
+            case DII_ACCUMULATION -> TransformationMetric.DII;
+            case INSTITUTIONAL_OWNERSHIP_EXPANSION, BULK_BUYING_WITH_OWNERSHIP_EXPANSION ->
+                largerPositiveOf(TransformationMetric.FII, TransformationMetric.DII, observations);
+            case OWNERSHIP_CONTRADICTION -> contradictionDrivingMetric(fiiUp, diiUp, observations);
+            case NO_CLEAR_SIGNAL -> null;
+        };
+    }
+
+    /** Only ever called when both fiiUp and diiUp are TRUE (both states' own trigger requires it), so both are guaranteed positive - the larger of the two, not the larger magnitude regardless of sign. */
+    private static TransformationMetric largerPositiveOf(TransformationMetric a, TransformationMetric b, Map<TransformationMetric, EvidenceObservation> observations) {
+        BigDecimal aChange = observations.get(a).changePp();
+        BigDecimal bChange = observations.get(b).changePp();
+        return aChange.compareTo(bChange) >= 0 ? a : b;
+    }
+
+    /** Whichever of FII/DII actually signaled (participated in the contradiction) wins outright; if both did, the larger of the two. OWNERSHIP_CONTRADICTION's own trigger guarantees at least one participated. */
+    private static TransformationMetric contradictionDrivingMetric(Boolean fiiUp, Boolean diiUp, Map<TransformationMetric, EvidenceObservation> observations) {
+        boolean fiiParticipated = Boolean.TRUE.equals(fiiUp);
+        boolean diiParticipated = Boolean.TRUE.equals(diiUp);
+        if (fiiParticipated && diiParticipated) {
+            return largerPositiveOf(TransformationMetric.FII, TransformationMetric.DII, observations);
+        }
+        return fiiParticipated ? TransformationMetric.FII : TransformationMetric.DII;
+    }
+
+    /**
+     * confidence = base(drivingMetric) + persistenceBonus - thinnessPenalty, clamped [0, 100].
+     * thinnessPenalty applies only when there is truly no prior observation at all
+     * ({@code priorPeriodEnd() == null}), never merely because persistence happens to be 0 on a
+     * genuine fresh reversal (a real prior value exists, the trend just flipped) - conflating those
+     * would unfairly penalize a real reversal the same as a total absence of data.
+     */
+    private static double drivingConfidence(EvidenceObservation observation) {
+        double base = baseConfidenceFor(observation.metric());
+        double persistenceBonus = Math.min(10.0, 2.0 * observation.persistenceQuarters());
+        double thinnessPenalty = observation.priorPeriodEnd() == null ? 10.0 : 0.0;
+        return Math.max(0.0, Math.min(100.0, base + persistenceBonus - thinnessPenalty));
+    }
+
+    /** PROMOTER/PUBLIC have real, deep history (avg 19.3 transitions); the other 7 are XBRL-enrichment-gated and much thinner (avg 2.2-4.9) - docs/007_Stage2_Inflection_Specification.md §15.5. */
+    private static double baseConfidenceFor(TransformationMetric metric) {
+        return switch (metric) {
+            case PROMOTER, PUBLIC -> 90.0;
+            default -> 75.0;
+        };
     }
 
     private static LocalDate priorPeriodEndOf(Map<TransformationMetric, EvidenceObservation> observations) {

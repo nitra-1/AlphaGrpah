@@ -1,9 +1,11 @@
 package com.alphagraph.ownership.transformation;
 
+import com.alphagraph.common.inflection.VelocityBand;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -33,8 +35,9 @@ class OwnershipTransformationWriterTest {
 
         OwnershipTransformationResult result = new OwnershipTransformationResult(
             instrumentId, "RELIANCE", LocalDate.of(2026, 9, 16), LocalDate.of(2026, 6, 30), LocalDate.of(2026, 3, 31),
-            TransformationState.FII_ACCUMULATION, 90.0, 1, Instant.now(),
-            List.of(ReasonCode.of("FII_ACCUMULATION", 0.60))
+            TransformationState.FII_ACCUMULATION, 77.0, 1, Instant.now(),
+            List.of(ReasonCode.of("FII_ACCUMULATION", 0.60)),
+            TransformationMetric.FII, new BigDecimal("18.50"), new BigDecimal("2.50"), VelocityBand.STRONG, 1
         );
 
         writer.write(result);
@@ -55,11 +58,13 @@ class OwnershipTransformationWriterTest {
 
         OwnershipTransformationResult first = new OwnershipTransformationResult(
             instrumentId, "RELIANCE", LocalDate.of(2026, 9, 16), LocalDate.of(2026, 6, 30), LocalDate.of(2026, 3, 31),
-            TransformationState.NO_CLEAR_SIGNAL, 40.0, 1, Instant.now(), List.of()
+            TransformationState.NO_CLEAR_SIGNAL, 40.0, 1, Instant.now(), List.of(),
+            null, null, null, null, 0
         );
         OwnershipTransformationResult second = new OwnershipTransformationResult(
             instrumentId, "RELIANCE", LocalDate.of(2026, 9, 16), LocalDate.of(2026, 6, 30), LocalDate.of(2026, 3, 31),
-            TransformationState.FII_ACCUMULATION, 90.0, 1, Instant.now(), List.of(ReasonCode.of("FII_ACCUMULATION", 0.60))
+            TransformationState.FII_ACCUMULATION, 77.0, 1, Instant.now(), List.of(ReasonCode.of("FII_ACCUMULATION", 0.60)),
+            TransformationMetric.FII, new BigDecimal("18.50"), new BigDecimal("2.50"), VelocityBand.STRONG, 1
         );
 
         writer.write(first);

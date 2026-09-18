@@ -27,18 +27,23 @@ class OwnershipTransformationWriter {
             """
             INSERT INTO ownership.transformation_states (
                 id, instrument_id, symbol, as_of_date, latest_period_end, prior_period_end,
-                transformation_state, confidence, rule_version, computed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                transformation_state, confidence, rule_version, computed_at,
+                driving_metric, level, change, velocity_band, persistence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (instrument_id, as_of_date) DO UPDATE SET
                 symbol = EXCLUDED.symbol, latest_period_end = EXCLUDED.latest_period_end,
                 prior_period_end = EXCLUDED.prior_period_end, transformation_state = EXCLUDED.transformation_state,
-                confidence = EXCLUDED.confidence, rule_version = EXCLUDED.rule_version, computed_at = EXCLUDED.computed_at
+                confidence = EXCLUDED.confidence, rule_version = EXCLUDED.rule_version, computed_at = EXCLUDED.computed_at,
+                driving_metric = EXCLUDED.driving_metric, level = EXCLUDED.level, change = EXCLUDED.change,
+                velocity_band = EXCLUDED.velocity_band, persistence = EXCLUDED.persistence
             RETURNING id
             """,
             (rs, rowNum) -> (UUID) rs.getObject("id"),
             UUID.randomUUID(), result.instrumentId(), result.symbol(), Date.valueOf(result.asOfDate()),
             Date.valueOf(result.latestPeriodEnd()), result.priorPeriodEnd() == null ? null : Date.valueOf(result.priorPeriodEnd()),
-            result.primaryState().name(), result.confidence(), result.ruleVersion(), Timestamp.from(result.computedAt())
+            result.primaryState().name(), result.confidence(), result.ruleVersion(), Timestamp.from(result.computedAt()),
+            result.drivingMetric() == null ? null : result.drivingMetric().name(), result.level(), result.change(),
+            result.velocityBand() == null ? null : result.velocityBand().name(), result.persistence()
         ).get(0);
 
         jdbcTemplate.update("DELETE FROM ownership.transformation_state_reasons WHERE state_id = ?", stateId);
