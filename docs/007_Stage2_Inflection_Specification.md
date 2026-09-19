@@ -231,17 +231,37 @@ the real stored row, and `confidence=79` (`75 + min(10, 2x2)`) also exact.
 
 ## 8. Balance-Sheet Inflection
 
-Source: `financial.transformation_evidence` (`INTEREST_EXPENSE` only - real Tier 1 scope limit).
+**Built (2026-09-19), folded into §6/§7's `FinancialInflectionEngine`/`financial.inflection_states`
+as a 7th state**, not a separate table - `INTEREST_EXPENSE` lives in the same
+`financial.transformation_evidence` table, same quarterly cadence, same `period_end`-based
+`as_of_date` correction §6/§7 already established, so a dedicated near-empty table would have been
+pure duplication.
 
 | State | Trigger | Persistence rule | Reason codes |
 |---|---|---|---|
-| `INTEREST_COST_DECLINING` | `INTEREST_EXPENSE`'s `change` is negative (interest expense falling) for >= 2 consecutive evidence rows | Count of consecutive negative-`change` rows, capped at 3 | `INTEREST_EXPENSE_FALLING` |
+| `INTEREST_COST_DECLINING` | `INTEREST_EXPENSE`'s *derived percentage change* (`(current - prior) / abs(prior) x 100`, never the raw rupee `change`) is negative, with `persistence_quarters >= 3` (reusing `STRUCTURAL_MARGIN_EXPANSION`'s own 3-quarter bar from §7, deliberately not weakened for this new metric) | Count of consecutive negative rows, capped at 3 (Stage 1's own `persistence_quarters`, reused directly - a raw-value sign-walk, always same-basis, safe to reuse unlike the acceleration states) | `INTEREST_EXPENSE_FALLING` |
 | `DELEVERAGING_INFLECTION` | **Blocked.** Needs real `DEBT_LEVEL` evidence, which needs a real live source for `financial.financial_results.total_debt` - the same gap already disclosed when Balance-Sheet was originally scoped (Tier 3). | — | — |
 | `CASH_FLOW_IMPROVEMENT` | **Blocked.** Same reasoning, `cash_flow_from_operations`. | — | — |
 
-No composite state for this family - `INTEREST_COST_DECLINING` alone doesn't imply enough to
-combine with anything yet, and the two states that would make a real "balance sheet strengthening"
-composite meaningful are both blocked.
+**Correction from the original draft**: banding the raw rupee `change` through the same
+percentage-point thresholds §6/§7 use for growth rates was wrong, not just an approximation - ₹10cr
+of decline means something completely different for a ₹100cr company than a ₹10,000cr one. Fixed
+by deriving a percentage change first and adding a dedicated
+`FinancialVelocityBanding.bandDecliningCurrencyPct` band type with its own, inverted thresholds
+(`STRONG<=-15%, MODERATE<=-5%, WEAK<0%, FLAT=0%, NEGATIVE>0%` - negative is the "good"/strong
+direction here). The persisted `change` is the derived percentage, never the raw currency delta.
+
+**Priority within the combined family**: `EARNINGS_INFLECTION_CONVERGENCE` >
+`OPERATING_LEVERAGE_INFLECTION` > `PAT_ACCELERATION` > `STRUCTURAL_MARGIN_EXPANSION` >
+`REVENUE_ACCELERATION` > `INTEREST_COST_DECLINING` > `NO_CLEAR_SIGNAL` - a narrower balance-sheet
+signal ranks below every growth/earnings state. No composite state for this family - blocked-state
+gaps mean the two states that would make a real "balance sheet strengthening" composite meaningful
+don't exist yet.
+
+**Point-in-time caveat**: `as_of_date` is a quarter-end `period_end`, not the date results were
+actually published/known to investors - true for every state in this combined engine, now
+explicitly documented in code. Not point-in-time-safe for historical backtesting until a real
+`result_publication_date`/`source_published_at` field exists upstream.
 
 ## 9. Ownership Inflection
 
@@ -300,22 +320,39 @@ stages of the same real pattern take priority, earlier ones still recorded as re
 
 ## 11. Capital Allocation Inflection
 
+**Built (2026-09-19)** - new `corporate.transformation` package, new
+`corporate.inflection_states`/`_state_reasons` tables (`V16`), `Clock`-based `as_of_date` (Capital
+Allocation's Stage 1 evidence genuinely is a rolling 180-day window recomputed daily, matching §10
+Market's reasoning, unlike §6-8 Financial's quarterly cadence).
+
 Source: `corporate.transformation_evidence` (`BUYBACK_EVENT_COUNT_180D`,
-`EQUITY_RAISE_EVENT_COUNT_180D`). **Zero real events exist in the tracked universe today** (§5) -
-these states are correct to build now (near-zero marginal cost, same reasoning that shipped
-Capital Allocation's Stage 1 tier even with an empty real dataset) but will not produce a single
-real non-empty result until a real `BUYBACK`/`RIGHTS` action is actually ingested for a tracked
-instrument.
+`EQUITY_RAISE_EVENT_COUNT_180D`). **Zero real events exist in the tracked universe today** (§5),
+confirmed still true live at build time (`corporate.corporate_actions` still only has the same 10
+real `DIVIDEND` rows) - these states are correct to build now (near-zero marginal cost, same
+reasoning that shipped Capital Allocation's Stage 1 tier even with an empty real dataset) but
+produce zero real non-empty results, live-verified, until a real `BUYBACK`/`RIGHTS` action is
+actually ingested for a tracked instrument.
 
 | State | Trigger | Persistence rule | Reason codes |
 |---|---|---|---|
-| `BUYBACK_ACTIVITY` | `BUYBACK_EVENT_COUNT_180D`'s current `value` > 0 | Not persistence-gated in the usual sense - `persistence_days` here is inherited directly from Stage 1's own rolling-window persistence (already computed, see Tier 4's `CapitalAllocationEngine`) | `REAL_BUYBACK_IN_WINDOW` |
-| `EQUITY_RAISE_ACTIVITY` | `EQUITY_RAISE_EVENT_COUNT_180D`'s current `value` > 0 | Same | `REAL_RIGHTS_ISSUE_IN_WINDOW` |
+| `BUYBACK_ACTIVITY` | `BUYBACK_EVENT_COUNT_180D`'s current `value` > 0 AND `EQUITY_RAISE_EVENT_COUNT_180D`'s is not | `persistence_days` inherited directly from Stage 1's own rolling-window persistence (already computed, see Tier 4's `CapitalAllocationEngine`) | `BUYBACK_EVENT_COUNT_180D_NONZERO` |
+| `EQUITY_RAISE_ACTIVITY` | `EQUITY_RAISE_EVENT_COUNT_180D`'s current `value` > 0 AND `BUYBACK_EVENT_COUNT_180D`'s is not | Same | `EQUITY_RAISE_EVENT_COUNT_180D_NONZERO` |
+| `MIXED_CAPITAL_ALLOCATION_ACTIVITY` | Both counts > 0 in the same 180-day window | `min()` of both metrics' `persistence_days` | Both `..._NONZERO` reason codes together |
 | `INSTITUTIONAL_CAPITAL_RAISE` | **Blocked.** Needs QIP/preferential-allotment/warrant classification, which needs new `action_type` values in `corporate.corporate_actions`' CHECK constraint plus classifier keyword rules - the exact disclosed schema gap from Tier 4's own scoping. | — | — |
 | `DILUTION_PRESSURE` | **Blocked.** Same reasoning - a real dilution-pressure read needs pricing/size/take-up context this schema doesn't capture yet, the same reason `EQUITY_RAISE_EVENT_COUNT_180D` was deliberately named neutrally instead of as a dilution metric in Tier 4. | — | — |
 
-No composite/priority ladder needed yet - `BUYBACK_ACTIVITY` and `EQUITY_RAISE_ACTIVITY` are
-independent and both simple pass-throughs of an already-real Stage 1 count.
+**Correction from the original draft**: a plain `BUYBACK_ACTIVITY > EQUITY_RAISE_ACTIVITY`
+priority tie-break for the co-occurring case was lossy - Stage 3 reading historical `primary_state`
+later would have no way to recover that a second real event happened without separately parsing
+reason codes. Added `MIXED_CAPITAL_ALLOCATION_ACTIVITY` as its own state instead, ranked above both
+single-metric states (`MIXED_CAPITAL_ALLOCATION_ACTIVITY` > `BUYBACK_ACTIVITY` >
+`EQUITY_RAISE_ACTIVITY` > `NO_CLEAR_SIGNAL`); both component reason codes are always recorded
+regardless of which state's `level`/`change`/`driving_metric` become representative (magnitude
+tie-break, ties favor buyback - safe here since, unlike Ownership's `OWNERSHIP_CONTRADICTION`,
+both metrics genuinely participated whenever `MIXED` fires, so there's no "picked the wrong side"
+risk). No thinness penalty ever applies to this family's confidence formula -
+`CapitalAllocationEvidenceObservation` has no "first observation, null prior" case (§15.5's own
+already-correct disclosure).
 
 ## 12. Sector Inflection
 
@@ -456,7 +493,7 @@ while coding:
 | Bucket | States |
 |---|---|
 | 90 (deep real history) | All 5 Market states (§10); Ownership `PROMOTER_HOLDING_INCREASE`/`PROMOTER_DILUTION` (§9); `SECTOR_STRENGTHENING` (§12) |
-| 75 (real but thin, or real-but-not-yet-observed) | All Business/Earnings/Balance-Sheet states (§6-8, 4-transition ceiling); Ownership `FII_ACCUMULATION`/`DII_ACCUMULATION`/`INSTITUTIONAL_OWNERSHIP_EXPANSION`/`BULK_BUYING_WITH_OWNERSHIP_EXPANSION` (§9, XBRL-gated); both Capital Allocation states (§11 - the data source isn't gapped, it's just empty right now, a different case from a real disclosed limitation) |
+| 75 (real but thin, or real-but-not-yet-observed) | All Business/Earnings/Balance-Sheet states (§6-8, 4-transition ceiling); Ownership `FII_ACCUMULATION`/`DII_ACCUMULATION`/`INSTITUTIONAL_OWNERSHIP_EXPANSION`/`BULK_BUYING_WITH_OWNERSHIP_EXPANSION` (§9, XBRL-gated); all 3 Capital Allocation states including `MIXED_CAPITAL_ALLOCATION_ACTIVITY` (§11 - the data source isn't gapped, it's just empty right now, a different case from a real disclosed limitation; also the only family whose confidence formula never applies a thinness penalty, since a rolling-window count has no "first observation, null prior" case) |
 | 60 (real, disclosed data gap) | `STOCK_OUTPERFORMING_NIFTY`, `STOCK_OUTPERFORMING_SECTOR`, `NEW_LEADERSHIP_EMERGENCE` (§12) |
 | n/a - derived | Risk/Contradiction (§13): `base_confidence` = the **minimum** `base_confidence` across its contributing states, never its own fixed bucket - a contradiction is only as trustworthy as its weakest input. |
 

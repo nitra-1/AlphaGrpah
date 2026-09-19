@@ -39,12 +39,13 @@ class FinancialInflectionOrchestrator {
                 var revenueRows = evidenceReader.findRecent(instrumentId, FinancialMetric.REVENUE, ACCELERATION_SERIES_LIMIT);
                 var patRows = evidenceReader.findRecent(instrumentId, FinancialMetric.PAT, ACCELERATION_SERIES_LIMIT);
                 var latestMargin = evidenceReader.findLatest(instrumentId, FinancialMetric.OPERATING_MARGIN).orElse(null);
-                if (revenueRows.isEmpty() && patRows.isEmpty() && latestMargin == null) {
+                var latestInterestExpense = evidenceReader.findLatest(instrumentId, FinancialMetric.INTEREST_EXPENSE).orElse(null);
+                if (revenueRows.isEmpty() && patRows.isEmpty() && latestMargin == null && latestInterestExpense == null) {
                     continue;
                 }
-                String symbol = firstSymbol(revenueRows, patRows, latestMargin);
+                String symbol = firstSymbol(revenueRows, patRows, latestMargin, latestInterestExpense);
 
-                FinancialInflectionResult result = engine.calculate(instrumentId, symbol, revenueRows, patRows, latestMargin);
+                FinancialInflectionResult result = engine.calculate(instrumentId, symbol, revenueRows, patRows, latestMargin, latestInterestExpense);
                 writer.write(result);
                 succeeded++;
             } catch (Exception e) {
@@ -56,7 +57,10 @@ class FinancialInflectionOrchestrator {
         log.info("Financial inflection run complete: {} instruments succeeded, {} failed", succeeded, failed);
     }
 
-    private static String firstSymbol(List<FinancialEvidenceObservation> revenueRows, List<FinancialEvidenceObservation> patRows, FinancialEvidenceObservation latestMargin) {
+    private static String firstSymbol(
+        List<FinancialEvidenceObservation> revenueRows, List<FinancialEvidenceObservation> patRows,
+        FinancialEvidenceObservation latestMargin, FinancialEvidenceObservation latestInterestExpense
+    ) {
         if (!revenueRows.isEmpty()) {
             return revenueRows.get(0).symbol();
         }
@@ -65,6 +69,9 @@ class FinancialInflectionOrchestrator {
         }
         if (latestMargin != null) {
             return latestMargin.symbol();
+        }
+        if (latestInterestExpense != null) {
+            return latestInterestExpense.symbol();
         }
         throw new IllegalStateException("No observation carried a symbol");
     }

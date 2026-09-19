@@ -698,6 +698,81 @@ identical row count (55) *and* identical `as_of_date` per symbol (BEL still exac
 `2024-12-31`) - concrete proof correction (1) works, the upsert lands on the same quarterly row
 rather than minting a new one for "today."
 
+**Stage 2 Balance-Sheet + Capital Allocation Inflection** (2026-09-19): item 4 of the build order -
+two architecturally unrelated families grouped together because each is small on its own.
+Balance-Sheet's `INTEREST_COST_DECLINING` folded into the existing `FinancialInflectionEngine`/
+`financial.inflection_states` as a 7th state (same table, same module, same quarterly cadence,
+same `period_end`-based `as_of_date` correction already in place - a separate near-empty table for
+one metric would have been pure duplication). Capital Allocation is a fresh, small build in
+`corporate.transformation` - `BUYBACK_ACTIVITY`/`EQUITY_RAISE_ACTIVITY`/
+`MIXED_CAPITAL_ALLOCATION_ACTIVITY`, `Clock`-based `as_of_date` (unlike Financial - Capital
+Allocation's Stage 1 evidence genuinely is a rolling 180-day window recomputed daily, matching
+Market's reasoning, not Financial's). `DELEVERAGING_INFLECTION`/`CASH_FLOW_IMPROVEMENT` and
+`INSTITUTIONAL_CAPITAL_RAISE`/`DILUTION_PRESSURE` stay blocked - no live `DEBT_LEVEL`/
+`CASH_FLOW_FROM_OPERATIONS` source, and no QIP/preferential-allotment/warrant classification yet.
+
+**Three real corrections caught during plan review, before any code was written**: (1) the
+original design banded `INTEREST_EXPENSE`'s raw currency delta through the existing
+percentage-point thresholds - correctly flagged as wrong, not just an approximation: ₹10cr of
+decline means something completely different for a ₹100cr company than a ₹10,000cr one. Fixed by
+deriving `interestChangePct = (current - prior) / abs(prior) x 100` and adding a dedicated
+`FinancialVelocityBanding.bandDecliningCurrencyPct` band type with its own thresholds
+(`STRONG<=-15%, MODERATE<=-5%, WEAK<0%, FLAT=0%, NEGATIVE>0%` - inverted from the growth-rate bands
+since here negative is the "good"/strong direction); the persisted `change` is now the derived
+percentage, never the raw rupee delta. (2) The original design picked `BUYBACK_ACTIVITY` over
+`EQUITY_RAISE_ACTIVITY` by arbitrary priority whenever both fired in the same 180-day window -
+correctly flagged as lossy: a real co-occurring buyback + equity-raise would have its second event
+silently discarded from `primary_state`, and Stage 3 reading historical states later would have no
+way to recover it without separately parsing reason codes. Fixed by adding a 4th state,
+`MIXED_CAPITAL_ALLOCATION_ACTIVITY` (`buybackCount > 0 AND equityRaiseCount > 0`), ranked above
+both single-metric states; both component reason codes are still recorded regardless of which
+state's fields become representative. (3) Documentation-only: added an explicit point-in-time
+caveat to `FinancialInflectionEngine`'s javadoc - `as_of_date` is a quarter-end `period_end`, not
+the date results were actually published/known to investors, so these rows are not
+point-in-time-safe for historical backtesting until a real `result_publication_date`/
+`source_published_at` field exists upstream; Stage 3/4 must not treat `as_of_date` as "date known."
+
+New `financial` migration `V6` (widens the `inflection_states` CHECK constraint, no new tables).
+New `corporate.inflection_states`/`_state_reasons` tables (`V16`) with `level`/`change` as
+`integer` (Tier 1's own event-count columns are whole numbers, never fractional) and no
+`velocity_band` written (a `COUNT` metric type has no thresholds to band against). New
+`CapitalAllocationEvidenceReader` (Stage 1's writer was write-only until now) reuses the exact same
+`CorporateInstrumentLookup.findAllInstrumentIds()` Stage 1's own orchestrator already walks, rather
+than adding a second instrument-listing query. New job `capital-allocation-inflection` (19:24 IST),
+33 jobs total in `JobRegistry`. `INTEREST_COST_DECLINING` reuses Stage 1's own `persistenceQuarters`
+directly (same 3-quarter bar `STRUCTURAL_MARGIN_EXPANSION` already uses, deliberately not weakened
+for the new metric), placed in the priority ladder just above `NO_CLEAR_SIGNAL`, below every
+growth/earnings state. Capital Allocation's confidence formula never applies a thinness penalty -
+`CapitalAllocationEvidenceObservation` has no "first observation, null prior" case (a trailing
+180-day count is always a real number, even zero), unlike every other family.
+
+10 new tests (`FinancialInflectionEngineTest`: fires at exactly the 3-quarter threshold with
+negative derived-percentage change, doesn't fire at 2, loses priority to `REVENUE_ACCELERATION`
+but beats `NO_CLEAR_SIGNAL`, `NO_CLEAR_SIGNAL`'s averaged confidence/date correctly include a 4th
+metric; `FinancialVelocityBandingTest`: `bandDecliningCurrencyPct` boundaries;
+`CapitalAllocationInflectionEngineTest`: each single-metric state in isolation, `MIXED_...`
+firing and winning priority with both reason codes preserved and `persistence = min(...)`,
+`NO_CLEAR_SIGNAL` on zero counts and on entirely-missing evidence). Full `./gradlew build`
+(ArchUnit included) green.
+
+Live-verified against the real running app and real production data. Financial: 55/55 instruments,
+row count and state distribution unchanged from before this change except the new state -
+`INTEREST_COST_DECLINING` fired 0 times, a real, honest outcome, not a bug: HINDALCO's real latest
+quarter (`value=22600, prior_value=31700, persistence_quarters=4`) genuinely satisfies the trigger
+condition, but its `OPERATING_LEVERAGE_INFLECTION` state (driving metric `PAT`, `STRONG` velocity)
+correctly outranks it per the priority ladder - direct proof against real data that both the new
+trigger logic and its ladder placement work as designed. Capital Allocation: 0/60 instruments
+produced a row - also a real, honest outcome, not a bug: `corporate.transformation_evidence` has
+zero rows for either metric (confirmed `corporate.corporate_actions` still has only the same 10
+real `DIVIDEND` rows, zero `BUYBACK`/`RIGHTS` events, unchanged since Tier 4's own verification),
+so every instrument is correctly skipped rather than writing a placeholder row (same "skip when all
+sources are empty" convention `FinancialInflectionOrchestrator` already uses) - the job completed
+with `0 succeeded, 0 failed`, not an error. Re-triggered both jobs a second time same-day: Financial's
+`financial.inflection_states` row count and full-table checksum (md5 over every
+`instrument_id`/`primary_state`/`as_of_date`/`change`) were byte-for-byte identical before and
+after: idempotent. Capital Allocation remained 0 rows both times, consistent with the same real
+data gap.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

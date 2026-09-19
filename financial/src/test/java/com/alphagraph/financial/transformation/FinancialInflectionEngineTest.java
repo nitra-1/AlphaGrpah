@@ -31,7 +31,7 @@ class FinancialInflectionEngineTest {
         var row1 = obs(Q2, Q1, "126.5", "999999", "-999", 0, "QOQ_ONLY");
         var row2 = obs(Q3, Q2, "151.8", "999999", "-999", 0, "QOQ_ONLY");
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(row0, row1, row2), List.of(), null);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(row0, row1, row2), List.of(), null, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.REVENUE_ACCELERATION);
         assertThat(result.drivingMetric()).isEqualTo(FinancialMetric.REVENUE);
@@ -49,7 +49,7 @@ class FinancialInflectionEngineTest {
         var row1 = obs(Q2, Q1, "132", null, null, 0, null);
         var row2 = obs(Q3, Q2, "137.28", null, null, 0, null);
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(row0, row1, row2), List.of(), null);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(row0, row1, row2), List.of(), null, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.NO_CLEAR_SIGNAL);
     }
@@ -58,7 +58,7 @@ class FinancialInflectionEngineTest {
     void structuralMarginExpansionReusesStage1sPersistenceDirectly() {
         var margin = obs(Q3, Q2, "12.50", "11.00", "1.50", 3, "QOQ_ONLY");
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), List.of(), margin);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), List.of(), margin, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.STRUCTURAL_MARGIN_EXPANSION);
         assertThat(result.drivingMetric()).isEqualTo(FinancialMetric.OPERATING_MARGIN);
@@ -71,7 +71,7 @@ class FinancialInflectionEngineTest {
     void structuralMarginExpansionRequiresPersistenceOfAtLeastThree() {
         var margin = obs(Q3, Q2, "12.50", "11.00", "1.50", 2, "QOQ_ONLY");
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), List.of(), margin);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), List.of(), margin, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.NO_CLEAR_SIGNAL);
     }
@@ -84,7 +84,7 @@ class FinancialInflectionEngineTest {
         var pat = List.of(obs(Q3, Q2, "90", "60", "30", 0, "QOQ_ONLY"));
         var margin = obs(Q3, Q2, "10.0", "8.0", "2.0", 0, "QOQ_ONLY");
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, margin);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, margin, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.OPERATING_LEVERAGE_INFLECTION);
         assertThat(result.drivingMetric()).isEqualTo(FinancialMetric.PAT);
@@ -98,7 +98,7 @@ class FinancialInflectionEngineTest {
         var pat = List.of(obs(Q3, Q2, "90", "60", "30", 0, "QOQ_ONLY"));
         var staleMargin = obs(Q2, Q1, "10.0", "8.0", "2.0", 0, "QOQ_ONLY"); // wrong period
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, staleMargin);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, staleMargin, null);
 
         assertThat(result.primaryState()).isNotEqualTo(FinancialInflectionState.OPERATING_LEVERAGE_INFLECTION);
     }
@@ -117,7 +117,7 @@ class FinancialInflectionEngineTest {
         );
         var margin = obs(Q3, Q2, "12.50", "11.00", "1.50", 3, "QOQ_ONLY");
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, margin);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, margin, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.EARNINGS_INFLECTION_CONVERGENCE);
         assertThat(result.drivingMetric()).isEqualTo(FinancialMetric.PAT);
@@ -132,7 +132,7 @@ class FinancialInflectionEngineTest {
             obs(Q3, Q2, "151.8", null, null, 0, null)
         );
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), pat, null);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), pat, null, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.PAT_ACCELERATION);
         assertThat(result.drivingMetric()).isEqualTo(FinancialMetric.PAT);
@@ -143,12 +143,58 @@ class FinancialInflectionEngineTest {
         var revenue = List.of(obs(Q3, Q2, "1000", "950", "50", 0, "QOQ_ONLY", 90.0));
         var pat = List.of(obs(Q3, Q2, "90", "92", "-2", 0, "QOQ_ONLY", 40.0));
 
-        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, null);
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, pat, null, null);
 
         assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.NO_CLEAR_SIGNAL);
         assertThat(result.drivingMetric()).isNull();
         assertThat(result.asOfDate()).isEqualTo(Q3);
         assertThat(result.confidence()).isEqualTo(65.0);
+    }
+
+    @Test
+    void interestCostDecliningFiresAtExactlyThreeQuarterThresholdWithNegativeChange() {
+        // 100 -> 80: a -20% change, persistenceQuarters = 3 (meets the reused margin threshold).
+        var interestExpense = interestExpenseObs(Q3, Q2, "80", "100", "-20", 3);
+
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), List.of(), null, interestExpense);
+
+        assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.INTEREST_COST_DECLINING);
+        assertThat(result.drivingMetric()).isEqualTo(FinancialMetric.INTEREST_EXPENSE);
+        assertThat(result.level()).isEqualByComparingTo("80");
+        assertThat(result.change().doubleValue()).isCloseTo(-20.0, offset(0.01)); // derived pct, not raw currency delta
+        assertThat(result.persistence()).isEqualTo(3);
+    }
+
+    @Test
+    void interestCostDecliningDoesNotFireBelowThreeQuarterPersistence() {
+        var interestExpense = interestExpenseObs(Q3, Q2, "80", "100", "-20", 2);
+
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(), List.of(), null, interestExpense);
+
+        assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.NO_CLEAR_SIGNAL);
+    }
+
+    @Test
+    void interestCostDecliningLosesPriorityToRevenueAccelerationButBeatsNoClearSignal() {
+        var row0 = obs(Q1, null, "110", "100", null, 0, null);
+        var row1 = obs(Q2, Q1, "126.5", null, null, 0, null);
+        var row2 = obs(Q3, Q2, "151.8", null, null, 0, null);
+        var interestExpense = interestExpenseObs(Q3, Q2, "80", "100", "-20", 3);
+
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, List.of(row0, row1, row2), List.of(), null, interestExpense);
+
+        assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.REVENUE_ACCELERATION);
+    }
+
+    @Test
+    void noClearSignalsAveragedConfidenceAndDateIncludeInterestExpenseAsAFourthMetric() {
+        var revenue = List.of(obs(Q3, Q2, "1000", "950", "50", 0, "QOQ_ONLY", 90.0));
+        var interestExpense = interestExpenseObs(Q3, Q2, "100", "100", "0", 0, 50.0);
+
+        var result = engine.calculate(INSTRUMENT_ID, SYMBOL, revenue, List.of(), null, interestExpense);
+
+        assertThat(result.primaryState()).isEqualTo(FinancialInflectionState.NO_CLEAR_SIGNAL);
+        assertThat(result.confidence()).isEqualTo(70.0); // (90 + 50) / 2
     }
 
     private static FinancialEvidenceObservation obs(
@@ -164,6 +210,22 @@ class FinancialInflectionEngineTest {
             FinancialMetric.REVENUE, INSTRUMENT_ID, SYMBOL, periodEnd, priorPeriodEnd,
             new BigDecimal(value), priorValue == null ? null : new BigDecimal(priorValue), change == null ? null : new BigDecimal(change),
             null, persistence, confidence, comparatorUsed
+        );
+    }
+
+    private static FinancialEvidenceObservation interestExpenseObs(
+        LocalDate periodEnd, LocalDate priorPeriodEnd, String value, String priorValue, String change, int persistence
+    ) {
+        return interestExpenseObs(periodEnd, priorPeriodEnd, value, priorValue, change, persistence, 90.0);
+    }
+
+    private static FinancialEvidenceObservation interestExpenseObs(
+        LocalDate periodEnd, LocalDate priorPeriodEnd, String value, String priorValue, String change, int persistence, double confidence
+    ) {
+        return new FinancialEvidenceObservation(
+            FinancialMetric.INTEREST_EXPENSE, INSTRUMENT_ID, SYMBOL, periodEnd, priorPeriodEnd,
+            new BigDecimal(value), priorValue == null ? null : new BigDecimal(priorValue), change == null ? null : new BigDecimal(change),
+            null, persistence, confidence, "QOQ_ONLY"
         );
     }
 }

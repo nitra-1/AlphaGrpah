@@ -1,5 +1,6 @@
 package com.alphagraph.financial.transformation;
 
+import com.alphagraph.common.inflection.VelocityBand;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -29,6 +30,12 @@ import java.util.UUID;
  * against {@code FinancialResultsComparisionNormalizer}'s real formula
  * (profit-before-tax + interest - other income, over revenue; depreciation is never added back).
  * Every derived quantity here is called "operating profit," never "EBITDA".
+ *
+ * <p><b>Point-in-time caveat</b>: every {@code asOfDate} here is a quarter-end {@code periodEnd()},
+ * not the date the result was actually published/known to investors. These rows are not
+ * point-in-time-safe for historical backtesting until a real {@code result_publication_date}/
+ * {@code source_published_at} field exists upstream - Stage 3/4 must not treat {@code as_of_date}
+ * as "date known" without that, or historical reconstruction will carry look-ahead bias.
  */
 @Component
 class FinancialInflectionEngine {
@@ -41,7 +48,7 @@ class FinancialInflectionEngine {
     FinancialInflectionResult calculate(
         UUID instrumentId, String symbol,
         List<FinancialEvidenceObservation> revenueRowsAscending, List<FinancialEvidenceObservation> patRowsAscending,
-        FinancialEvidenceObservation latestMargin
+        FinancialEvidenceObservation latestMargin, FinancialEvidenceObservation latestInterestExpense
     ) {
         Optional<AccelerationResult> revenueAccel = computeAcceleration(revenueRowsAscending);
         Optional<AccelerationResult> patAccel = computeAcceleration(patRowsAscending);
@@ -51,6 +58,9 @@ class FinancialInflectionEngine {
         boolean revenueAccelerates = revenueAccel.map(AccelerationResult::fires).orElse(false);
         boolean patAccelerates = patAccel.map(AccelerationResult::fires).orElse(false);
         boolean marginExpanding = latestMargin != null && changePositive(latestMargin) && latestMargin.persistenceQuarters() >= MARGIN_PERSISTENCE_THRESHOLD;
+        BigDecimal interestChangePct = interestChangePct(latestInterestExpense);
+        boolean interestCostDeclining = interestChangePct != null && interestChangePct.signum() < 0
+            && latestInterestExpense.persistenceQuarters() >= MARGIN_PERSISTENCE_THRESHOLD;
 
         List<ReasonCode> reasons = new ArrayList<>();
         if (revenueAccelerates) {
@@ -61,6 +71,9 @@ class FinancialInflectionEngine {
         }
         if (marginExpanding) {
             reasons.add(ReasonCode.of("MARGIN_EXPANDING_SUSTAINED", latestMargin.change().doubleValue()));
+        }
+        if (interestCostDeclining) {
+            reasons.add(ReasonCode.of("INTEREST_EXPENSE_FALLING", interestChangePct.doubleValue()));
         }
 
         OperatingLeverageResult leverage = computeOperatingLeverage(latestRevenue, latestMargin, latestPat);
@@ -86,21 +99,29 @@ class FinancialInflectionEngine {
             primaryState = FinancialInflectionState.STRUCTURAL_MARGIN_EXPANSION;
         } else if (revenueAccelerates) {
             primaryState = FinancialInflectionState.REVENUE_ACCELERATION;
+        } else if (interestCostDeclining) {
+            primaryState = FinancialInflectionState.INTEREST_COST_DECLINING;
         } else {
             primaryState = FinancialInflectionState.NO_CLEAR_SIGNAL;
         }
 
-        return buildResult(primaryState, instrumentId, symbol, revenueAccel, patAccel, latestRevenue, latestMargin, latestPat, leverage, reasons);
+        return buildResult(
+            primaryState, instrumentId, symbol, revenueAccel, patAccel, latestRevenue, latestMargin, latestPat,
+            latestInterestExpense, interestChangePct, leverage, reasons
+        );
     }
 
     private FinancialInflectionResult buildResult(
         FinancialInflectionState primaryState, UUID instrumentId, String symbol,
         Optional<AccelerationResult> revenueAccel, Optional<AccelerationResult> patAccel, FinancialEvidenceObservation latestRevenue,
-        FinancialEvidenceObservation latestMargin, FinancialEvidenceObservation latestPat, OperatingLeverageResult leverage, List<ReasonCode> reasons
+        FinancialEvidenceObservation latestMargin, FinancialEvidenceObservation latestPat,
+        FinancialEvidenceObservation latestInterestExpense, BigDecimal interestChangePct,
+        OperatingLeverageResult leverage, List<ReasonCode> reasons
     ) {
         FinancialMetric drivingMetric;
         BigDecimal level;
         BigDecimal change;
+        VelocityBand velocityBand;
         int persistence;
         LocalDate asOfDate;
         boolean hasPrior;
@@ -114,6 +135,7 @@ class FinancialInflectionEngine {
                 drivingMetric = FinancialMetric.REVENUE;
                 level = revenueAccel.get().level();
                 change = revenueAccel.get().change();
+                velocityBand = FinancialVelocityBanding.bandPercentagePoint(change);
                 persistence = revenueAccel.get().persistence();
                 asOfDate = revenueAccel.get().periodEnd();
                 hasPrior = true;
@@ -122,6 +144,7 @@ class FinancialInflectionEngine {
                 drivingMetric = FinancialMetric.PAT;
                 level = patAccel.get().level();
                 change = patAccel.get().change();
+                velocityBand = FinancialVelocityBanding.bandPercentagePoint(change);
                 persistence = patAccel.get().persistence();
                 asOfDate = patAccel.get().periodEnd();
                 hasPrior = true;
@@ -130,6 +153,7 @@ class FinancialInflectionEngine {
                 drivingMetric = FinancialMetric.OPERATING_MARGIN;
                 level = latestMargin.value();
                 change = latestMargin.change();
+                velocityBand = FinancialVelocityBanding.bandPercentagePoint(change);
                 persistence = Math.min(ACCELERATION_PERSISTENCE_CAP, latestMargin.persistenceQuarters());
                 asOfDate = latestMargin.periodEnd();
                 hasPrior = latestMargin.priorPeriodEnd() != null;
@@ -138,6 +162,7 @@ class FinancialInflectionEngine {
                 drivingMetric = FinancialMetric.PAT;
                 level = leverage.patGrowthPct();
                 change = leverage.patGrowthPct().subtract(leverage.revenueGrowthPct());
+                velocityBand = FinancialVelocityBanding.bandPercentagePoint(change);
                 persistence = 0;
                 asOfDate = latestPat.periodEnd();
                 hasPrior = latestPat.priorPeriodEnd() != null;
@@ -146,30 +171,51 @@ class FinancialInflectionEngine {
                 drivingMetric = FinancialMetric.PAT;
                 level = patAccel.get().level();
                 change = patAccel.get().change();
+                velocityBand = FinancialVelocityBanding.bandPercentagePoint(change);
                 persistence = Math.min(Math.min(revenueAccel.get().persistence(), patAccel.get().persistence()), Math.min(ACCELERATION_PERSISTENCE_CAP, latestMargin.persistenceQuarters()));
                 asOfDate = patAccel.get().periodEnd();
                 hasPrior = true;
+            }
+            case INTEREST_COST_DECLINING -> {
+                drivingMetric = FinancialMetric.INTEREST_EXPENSE;
+                level = latestInterestExpense.value();
+                change = interestChangePct;
+                velocityBand = FinancialVelocityBanding.bandDecliningCurrencyPct(interestChangePct);
+                persistence = Math.min(ACCELERATION_PERSISTENCE_CAP, latestInterestExpense.persistenceQuarters());
+                asOfDate = latestInterestExpense.periodEnd();
+                hasPrior = latestInterestExpense.priorPeriodEnd() != null;
             }
             default -> {
                 drivingMetric = null;
                 level = null;
                 change = null;
+                velocityBand = null;
                 persistence = 0;
-                asOfDate = maxPeriodEnd(revenueAccel, patAccel, latestMargin);
+                asOfDate = maxPeriodEnd(revenueAccel, patAccel, latestMargin, latestInterestExpense);
                 hasPrior = true;
             }
         }
 
         double confidence = drivingMetric == null
-            ? averageConfidence(latestRevenue, latestPat, latestMargin)
+            ? averageConfidence(latestRevenue, latestPat, latestMargin, latestInterestExpense)
             : clamp(BASE_CONFIDENCE + Math.min(10.0, 2.0 * persistence) - (hasPrior ? 0.0 : THINNESS_PENALTY), 0.0, 100.0);
 
         return new FinancialInflectionResult(
             instrumentId, symbol, asOfDate, primaryState, confidence,
-            drivingMetric, level, change,
-            (level == null || change == null) ? null : FinancialVelocityBanding.bandPercentagePoint(change),
+            drivingMetric, level, change, velocityBand,
             persistence, reasons
         );
+    }
+
+    /** {@code null} when there's no prior value to compare against (first-ever observation) or it's zero (can't derive a percentage). */
+    private static BigDecimal interestChangePct(FinancialEvidenceObservation latestInterestExpense) {
+        if (latestInterestExpense == null || latestInterestExpense.value() == null || latestInterestExpense.priorValue() == null
+            || latestInterestExpense.priorValue().signum() == 0) {
+            return null;
+        }
+        return latestInterestExpense.value().subtract(latestInterestExpense.priorValue())
+            .divide(latestInterestExpense.priorValue().abs(), 8, RoundingMode.HALF_UP)
+            .multiply(BigDecimal.valueOf(100));
     }
 
     /**
@@ -275,7 +321,10 @@ class FinancialInflectionEngine {
         return rowsAscending.isEmpty() ? null : rowsAscending.get(rowsAscending.size() - 1);
     }
 
-    private static LocalDate maxPeriodEnd(Optional<AccelerationResult> revenueAccel, Optional<AccelerationResult> patAccel, FinancialEvidenceObservation latestMargin) {
+    private static LocalDate maxPeriodEnd(
+        Optional<AccelerationResult> revenueAccel, Optional<AccelerationResult> patAccel,
+        FinancialEvidenceObservation latestMargin, FinancialEvidenceObservation latestInterestExpense
+    ) {
         LocalDate max = null;
         if (revenueAccel.isPresent()) {
             max = revenueAccel.get().periodEnd();
@@ -285,6 +334,9 @@ class FinancialInflectionEngine {
         }
         if (latestMargin != null && (max == null || latestMargin.periodEnd().isAfter(max))) {
             max = latestMargin.periodEnd();
+        }
+        if (latestInterestExpense != null && (max == null || latestInterestExpense.periodEnd().isAfter(max))) {
+            max = latestInterestExpense.periodEnd();
         }
         return max;
     }
