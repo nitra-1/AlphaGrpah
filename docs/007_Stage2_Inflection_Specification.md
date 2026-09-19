@@ -154,35 +154,80 @@ status as the velocity bands above.
 
 ## 6. Business Inflection
 
+**Implemented (2026-09-19), with real corrections found during plan review - see §7's closing note
+for the full list, shared across both families since they were built together.**
+
 Source: `financial.transformation_evidence` (`REVENUE`).
 
 | State | Trigger | Persistence rule | Reason codes |
 |---|---|---|---|
-| `REVENUE_ACCELERATION` | Walk the last 3 `REVENUE` evidence rows (oldest to newest) by `period_end`; each row's own `change` (not `value`) must be greater than the previous row's `change` - a real second-derivative check, not just "revenue went up" | Count of consecutive rows satisfying that comparison, capped at 3 (the real ceiling - only 4 transitions exist per symbol today) | `REVENUE_GROWTH_IMPROVING` (fires if only the latest transition qualifies); `YOY_ACCELERATION_3Q` (fires only if all 3 available transitions qualify AND at least one used `comparator_used = YOY`, so a pure-QoQ artifact of one seasonal quarter doesn't get the strongest label) |
-| `ORDER_INFLOW_ACCELERATION` | **No Stage 1 evidence exists for this today.** `corporate.orderbook` (Module 2.4, real order-value extraction) is a real candidate source but has never been turned into a `financial`-style evidence ledger. **Not buildable from this spec alone** - needs a Stage 1 scoping pass of its own (new evidence family, not Stage 2 work) before this state can exist. | — | — |
-| `CAPEX_MONETIZATION_START` | **No Stage 1 evidence exists for this today.** `corporate.commentary`'s `management_observations` (Module 2.5, real `CAPEX` metric-type extractions) is a real candidate source but is a qualitative commitment-level signal, not a numeric evidence ledger with level/change/velocity - turning it into one is a real, separate scoping question (how does "we spent 500cr on capex" become a *rate*?). **Not buildable from this spec alone.** | — | — |
-| `BUSINESS_GROWTH_INFLECTION` | Composite: `REVENUE_ACCELERATION` fired AND (once it exists) `ORDER_INFLOW_ACCELERATION` also fired in the same window | Inherits the stricter of its two inputs' persistence | `MULTI_SIGNAL_GROWTH` |
+| `REVENUE_ACCELERATION` | **Corrected from the original spec text.** Never compares Stage 1's own stored `change` across rows (a real row-to-row basis mismatch risk - see below) - instead rebuilds an independent, always-sequential (QoQ-by-construction) growth-rate series directly from each evidence row's raw `value()` (plus the oldest row's own `priorValue()` as one extra earliest point), then compares *consecutive derived growth rates* for acceleration | Count of consecutive accelerating growth-rate comparisons, capped at 3 (the real ceiling - up to 5 raw values from 4 evidence rows give at most 3 comparisons) | `REVENUE_GROWTH_IMPROVING` only - `YOY_ACCELERATION_3Q` dropped for this pass, see below |
+| `ORDER_INFLOW_ACCELERATION` | **No Stage 1 evidence exists for this today.** Not built. | — | — |
+| `CAPEX_MONETIZATION_START` | **No Stage 1 evidence exists for this today.** Not built. | — | — |
+| `BUSINESS_GROWTH_INFLECTION` | Needs `ORDER_INFLOW_ACCELERATION` as an input - **not built**. | — | — |
 
-**Priority within family**: `BUSINESS_GROWTH_INFLECTION` > `REVENUE_ACCELERATION` (a composite is
-more informative than its own ingredient) - but since the composite needs a metric that doesn't
-exist yet, in practice only `REVENUE_ACCELERATION` is live until `ORDER_INFLOW_ACCELERATION` is
-built.
+`level` = the metric's own latest derived growth rate (%); `change` = that growth rate's own
+acceleration in percentage points (`latest growth% - previous growth%`); `velocityBand` bands that
+pp acceleration. `asOfDate` = the metric's own real `period_end`, never a daily `Clock` - see §7's
+closing note.
 
 ## 7. Earnings Inflection
 
 Source: `financial.transformation_evidence` (`PAT`, `OPERATING_MARGIN`, `REVENUE`).
 
+**`OPERATING_MARGIN` is an operating-profit/EBIT-like margin, not EBITDA** - verified against
+`FinancialResultsComparisionNormalizer`'s real formula
+(`(profitBeforeTax + interestExpense - otherIncome) / revenue`; depreciation is never added back)
+before writing any code. Every reference below says "operating profit," never "EBITDA" - the
+original spec text's "EBITDA's % growth" language was wrong and is corrected here.
+
 | State | Trigger | Persistence rule | Reason codes |
 |---|---|---|---|
-| `PAT_ACCELERATION` | Same second-derivative walk as `REVENUE_ACCELERATION`, applied to `PAT` | Same capped-at-3 rule | `PAT_GROWTH_IMPROVING`, `YOY_ACCELERATION_3Q` |
-| `STRUCTURAL_MARGIN_EXPANSION` | `OPERATING_MARGIN`'s `change` is positive for >= 3 consecutive evidence rows (a persistence check, not an acceleration check - "structural" means sustained, not necessarily accelerating) | Count of consecutive positive-`change` rows, capped at 3 | `MARGIN_EXPANDING_SUSTAINED` |
-| `OPERATING_LEVERAGE_INFLECTION` | Cross-metric, same window: `REVENUE`'s % growth < `OPERATING_MARGIN`-implied EBITDA's % growth < `PAT`'s % growth, all three positive, on the same `period_end` transition. Needs all three metrics present for that instrument - correctly silent for the 5 real bank symbols, which only ever get `PAT` (§ from Tier 2's own disclosed bank/non-bank field split) | Not itself persistence-gated (it's a single-quarter structural read); `MULTI_QUARTER_EARNINGS_ACCELERATION` below is the persistence-gated version | `REVENUE_TO_EBITDA_LEVERAGE`, `EBITDA_TO_PAT_LEVERAGE` |
-| `MULTI_QUARTER_EARNINGS_ACCELERATION` | `PAT_ACCELERATION` AND `STRUCTURAL_MARGIN_EXPANSION` AND `REVENUE_ACCELERATION` (from §6) all fired in the same window - this is the spec's own named composite ("Revenue + PAT + margin improving together"), and per the user's explicit correction this name is reserved for the combined read, never used for revenue alone | Inherits the minimum persistence across its three inputs | `COMBINED_GROWTH_MARGIN_PAT` |
+| `PAT_ACCELERATION` | Same corrected always-sequential growth-rate walk as `REVENUE_ACCELERATION`, applied to `PAT` | Same capped-at-3 rule | `PAT_GROWTH_IMPROVING` only |
+| `STRUCTURAL_MARGIN_EXPANSION` | `OPERATING_MARGIN`'s `change` positive AND its own stored `persistenceQuarters >= 3` - unlike the acceleration states, this one safely reuses Stage 1's own field directly (it's already a same-basis raw-value sign-walk, not a change/comparator mix) | Stage 1's own `persistenceQuarters`, capped at 3 | `MARGIN_EXPANDING_SUSTAINED` |
+| `OPERATING_LEVERAGE_INFLECTION` | Cross-metric, one real aligned quarter (not a multi-row walk, so the mixed-basis correction doesn't apply): derived `operatingProfit = revenue x operatingMarginPct / 100` for both current and prior period, then `revenueGrowthPct < operatingProfitGrowthPct < patGrowthPct`, all three positive. **Requires `revenue.periodEnd() == operatingMargin.periodEnd() == pat.periodEnd()`** - each metric is read independently, so this is an enforced invariant, not an assumption. Correctly silent for the 5 real bank symbols (`REVENUE`/`OPERATING_MARGIN` don't exist for them) | Not persistence-gated (single-quarter structural read) | `REVENUE_TO_OPERATING_PROFIT_LEVERAGE`, `OPERATING_PROFIT_TO_PAT_LEVERAGE` |
+| `EARNINGS_INFLECTION_CONVERGENCE` | **Renamed from the original spec's `MULTI_QUARTER_EARNINGS_ACCELERATION`** - with only 5 real quarters (4 evidence transitions), this detects `REVENUE_ACCELERATION` AND `PAT_ACCELERATION` AND `STRUCTURAL_MARGIN_EXPANSION` converging in the *same* quarter, not acceleration genuinely persisting across multiple comparable periods (which would need ~8 quarters to measure). `MULTI_QUARTER_EARNINGS_ACCELERATION` is reserved for when that depth exists. Requires the three components' periods to align | `min` across the three inputs' own persistence | `COMBINED_GROWTH_MARGIN_PAT` |
 
-**Priority within family**: `MULTI_QUARTER_EARNINGS_ACCELERATION` > `OPERATING_LEVERAGE_INFLECTION`
-> `PAT_ACCELERATION` / `STRUCTURAL_MARGIN_EXPANSION` (the two base states can co-fire and both get
-recorded as reason codes even when the composite wins, same non-hiding convention Ownership's
-ladder already uses).
+**Priority within family**: `EARNINGS_INFLECTION_CONVERGENCE` > `OPERATING_LEVERAGE_INFLECTION` >
+`PAT_ACCELERATION` > `STRUCTURAL_MARGIN_EXPANSION` > `REVENUE_ACCELERATION` (every fired state
+still recorded as a reason code even when a higher one wins).
+
+**Four corrections made during plan review, before any code was written, all live-verified
+afterward**:
+1. **`as_of_date` is the driving observation's own real `period_end`, never a daily `Clock`** -
+   unlike Market (genuinely daily-cadence evidence, where `Clock.today()` is correct), Financial's
+   evidence is quarterly; a `Clock`-based `as_of_date` would mint a new state row every single day
+   the job runs from the same one quarterly observation. Live-verified: re-triggering the real job
+   twice same-day left `financial.inflection_states` at an identical row count *and* an identical
+   `as_of_date` per symbol (a real 2024-12-31 quarter-end, not the run date) - the upsert lands on
+   the same quarterly row, not a new one. (Ownership's already-shipped `transformation_states` has
+   this same `Clock`-based pattern despite also being quarterly-cadence - a real latent issue,
+   flagged as a candidate follow-up, not fixed as part of this change.)
+2. **Never mix `QOQ_ONLY`/`YOY` `change` values inside one acceleration walk** - confirmed live
+   during the Stage 1 backfill that only the newest of 4 real transitions per symbol ever gets
+   `comparator_used = YOY` (the others are always `QOQ_ONLY`, since only the newest transition has
+   a real 12-months-back point in the 5-quarter window) - comparing a YoY change to a QoQ change
+   across rows would compare different things. Fixed by deriving the acceleration walk from raw
+   `value()`s only, always sequential by construction, never from Stage 1's own `change`/
+   `comparatorUsed` fields.
+3. **`YOY_ACCELERATION_3Q` dropped from this pass entirely** - genuine multi-quarter YoY
+   acceleration needs ~8 quarters to compute 4 comparable YoY points; 5 quarters isn't enough, and
+   claiming it prematurely would make Stage 3 (which consumes this history) look more sophisticated
+   than the real data supports.
+4. Composite states require their constituent metrics' periods to align exactly (`revenue.periodEnd()
+   == operatingMargin.periodEnd() == pat.periodEnd()`) before combining them.
+
+Live-verified end to end against the real running app: 55/55 instruments succeeded -
+`PAT_ACCELERATION` 18, `REVENUE_ACCELERATION` 11, `OPERATING_LEVERAGE_INFLECTION` 10,
+`STRUCTURAL_MARGIN_EXPANSION` 1, `NO_CLEAR_SIGNAL` 15, `EARNINGS_INFLECTION_CONVERGENCE` 0 (a real,
+strict AND-condition - none of the 55 real symbols satisfied all three simultaneously this run, not
+a bug). The 5 real bank symbols only ever produced `PAT_ACCELERATION` or `NO_CLEAR_SIGNAL`, never a
+revenue/margin-driven state, exactly as the bank/non-bank field split predicts. Hand-verified BEL's
+real `REVENUE_ACCELERATION` row (raw revenue 413669 -> 852854 -> 419877 -> 458341 -> 575612 across
+4 real quarters, mixing real `QOQ_ONLY` and `YOY` `comparator_used` values that the engine correctly
+never touched): independently hand-derived growth rates 106.17% / -50.77% / 9.16% / 25.59%,
+acceleration comparisons giving `level=25.586`, `change=16.425`, `persistence=2` - an exact match to
+the real stored row, and `confidence=79` (`75 + min(10, 2x2)`) also exact.
 
 ## 8. Balance-Sheet Inflection
 
@@ -382,20 +427,26 @@ schema via the `intelligence`-computes/`risk`-writes split).
 
 ### 15.4 Metric -> band-type mapping
 
-A `MetricBandType` enum (`PERCENTAGE_POINT`, `CURRENCY_PCT_CHANGE`, `RATIO`, `COUNT`) with one
-seeded `RuleSet` per type (§3), and an explicit per-metric mapping table each family's engine
-consults (a plain `switch`, not a DB table - this mapping is structural, not tunable, unlike the
-thresholds themselves):
+A shared `common.inflection.VelocityBand` enum (`STRONG`/`MODERATE`/`WEAK`/`FLAT`/`NEGATIVE`, hardcoded
+Java thresholds per family, never a DB rule - §3) with an explicit per-metric mapping each family's
+engine consults directly (a plain `switch`, not a DB table - this mapping is structural, not
+tunable, unlike the thresholds themselves):
 
 | Metric | Type |
 |---|---|
-| `REVENUE`, `PAT`, `INTEREST_EXPENSE` | `CURRENCY_PCT_CHANGE` |
 | `OPERATING_MARGIN` | `PERCENTAGE_POINT` |
 | `RELATIVE_VOLUME` | `RATIO` |
 | `DELIVERY_PERCENTAGE_20D_AVG`, `PRICE_RETURN_20D` | `PERCENTAGE_POINT` |
 | All 9 Ownership shareholding metrics | `PERCENTAGE_POINT` (unchanged - already banded via the existing seeded `RuleSet`, §9) |
 | `SECTOR_RELATIVE_STRENGTH`, `INSTRUMENT_RELATIVE_STRENGTH_VS_NIFTY`, `INSTRUMENT_RELATIVE_STRENGTH_VS_SECTOR` | `PERCENTAGE_POINT` |
 | `BUYBACK_EVENT_COUNT_180D`, `EQUITY_RAISE_EVENT_COUNT_180D` | `COUNT` - no velocity banding at all; §11's states are direct value>0 pass-throughs |
+
+**Revised during Financial's implementation**: the original table here had `REVENUE`/`PAT`/
+`INTEREST_EXPENSE` as a separate `CURRENCY_PCT_CHANGE` type, banding raw currency deltas. That
+type turned out unnecessary once built - Financial's acceleration states persist a *derived growth
+rate* (already percentage-point-shaped) as `level`/`change`, never the raw rupee `value`/`change`
+directly (see §6/§7), so `FinancialVelocityBanding` only needs the same `PERCENTAGE_POINT`
+thresholds every other family already uses. `CURRENCY_PCT_CHANGE` is dropped from the type list.
 
 ### 15.5 Confidence bucket assignment
 

@@ -629,6 +629,75 @@ Re-triggered all 4 backfills a second time same-day: identical row counts across
 
 Live-verified against the real running app and real production data: 60/60 instruments succeeded - `DELIVERY_EXPANSION` 40, `STEALTH_ACCUMULATION_CANDIDATE` 12 (a real, substantial signal - not a rare edge case), `SUSTAINED_DELIVERY_ACCUMULATION` 2, `RELATIVE_VOLUME_EXPANSION` 5, `NO_CLEAR_SIGNAL` 1. Hand-verified ONGC's real `DELIVERY_EXPANSION` row (`level=57.0040`, `change=1.0410`, `persistence=1`) against the exact same raw `market.transformation_evidence` row, byte-for-byte match; confidence `92.00` matches `90 + min(10, 2x1)` exactly. Re-triggered the same job a second time same-day: identical row count (60) and identical state distribution - concrete proof the `findPriorTradingState` fix works as designed, not just an idempotency check (a same-day retry produced zero spurious `EARLY_PRICE_PARTICIPATION` fires, since it structurally cannot see its own earlier-today write).
 
+**Stage 2 Business + Earnings Inflection** (2026-09-19): item 3 of the build order - built together
+since they share the acceleration-walk logic and one composite spans both. Scope:
+`REVENUE_ACCELERATION`, `PAT_ACCELERATION`, `STRUCTURAL_MARGIN_EXPANSION`,
+`OPERATING_LEVERAGE_INFLECTION`, `EARNINGS_INFLECTION_CONVERGENCE`, plus `NO_CLEAR_SIGNAL` - one
+combined `FinancialInflectionEngine`/table/job for both families. `ORDER_INFLOW_ACCELERATION`/
+`CAPEX_MONETIZATION_START`/`BUSINESS_GROWTH_INFLECTION` not built - no Stage 1 evidence exists yet.
+
+**Verified before designing, not assumed**: read `FinancialResultsComparisionNormalizer`'s real
+formula - `OPERATING_MARGIN` is `(profitBeforeTax + interestExpense - otherIncome) / revenue`,
+depreciation never added back, so it's an operating-profit/EBIT-like margin, **not EBITDA**. The
+original Stage 2 spec text said "EBITDA's % growth" - corrected throughout to "operating profit."
+
+**Four real corrections caught during plan review, before any code was written**: (1) `as_of_date`
+must be the driving observation's own real `period_end`, never a daily `Clock` - Financial's
+evidence is quarterly-cadence (unlike Market, where `Clock.today()` is correct because that
+family's evidence genuinely is daily), so a `Clock`-based `as_of_date` would mint a new state row
+every single day the job runs from the same one quarterly observation, corrupting what later Stage
+3 history would show as a persisting inflection that was really one event. (Ownership's
+already-shipped `transformation_states` has this same `Clock`-based flaw despite also being
+quarterly-cadence - flagged to the user as a candidate follow-up, not fixed as part of this
+change.) (2) Acceleration states must never compare Stage 1's own stored `change` across evidence
+rows - confirmed live during the Stage 1 backfill that only the newest of 4 real transitions per
+symbol ever gets `comparator_used = YOY` (the rest are always `QOQ_ONLY`), so comparing `change`
+values across rows would silently mix bases. Fixed by rebuilding an independent, always-sequential
+growth-rate series directly from each row's raw `value()` (plus the oldest row's own `priorValue()`
+as one extra earliest point) - Stage 1's `change`/`comparatorUsed` fields are never read by the
+acceleration walk at all. (3) `YOY_ACCELERATION_3Q` dropped entirely for this pass - genuine
+multi-quarter YoY acceleration needs ~8 quarters to compute 4 comparable YoY points; today's 5
+quarters aren't enough, and claiming it prematurely would make Stage 3 look more sophisticated than
+the real data supports. (4) The spec's `MULTI_QUARTER_EARNINGS_ACCELERATION` composite renamed to
+`EARNINGS_INFLECTION_CONVERGENCE` for this pass - with only 5 real quarters, this state detects
+three conditions converging in *one* quarter, not acceleration genuinely persisting across multiple
+comparable periods; the stronger name is reserved for when deeper history exists. Composite states
+also now require their constituent metrics' periods to align exactly before combining them.
+
+New `financial.inflection_states`/`_state_reasons` tables (`V5`), a new
+`FinancialTransformationEvidenceReader` (Stage 1's writer was write-only until now), a single
+`FinancialVelocityBanding` percentage-point band type (the currency-percentage type from the
+original spec draft turned out unnecessary - acceleration states persist a *derived growth rate*
+as `level`, already percentage-point-shaped, never the raw rupee delta). New job
+`financial-inflection` (19:22 IST), 32 jobs total in `JobRegistry`. `OPERATING_LEVERAGE_INFLECTION`
+derives `operatingProfit = revenue x operatingMarginPct / 100` for both periods from real
+already-fetched REVENUE/OPERATING_MARGIN evidence - a real derivation, not fabricated, requiring
+all three metrics' `periodEnd`s to align exactly.
+
+9 new tests (`FinancialInflectionEngineTest`: the corrected acceleration walk on a series with
+deliberately mixed/misleading `change`/`comparatorUsed` fields to prove they're never read,
+deceleration correctly not firing, `STRUCTURAL_MARGIN_EXPANSION`'s direct persistence reuse, the
+derived-operating-profit leverage math with a hand-checkable example and its period-misalignment
+negative case, the convergence composite's full AND-requirement, bank-only PAT case, `NO_CLEAR_SIGNAL`'s
+averaged-confidence fallback; `FinancialVelocityBandingTest`). Full `./gradlew build` (ArchUnit
+included) green.
+
+Live-verified end to end against the real running app: 55/55 instruments succeeded -
+`PAT_ACCELERATION` 18, `REVENUE_ACCELERATION` 11, `OPERATING_LEVERAGE_INFLECTION` 10,
+`STRUCTURAL_MARGIN_EXPANSION` 1, `NO_CLEAR_SIGNAL` 15, `EARNINGS_INFLECTION_CONVERGENCE` 0 (a real
+strict AND-condition, not a bug - none of the 55 real symbols satisfied all three at once this
+run). The 5 real bank symbols only ever produced `PAT_ACCELERATION` or `NO_CLEAR_SIGNAL`, exactly
+as the bank/non-bank field split predicts. Confirmed `as_of_date` lands on a real quarter-end
+(`2024-12-31`) across every row, never today's calendar date. Hand-verified BEL's real
+`REVENUE_ACCELERATION` row: raw revenue 413669 -> 852854 -> 419877 -> 458341 -> 575612 across 4
+real quarters (mixing real `QOQ_ONLY`/`YOY` `comparator_used` values the engine correctly never
+touched) independently hand-derives to growth rates 106.17% / -50.77% / 9.16% / 25.59%, giving
+`level=25.586`, `change=16.425`, `persistence=2` - an exact match to the real stored row;
+`confidence=79` (`75 + min(10, 2x2)`) also exact. Re-triggered the same job a second time same-day:
+identical row count (55) *and* identical `as_of_date` per symbol (BEL still exactly one row, at
+`2024-12-31`) - concrete proof correction (1) works, the upsert lands on the same quarterly row
+rather than minting a new one for "today."
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
