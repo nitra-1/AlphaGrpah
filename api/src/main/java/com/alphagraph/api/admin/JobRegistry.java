@@ -22,6 +22,7 @@ import com.alphagraph.learning.outcomes.ForwardOutcomeScheduler;
 import com.alphagraph.learning.snapshot.DecisionSnapshotScheduler;
 import com.alphagraph.market.pricing.MarketPriceBackfillScheduler;
 import com.alphagraph.market.transformation.MarketAccumulationScheduler;
+import com.alphagraph.market.transformation.MarketInflectionScheduler;
 import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
 import com.alphagraph.ownership.pattern.XbrlEnrichmentScheduler;
@@ -32,7 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 30 jobs - 26 standalone {@code @Scheduled} jobs plus 4 one-off
+ * Manual re-trigger dispatch for 31 jobs - 27 standalone {@code @Scheduled} jobs plus 4 one-off
  * historical backfills (market/financial/ownership/sector-context) that have no {@code @Scheduled}
  * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
@@ -77,7 +78,8 @@ class JobRegistry {
         MarketAccumulationScheduler marketAccumulationScheduler,
         FinancialTransformationScheduler financialTransformationScheduler,
         CapitalAllocationScheduler capitalAllocationScheduler,
-        SectorContextScheduler sectorContextScheduler
+        SectorContextScheduler sectorContextScheduler,
+        MarketInflectionScheduler marketInflectionScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -92,6 +94,7 @@ class JobRegistry {
         jobs.put("financial-results-comparision-fetch-backfill", financialTransformationScheduler::runFinancialResultsComparisionFetchBackfill);
         jobs.put("ownership-transformation-backfill", ownershipTransformationScheduler::runOwnershipTransformationBackfill);
         jobs.put("sector-context-evidence-backfill", sectorContextScheduler::runSectorContextEvidenceBackfill);
+        jobs.put("market-inflection", marketInflectionScheduler::runMarketInflection);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);
