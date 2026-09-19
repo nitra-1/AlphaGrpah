@@ -773,6 +773,70 @@ with `0 succeeded, 0 failed`, not an error. Re-triggered both jobs a second time
 after: idempotent. Capital Allocation remained 0 rows both times, consistent with the same real
 data gap.
 
+**Stage 2 Sector Inflection** (2026-09-19): item 5 of the build order - new `sector.transformation`
+package (not `intelligence.sectorcontext`, where Stage 1's computation lives, since Stage 2 only
+reads/writes the `sector` schema and this codebase's own rule is "a domain's own schema is always
+written by a class that domain module owns"), new `sector.inflection_states`/`_state_reasons`
+tables (`V3`). `NO_CLEAR_SIGNAL`, `SECTOR_STRENGTHENING`, `STOCK_OUTPERFORMING_NIFTY`,
+`STOCK_OUTPERFORMING_SECTOR`, `NEW_LEADERSHIP_EMERGENCE` - `STOCK_OUTPERFORMING_SECTOR`/
+`NEW_LEADERSHIP_EMERGENCE` built but confirmed silent (`reference.sector_benchmarks` still has zero
+real rows).
+
+**Two things verified against real source before designing, not assumed**: (1) `sector.transformation_evidence`
+has no `velocity_*` column, unlike every other family's evidence table - checked
+`MarketAccumulationEngine`'s real source and found `velocityPerDay` is literally constructed from
+the same `change` variable as the `change` field itself, so "velocity" has never been a separately
+computed quantity in this codebase; Sector's missing column is a real schema difference, not a
+missing capability - Stage 2 bands `change` directly. (2) `NEW_LEADERSHIP_EMERGENCE` doesn't need
+Market's self-referential `findPriorTradingState` pattern - `STOCK_OUTPERFORMING_SECTOR` is a
+single-metric pass-through, and Stage 1's own `SectorContextEngine` already carries the
+immediately-prior real evidence day's value as `prior_value` on every row, so the crossing
+(`value > 0 AND priorValue <= 0`) is derivable from the single latest evidence row directly - a
+genuine simplification over mechanically copying Market's pattern, not a shortcut.
+
+**Three real corrections caught during plan review, before any code was written**: (1) `as_of_date`
+must come from the evidence, never `Clock.today()` - Sector's evidence is reliably daily-cadence
+only for `SECTOR_RELATIVE_STRENGTH`; `VS_NIFTY`/`VS_SECTOR` are real but thin/empty, so a
+`Clock`-based date would manufacture apparent daily persistence from a stale observation on days
+that metric got no new real evidence. Fixed exactly like Financial: no `Clock` field in the
+orchestrator at all; `as_of_date` = the driving observation's own real evidence date, or `max()`
+across available evidence for `NO_CLEAR_SIGNAL`. (2) Added `evidence_coverage_pct`/`data_readiness`
+(`READY`/`PARTIAL_DATA`/`INSUFFICIENT_DATA`) columns, independent of `primary_state` - `NO_CLEAR_SIGNAL`
+alone was ambiguous for this family specifically, since it could mean "all 3 metrics are real and
+calm" or "2 of 3 sources don't have real evidence yet," and the second case is what most real rows
+mean today. Always computed, even on a firing state. (3) Confidence for the 3
+non-`SECTOR_STRENGTHENING` states no longer uses a flat base 60 - it's tiered by real history depth
+(`0 observations -> 40, 1-4 -> 50, 5-19 -> 60, 20+ -> 75`), using a new
+`SectorContextEvidenceReader.countObservations` (real total row count for that instrument/metric),
+not Stage 1's own `persistence_days` (which is structurally always 0 for `NEW_LEADERSHIP_EMERGENCE`,
+a crossing event - reusing it would have pinned that state's confidence to the bottom tier forever,
+defeating the correction's purpose for exactly the state it matters most for).
+
+10 new tests (`SectorInflectionEngineTest`: one case per state including the derived
+`NEW_LEADERSHIP_EMERGENCE` crossing and its two non-firing guards - already-positive-yesterday and
+first-observation-with-no-prior-to-cross-from - `SECTOR_STRENGTHENING`'s persistence cap at 5,
+`NO_CLEAR_SIGNAL`'s averaged-confidence/max-`asOfDate` fallback, coverage/readiness at 100/`READY`
+and 67/`PARTIAL_DATA` including on a firing state, confidence tier boundaries at observation counts
+0/1/4/5/19/20; `SectorVelocityBandingTest`). Full `./gradlew build` (ArchUnit included) green.
+
+Live-verified against the real running app: 59/59 instruments succeeded - `STOCK_OUTPERFORMING_NIFTY`
+27, `NO_CLEAR_SIGNAL` 18, `SECTOR_STRENGTHENING` 14, `STOCK_OUTPERFORMING_SECTOR`/
+`NEW_LEADERSHIP_EMERGENCE` 0/59 as expected (the disclosed real gap). Every one of the 59 real rows
+showed `evidence_coverage_pct=67`/`PARTIAL_DATA`, confirming correction (2) surfaces real
+information Stage 3/UI would otherwise have had to infer. `VS_NIFTY` turned out deeper than the
+readiness ledger's original one-common-day note (118 real rows across all 59 instruments by this
+build) - real trading days plus earlier backfill work closed the gap faster than originally
+scoped, a pleasant surprise not a bug. Hand-verified ASIANPAINT's real `SECTOR_STRENGTHENING` row
+(`level=-2.6900, change=2.1000, persistence=1`) against the exact same raw
+`sector.transformation_evidence` row - exact match; `velocity_band=STRONG` (change >= 2.0);
+`confidence=92.00` matches `90 + min(10, 2x1)` exactly; `as_of_date=2026-09-18` matches the raw
+row's own real evidence date, not the day the job ran (2026-09-19) - concrete proof correction (1)
+works against real data, not just in theory (a sector can be genuinely "strengthening" while still
+negative versus the market - `-2.69%` moving toward zero is correctly `SECTOR_STRENGTHENING`, not a
+bug). Re-triggered the same job a second time same-day: identical row count (59) and identical
+full-table checksum (md5 over every `instrument_id`/`primary_state`/`as_of_date`/`change`) -
+idempotent.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

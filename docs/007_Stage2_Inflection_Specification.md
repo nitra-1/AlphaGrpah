@@ -149,7 +149,7 @@ status as the velocity bands above.
 | **Balance-Sheet** (Interest Expense only) | Same as Business | Ready to build for `INTEREST_COST_DECLINING` only - `DELEVERAGING_INFLECTION`/`CASH_FLOW_IMPROVEMENT` blocked on the same real Stage 1 gap already disclosed (no live `DEBT_LEVEL`/`CASH_FLOW_FROM_OPERATIONS` source). |
 | **Market Accumulation** | avg 83 days/instrument, deep | Ready to build, best-supported family. |
 | **Capital Allocation** | Logic-ready, **zero real events** (`corporate.corporate_actions` has 10 real rows, all `DIVIDEND`, confirmed live during Tier 4) | Buildable now, but will not fire on anything real until a real `BUYBACK`/`RIGHTS` event is actually ingested. Build it - it costs nothing extra and the real-data gap is upstream, not in Stage 2. |
-| **Sector** | `SECTOR_RELATIVE_STRENGTH`: 25 real days. `VS_NIFTY`: 1 real common day (real gap - `NIFTY50` has only 23 days of its own price history and a real 5-day hole against `RELIANCE`'s, confirmed live). `VS_SECTOR`: 0 rows (`reference.sector_benchmarks` is empty) | `SECTOR_STRENGTHENING` ready. `STOCK_OUTPERFORMING_NIFTY` buildable but will rarely have a persistence history to band yet. `STOCK_OUTPERFORMING_SECTOR`/`NEW_LEADERSHIP_EMERGENCE` **blocked** until `reference.sector_benchmarks` has real rows - build the logic, expect it to be silent. |
+| **Sector** | `SECTOR_RELATIVE_STRENGTH`: 25 real days (1,460 real rows / 59 instruments at build time, 2026-09-19). `VS_NIFTY`: deepened since first scoped - 118 real rows across all 59 instruments at build time (originally only 1 common real day when first checked 2026-09-18; real trading days plus backfill activity closed the gap faster than expected). `VS_SECTOR`: still 0 rows (`reference.sector_benchmarks` is empty) | `SECTOR_STRENGTHENING` ready. `STOCK_OUTPERFORMING_NIFTY` **built and firing on real data** (27/59 instruments on first live run - see §12). `STOCK_OUTPERFORMING_SECTOR`/`NEW_LEADERSHIP_EMERGENCE` **blocked** until `reference.sector_benchmarks` has real rows - built the logic, confirmed silent (0/59) live. |
 | **Risk/Contradiction** | Depends on every other family's Stage 2 states existing | Build last, per the user's own ordering - see §13. |
 
 ## 6. Business Inflection
@@ -356,19 +356,57 @@ already-correct disclosure).
 
 ## 12. Sector Inflection
 
+**Built (2026-09-19)** - new `sector.transformation` package (not `intelligence.sectorcontext`,
+where Stage 1's *computation* lives - Stage 2 only reads/writes the `sector` schema, and this
+codebase's own rule is "a domain's own schema is always written by a class that domain module
+owns, never directly from intelligence"), new `sector.inflection_states`/`_state_reasons` tables
+(`V3`). **No `Clock` dependency** - unlike Market's 3 metrics (all genuinely daily),
+`SECTOR_RELATIVE_STRENGTH` alone is reliably daily-cadence here; `as_of_date` is always the driving
+observation's own real evidence date (or `max()` across available evidence for `NO_CLEAR_SIGNAL`),
+generalizing Financial's `period_end`-based correction from "quarterly" to "whichever metrics
+aren't reliably daily."
+
 Source: `sector.transformation_evidence` (`SECTOR_RELATIVE_STRENGTH`,
 `INSTRUMENT_RELATIVE_STRENGTH_VS_NIFTY`, `INSTRUMENT_RELATIVE_STRENGTH_VS_SECTOR`).
 
 | State | Trigger | Persistence rule | Reason codes |
 |---|---|---|---|
 | `SECTOR_STRENGTHENING` | `SECTOR_RELATIVE_STRENGTH`'s `change` positive | Consecutive positive-`change` days, capped at 5 (25 real days of depth exist, but a sector-level read shouldn't claim more persistence confidence than the instrument-level states get) | `SECTOR_RS_RISING` |
-| `STOCK_OUTPERFORMING_NIFTY` | `INSTRUMENT_RELATIVE_STRENGTH_VS_NIFTY`'s current `value` > 0 | Real gap (§5): only 1 common real day exists between most instruments and `NIFTY50` today, so `persistence` will almost always read 0 until `NIFTY50`'s own price history and/or the stock-level gap fills in over time - disclosed, not hidden by a fake bonus | `OUTPERFORMING_NIFTY_20D` |
+| `STOCK_OUTPERFORMING_NIFTY` | `INSTRUMENT_RELATIVE_STRENGTH_VS_NIFTY`'s current `value` > 0 | Stage 1's own `persistence_days`, uncapped | `OUTPERFORMING_NIFTY_20D` |
 | `STOCK_OUTPERFORMING_SECTOR` | `INSTRUMENT_RELATIVE_STRENGTH_VS_SECTOR`'s current `value` > 0 | **Blocked** - zero real rows exist until `reference.sector_benchmarks` has real mappings | `OUTPERFORMING_SECTOR_20D` |
-| `NEW_LEADERSHIP_EMERGENCE` | `STOCK_OUTPERFORMING_SECTOR` was false as of the prior evidence row and true this row (a fresh crossing, not a standing condition) | Not persistence-gated - transition-detection, same shape as `EARLY_PRICE_PARTICIPATION` | `SECTOR_LEADERSHIP_CROSSING` |
+| `NEW_LEADERSHIP_EMERGENCE` | `INSTRUMENT_RELATIVE_STRENGTH_VS_SECTOR`'s current `value > 0` AND its own `prior_value <= 0` (a real prior value must exist - a first-ever observation that happens to be positive is `STOCK_OUTPERFORMING_SECTOR`, not a crossing) | Always 0 - a crossing event, not sustained, same reasoning as `EARLY_PRICE_PARTICIPATION` | `SECTOR_LEADERSHIP_CROSSING` |
 
 **Priority within family**: `NEW_LEADERSHIP_EMERGENCE` > `STOCK_OUTPERFORMING_SECTOR` >
 `STOCK_OUTPERFORMING_NIFTY` > `SECTOR_STRENGTHENING` (a stock-specific read outranks the
 sector-wide read it's built from).
+
+**Simplification from the original draft**: `NEW_LEADERSHIP_EMERGENCE` does not need a
+self-referential Stage 2 state reader (unlike Market's `EARLY_PRICE_PARTICIPATION`, needed because
+`STEALTH_ACCUMULATION_CANDIDATE` is a 3-metric composite with no single evidence row that encodes
+it). `STOCK_OUTPERFORMING_SECTOR` is a direct single-metric pass-through, and Stage 1's own
+`SectorContextEngine` already puts the immediately-prior real evidence day's value on every row as
+`prior_value` - so the crossing is derivable from the single latest evidence row directly, with no
+same-day-retry footgun to guard against (there's nothing self-referential to reread).
+
+**Confidence**: `SECTOR_STRENGTHENING` uses a fixed base 90 (§15.5, deep real history). The other 3
+states use a **history-depth-tiered base** instead of a flat 60 (§15.5's original bucket) - a
+stock-vs-Nifty read backed by one real common day shouldn't carry the same confidence as one backed
+by twenty: `0 observations -> 40, 1-4 -> 50, 5-19 -> 60, 20+ -> 75`, where "observations" is the
+real total row count ever recorded for that (instrument, metric) pair
+(`SectorContextEvidenceReader.countObservations`), not Stage 1's consecutive-streak
+`persistence_days` (which is structurally always 0 for `NEW_LEADERSHIP_EMERGENCE`, a crossing
+event - using it as the depth signal would have pinned that state's confidence to the bottom tier
+forever, defeating the point of a depth-aware base for exactly the state it matters most for).
+
+**Data readiness**: `sector.inflection_states` carries two columns independent of `primary_state` -
+`evidence_coverage_pct` (0/33/67/100, how many of the 3 source metrics have any real evidence for
+this instrument) and `data_readiness` (`READY`/`PARTIAL_DATA`/`INSUFFICIENT_DATA`). Exists because
+`NO_CLEAR_SIGNAL` alone is ambiguous for this family specifically - it could mean all 3 metrics are
+real and calm, or it could mean `VS_SECTOR`/`VS_NIFTY` simply don't have real evidence yet for this
+instrument (true for the overwhelming majority of rows today, confirmed live: every one of 59 real
+rows on first run showed `evidence_coverage_pct=67`/`PARTIAL_DATA`, since `VS_SECTOR` is empty for
+every instrument system-wide). Always computed, even on a firing state - a real
+`SECTOR_STRENGTHENING` row still honestly reports `PARTIAL_DATA` today.
 
 ## 13. Risk / Contradiction (last, by design)
 
@@ -440,10 +478,12 @@ different visibilities:
 
 ### 15.2 Self-referential "read own prior state" pattern
 
-`EARLY_PRICE_PARTICIPATION` (§10) and `NEW_LEADERSHIP_EMERGENCE` (§12) both need "was the
-condition different as of the last time this ran" - architecturally new, since every engine built
-so far (Stage 1, and Ownership's existing Stage 2) derives "prior" from independent source data,
-never from its own last output.
+`EARLY_PRICE_PARTICIPATION` (§10) needs "was the condition different as of the last time this ran"
+- architecturally new, since every engine built so far (Stage 1, and Ownership's existing Stage 2)
+derives "prior" from independent source data, never from its own last output. This only applies
+when the transition condition is a *composite* with no single evidence row that encodes it -
+`STEALTH_ACCUMULATION_CANDIDATE` spans 3 metrics, so nothing in Stage 1's own evidence directly
+answers "was this composite true yesterday."
 
 **Resolution**: read-before-write, same request, against the same upsert-latest-per-day state
 table being written. The orchestrator fetches the existing row for (instrument) from its own
@@ -456,6 +496,14 @@ compare against the previous *row* in a series, not literally "yesterday"). Firs
 instrument: no existing row, the transition condition is vacuously false (can't detect a crossing
 without two points) - same honest "first observation" handling used everywhere else in Stage 1,
 not an error case needing special code.
+
+**`NEW_LEADERSHIP_EMERGENCE` (§12) turned out NOT to need this pattern**, discovered while building
+it: unlike `STEALTH_ACCUMULATION_CANDIDATE`, `STOCK_OUTPERFORMING_SECTOR` is a *single*-metric
+pass-through, and Stage 1's own `SectorContextEngine` already carries the immediately-prior real
+evidence day's value on every row as `prior_value`. So the crossing (`value > 0 AND
+prior_value <= 0`) is derivable directly from the one latest evidence row, no self-referential
+Stage 2 read needed at all. This pattern is reserved for genuinely composite transition states -
+check whether a single evidence row already carries what's needed before reaching for it.
 
 ### 15.3 Storage decision
 
@@ -494,7 +542,7 @@ while coding:
 |---|---|
 | 90 (deep real history) | All 5 Market states (§10); Ownership `PROMOTER_HOLDING_INCREASE`/`PROMOTER_DILUTION` (§9); `SECTOR_STRENGTHENING` (§12) |
 | 75 (real but thin, or real-but-not-yet-observed) | All Business/Earnings/Balance-Sheet states (§6-8, 4-transition ceiling); Ownership `FII_ACCUMULATION`/`DII_ACCUMULATION`/`INSTITUTIONAL_OWNERSHIP_EXPANSION`/`BULK_BUYING_WITH_OWNERSHIP_EXPANSION` (§9, XBRL-gated); all 3 Capital Allocation states including `MIXED_CAPITAL_ALLOCATION_ACTIVITY` (§11 - the data source isn't gapped, it's just empty right now, a different case from a real disclosed limitation; also the only family whose confidence formula never applies a thinness penalty, since a rolling-window count has no "first observation, null prior" case) |
-| 60 (real, disclosed data gap) | `STOCK_OUTPERFORMING_NIFTY`, `STOCK_OUTPERFORMING_SECTOR`, `NEW_LEADERSHIP_EMERGENCE` (§12) |
+| n/a - history-depth-tiered, not a fixed bucket | `STOCK_OUTPERFORMING_NIFTY`, `STOCK_OUTPERFORMING_SECTOR`, `NEW_LEADERSHIP_EMERGENCE` (§12) - **revised during Sector's implementation**: a flat 60 regardless of real depth was corrected to `0 obs -> 40, 1-4 -> 50, 5-19 -> 60, 20+ -> 75` (real total observation count for the driving metric, per §12), so confidence rises as AlphaGraph accumulates real history instead of needing a future code change. |
 | n/a - derived | Risk/Contradiction (§13): `base_confidence` = the **minimum** `base_confidence` across its contributing states, never its own fixed bucket - a contradiction is only as trustworthy as its weakest input. |
 
 ### 15.6 Scheduling order

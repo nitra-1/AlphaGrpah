@@ -29,6 +29,7 @@ import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
 import com.alphagraph.ownership.pattern.XbrlEnrichmentScheduler;
 import com.alphagraph.ownership.transformation.OwnershipTransformationScheduler;
+import com.alphagraph.sector.transformation.SectorInflectionScheduler;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -69,6 +70,7 @@ class JobRegistryTest {
     private final MarketInflectionScheduler marketInflectionScheduler = mock(MarketInflectionScheduler.class);
     private final FinancialInflectionScheduler financialInflectionScheduler = mock(FinancialInflectionScheduler.class);
     private final CapitalAllocationInflectionScheduler capitalAllocationInflectionScheduler = mock(CapitalAllocationInflectionScheduler.class);
+    private final SectorInflectionScheduler sectorInflectionScheduler = mock(SectorInflectionScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
         marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
@@ -79,10 +81,10 @@ class JobRegistryTest {
         decisionSnapshotScheduler, forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler,
         ownershipTransformationScheduler, marketAccumulationScheduler, financialTransformationScheduler,
         capitalAllocationScheduler, sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
-        capitalAllocationInflectionScheduler
+        capitalAllocationInflectionScheduler, sectorInflectionScheduler
     );
 
-    private static final List<String> ALL_33_JOB_NAMES = List.of(
+    private static final List<String> ALL_34_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
@@ -92,12 +94,12 @@ class JobRegistryTest {
         "financial-results-comparision-fetch", "capital-allocation-evidence", "sector-context-evidence",
         "market-accumulation-evidence-backfill", "financial-results-comparision-fetch-backfill",
         "ownership-transformation-backfill", "sector-context-evidence-backfill", "market-inflection",
-        "financial-inflection", "capital-allocation-inflection"
+        "financial-inflection", "capital-allocation-inflection", "sector-inflection"
     );
 
     @Test
-    void containsExactlyAllThirtyThreeRealJobNames() {
-        for (String jobName : ALL_33_JOB_NAMES) {
+    void containsExactlyAllThirtyFourRealJobNames() {
+        for (String jobName : ALL_34_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -117,7 +119,7 @@ class JobRegistryTest {
             forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler, ownershipTransformationScheduler,
             marketAccumulationScheduler, financialTransformationScheduler, capitalAllocationScheduler,
             sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
-            capitalAllocationInflectionScheduler
+            capitalAllocationInflectionScheduler, sectorInflectionScheduler
         );
     }
 
@@ -155,6 +157,7 @@ class JobRegistryTest {
         registry.trigger("market-inflection");
         registry.trigger("financial-inflection");
         registry.trigger("capital-allocation-inflection");
+        registry.trigger("sector-inflection");
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
@@ -188,5 +191,6 @@ class JobRegistryTest {
         verify(marketInflectionScheduler).runMarketInflection();
         verify(financialInflectionScheduler).runFinancialInflection();
         verify(capitalAllocationInflectionScheduler).runCapitalAllocationInflection();
+        verify(sectorInflectionScheduler).runSectorInflection();
     }
 }
