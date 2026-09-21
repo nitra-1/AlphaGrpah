@@ -837,6 +837,86 @@ bug). Re-triggered the same job a second time same-day: identical row count (59)
 full-table checksum (md5 over every `instrument_id`/`primary_state`/`as_of_date`/`change`) -
 idempotent.
 
+**Stage 2 Risk/Contradiction** (2026-09-21): item 6, the last of the 6 Stage 2 families. A
+meta-layer - source is 4 already-built families' own Stage 2 states (Financial, Ownership, Market,
+Capital Allocation), not raw Stage 1 evidence. New `risk.contradiction` package (a completely
+separate concept from `risk.engine`'s own pre-existing `risk_scores` aggregate-score table, never
+touched) hosts the writer; computation lives in new `intelligence.riskcontradiction`, per the
+already-planned exception (domain schemas are always written by a class that domain module owns,
+never directly from `intelligence`). States: `GROWTH_QUALITY_CONTRADICTION`,
+`OWNERSHIP_CONTRADICTION` (reused directly from Ownership), `PRICE_WITHOUT_DELIVERY_CONFIRMATION`,
+`CAPITAL_RAISE_WITH_WEAK_BUSINESS_INFLECTION`, `MULTI_DOMAIN_CONTRADICTION` when >= 2 co-fire, plus
+`NO_CLEAR_SIGNAL`.
+
+**Two design decisions carried through from planning, confirmed correct once built**: (1) every
+sub-condition is checked via a **reason code**, never another family's winning `primary_state` -
+verified against the real `OwnershipTransformationEngine` source that `OWNERSHIP_CONTRADICTION` is
+literally first in its own priority ladder (so a `primary_state` check and reason-code check are
+provably identical there today), but reason codes are used uniformly across all four source
+families anyway for consistency and defensiveness against a future reordering of a ladder this
+module doesn't own. (2) cross-domain reads use raw `JdbcTemplate` SQL inside
+`intelligence.riskcontradiction`, mirroring `MarketPriceReturnLookup`'s own precedent, rather than
+adding new public reader classes to 5 already-shipped modules - needed zero changes to any of them
+and no new Gradle dependency (`intelligence` already depended on `market`/`financial`/`ownership`/
+`risk`; raw SQL avoided adding one for `corporate`, the one family it hadn't depended on before).
+
+**Four real corrections caught during plan review, before any code was written**: (1) missing
+evidence must never satisfy a "does NOT have reason X" check - the original draft's negative
+sub-conditions read an absent family's reasons as an empty set, trivially "confirming" a negative
+for the wrong reason. Fixed with explicit `!= null` guards on every read a trigger needs before its
+negative check counts, plus new `evidence_coverage_pct`/`data_readiness` columns (same shape
+Sector's Stage 2 already has) for independent visibility. (2) Confidence must use each source row's
+own real, already-computed value, never a fixed 75/90 bucket - a stock-vs-Nifty read backed by one
+real day and one backed by twenty shouldn't count the same. Fixed: every raw-evidence read widened
+to carry its own real `confidence` column, every formula uses `min()` of actual values throughout.
+(3) Temporal alignment - same-domain triggers (`GROWTH_QUALITY_CONTRADICTION`,
+`PRICE_WITHOUT_DELIVERY_CONFIRMATION`) now require their two reads to share the exact same evidence
+date (mirroring `FinancialInflectionEngine`'s own already-proven `periodsAlign(...)` guard); the one
+genuinely cross-domain trigger (`CAPITAL_RAISE_WITH_WEAK_BUSINESS_INFLECTION`, Capital Allocation's
+daily cadence vs. Financial's quarterly) uses an anchor-date read instead (`findStateAsOf`,
+mirroring `risk.engine.RiskScoreReader.findAsOf`'s own existing precedent - Financial read as of the
+capital-raise date, never from after it) plus a 120-day staleness guard. (4) `PRICE_WITHOUT_DELIVERY_CONFIRMATION`
+now also requires `PRICE_RETURN_20D`'s raw `value > 0`, not just a large positive `change` - a
+rolling return improving from -15% to -12% is a genuine +3pp change but still net-negative, not
+"price strength without delivery."
+
+**One real bug caught by live verification, not by tests**: all four reason-code readers originally
+cast `rs.getObject("metric_value")` directly to `Double` - Postgres `numeric` columns come back as
+`BigDecimal` via `getObject`, so every real row with any reason code threw a
+`ClassCastException`, silently failing every one of 60 real instruments on first live trigger (unit
+tests never caught it since they construct `ReasonCode` directly, never round-tripping through a
+real JDBC `ResultSet`). Fixed with a new `ReasonCode.fromRow(...)` factory that reads
+`getBigDecimal(...)` and converts explicitly; confirmed live afterward with 60/60 instruments
+succeeding.
+
+15 new tests (`RiskContradictionEngineTest`: one case per trigger firing/not firing, the
+period-misalignment and staleness-boundary negative cases, both null-guard "missing evidence never
+confirms a negative" cases, `MULTI_DOMAIN_CONTRADICTION` at exactly 2 with real minimum confidence
+and unioned reasons, `NO_CLEAR_SIGNAL`'s averaged-confidence/max-date fallback, evidence
+coverage/readiness at full and partial). Full `./gradlew build` (ArchUnit included) green -
+`ModuleBoundaryArchTest` confirms no new domain-to-domain dependency was introduced.
+
+Live-verified against the real running app: 60/60 instruments succeeded - `NO_CLEAR_SIGNAL` 45,
+`GROWTH_QUALITY_CONTRADICTION` 11, `MULTI_DOMAIN_CONTRADICTION` 2, `OWNERSHIP_CONTRADICTION` 2.
+Hand-verified ADANIENT's and IRFC's real `OWNERSHIP_CONTRADICTION` rows: confidence (77.00 for both)
+matches Ownership's own stored value exactly, byte-for-byte, and every inherited reason code
+(`PROMOTER_DILUTION`, `FII_ACCUMULATION`/`DII_ACCUMULATION`, `OWNERSHIP_CONTRADICTION`) copied over
+verbatim. Hand-verified COALINDIA's real `MULTI_DOMAIN_CONTRADICTION` row correctly unions
+`OWNERSHIP_CONTRADICTION`'s own inherited reasons with `GROWTH_QUALITY_CONTRADICTION`'s own
+(`REVENUE_UP_MARGIN_DOWN`, -19.95pp) plus the `MULTIPLE_CONTRADICTIONS` marker - exactly per spec.
+`evidence_coverage_pct` never reached 100% on any real row (capped at 83%, since Capital
+Allocation's own source data is still real-but-empty, the same disclosed gap since Tier 4) - the
+honest outcome, not a bug. Re-triggered the same job a second time same-day: identical row count
+(60) and identical full-table checksum - idempotent.
+
+**Stage 2 is now complete across all 6 families** (Ownership, Market Accumulation, Business +
+Earnings + Balance-Sheet, Capital Allocation, Sector, Risk/Contradiction) - every family builds on
+real, live-verified data with the same disciplines throughout: `as_of_date` always derived from
+real evidence dates (never a blind `Clock`, since data cadence varies per family), confidence always
+traceable to real stored values, blocked states built and disclosed rather than silently omitted,
+and every plan corrected by the user at least once before implementation began. Next: Stage 3
+(sequence detection over this real Stage 2 history).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

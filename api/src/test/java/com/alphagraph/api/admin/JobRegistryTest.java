@@ -17,6 +17,7 @@ import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
 import com.alphagraph.intelligence.financial.FinancialResultsBridgeScheduler;
 import com.alphagraph.intelligence.institutional.InstitutionalAnalysisScheduler;
 import com.alphagraph.intelligence.risk.RiskAnalysisScheduler;
+import com.alphagraph.intelligence.riskcontradiction.RiskContradictionScheduler;
 import com.alphagraph.intelligence.sector.SectorAnalysisScheduler;
 import com.alphagraph.intelligence.sectorcontext.SectorContextScheduler;
 import com.alphagraph.intelligence.technical.TechnicalAnalysisScheduler;
@@ -71,6 +72,7 @@ class JobRegistryTest {
     private final FinancialInflectionScheduler financialInflectionScheduler = mock(FinancialInflectionScheduler.class);
     private final CapitalAllocationInflectionScheduler capitalAllocationInflectionScheduler = mock(CapitalAllocationInflectionScheduler.class);
     private final SectorInflectionScheduler sectorInflectionScheduler = mock(SectorInflectionScheduler.class);
+    private final RiskContradictionScheduler riskContradictionScheduler = mock(RiskContradictionScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
         marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
@@ -81,10 +83,10 @@ class JobRegistryTest {
         decisionSnapshotScheduler, forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler,
         ownershipTransformationScheduler, marketAccumulationScheduler, financialTransformationScheduler,
         capitalAllocationScheduler, sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
-        capitalAllocationInflectionScheduler, sectorInflectionScheduler
+        capitalAllocationInflectionScheduler, sectorInflectionScheduler, riskContradictionScheduler
     );
 
-    private static final List<String> ALL_34_JOB_NAMES = List.of(
+    private static final List<String> ALL_35_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
@@ -94,12 +96,12 @@ class JobRegistryTest {
         "financial-results-comparision-fetch", "capital-allocation-evidence", "sector-context-evidence",
         "market-accumulation-evidence-backfill", "financial-results-comparision-fetch-backfill",
         "ownership-transformation-backfill", "sector-context-evidence-backfill", "market-inflection",
-        "financial-inflection", "capital-allocation-inflection", "sector-inflection"
+        "financial-inflection", "capital-allocation-inflection", "sector-inflection", "risk-contradiction-inflection"
     );
 
     @Test
-    void containsExactlyAllThirtyFourRealJobNames() {
-        for (String jobName : ALL_34_JOB_NAMES) {
+    void containsExactlyAllThirtyFiveRealJobNames() {
+        for (String jobName : ALL_35_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -119,7 +121,7 @@ class JobRegistryTest {
             forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler, ownershipTransformationScheduler,
             marketAccumulationScheduler, financialTransformationScheduler, capitalAllocationScheduler,
             sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
-            capitalAllocationInflectionScheduler, sectorInflectionScheduler
+            capitalAllocationInflectionScheduler, sectorInflectionScheduler, riskContradictionScheduler
         );
     }
 
@@ -158,6 +160,7 @@ class JobRegistryTest {
         registry.trigger("financial-inflection");
         registry.trigger("capital-allocation-inflection");
         registry.trigger("sector-inflection");
+        registry.trigger("risk-contradiction-inflection");
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
@@ -192,5 +195,6 @@ class JobRegistryTest {
         verify(financialInflectionScheduler).runFinancialInflection();
         verify(capitalAllocationInflectionScheduler).runCapitalAllocationInflection();
         verify(sectorInflectionScheduler).runSectorInflection();
+        verify(riskContradictionScheduler).runRiskContradiction();
     }
 }

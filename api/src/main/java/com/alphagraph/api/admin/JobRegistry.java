@@ -17,6 +17,7 @@ import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
 import com.alphagraph.intelligence.financial.FinancialResultsBridgeScheduler;
 import com.alphagraph.intelligence.institutional.InstitutionalAnalysisScheduler;
 import com.alphagraph.intelligence.risk.RiskAnalysisScheduler;
+import com.alphagraph.intelligence.riskcontradiction.RiskContradictionScheduler;
 import com.alphagraph.intelligence.sector.SectorAnalysisScheduler;
 import com.alphagraph.intelligence.sectorcontext.SectorContextScheduler;
 import com.alphagraph.intelligence.technical.TechnicalAnalysisScheduler;
@@ -36,7 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 34 jobs - 30 standalone {@code @Scheduled} jobs plus 4 one-off
+ * Manual re-trigger dispatch for 35 jobs - 31 standalone {@code @Scheduled} jobs plus 4 one-off
  * historical backfills (market/financial/ownership/sector-context) that have no {@code @Scheduled}
  * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
@@ -85,7 +86,8 @@ class JobRegistry {
         MarketInflectionScheduler marketInflectionScheduler,
         FinancialInflectionScheduler financialInflectionScheduler,
         CapitalAllocationInflectionScheduler capitalAllocationInflectionScheduler,
-        SectorInflectionScheduler sectorInflectionScheduler
+        SectorInflectionScheduler sectorInflectionScheduler,
+        RiskContradictionScheduler riskContradictionScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -104,6 +106,7 @@ class JobRegistry {
         jobs.put("financial-inflection", financialInflectionScheduler::runFinancialInflection);
         jobs.put("capital-allocation-inflection", capitalAllocationInflectionScheduler::runCapitalAllocationInflection);
         jobs.put("sector-inflection", sectorInflectionScheduler::runSectorInflection);
+        jobs.put("risk-contradiction-inflection", riskContradictionScheduler::runRiskContradiction);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

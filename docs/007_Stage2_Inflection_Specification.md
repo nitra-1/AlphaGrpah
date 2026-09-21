@@ -410,21 +410,78 @@ every instrument system-wide). Always computed, even on a firing state - a real
 
 ## 13. Risk / Contradiction (last, by design)
 
+**Built (2026-09-21)** - the last of the 6 Stage 2 families. New `risk.contradiction` package
+(distinct from `risk.engine`'s own unrelated, pre-existing `risk_scores` aggregate-score concept)
+hosts the writer; computation lives in new `intelligence.riskcontradiction`, per §15.3's already-
+correct exception (a domain's own schema is always written by a class that domain module owns,
+never directly from `intelligence`).
+
 Source: **other Stage 2 states**, not Stage 1 evidence directly - this family is a meta-layer, per
 the user's own explicit ordering. Every trigger below assumes the referenced states from §6-12
 already exist and are queryable.
 
+**Sub-conditions are checked via reason codes, not another family's winning `primary_state`** - a
+higher-priority composite can win a family's own ladder while a referenced sub-condition (e.g.
+`REVENUE_GROWTH_IMPROVING`) is still genuinely true underneath it (Financial's own
+`STRUCTURAL_MARGIN_EXPANSION` ranks above `REVENUE_ACCELERATION`; Market's
+`STEALTH_ACCUMULATION_CANDIDATE`/etc. all structurally require `DELIVERY_EXPANSION`'s condition).
+Every family already records a reason code for a sub-condition regardless of which state wins its
+own ladder - checking `primary_state` instead would silently miss real, currently-true
+contradictions. Verified against the real `OwnershipTransformationEngine` source that
+`OWNERSHIP_CONTRADICTION` is first in its own priority ladder (so a `primary_state` check and a
+reason-code check are provably identical there today) - the reason-code check is still used
+uniformly across all four source families anyway, for consistency and defensiveness against a
+future reordering of a ladder this module doesn't own.
+
+**Missing evidence never satisfies a "does NOT have reason X" check** - every negative
+sub-condition requires the backing family's state row to be genuinely present first; an absent row
+is "can't tell," never "confirmed absent." `risk.contradiction_states` also carries
+`evidence_coverage_pct`/`data_readiness` (`READY`/`PARTIAL_DATA`/`INSUFFICIENT_DATA`, same shape
+Sector's Stage 2 already established) - independent visibility into how many of the (up to 6)
+cross-family reads actually found data, on every row including firing ones.
+
 | State | Trigger | Reason codes |
 |---|---|---|
-| `GROWTH_QUALITY_CONTRADICTION` | `REVENUE_ACCELERATION` (§6) fired AND `STRUCTURAL_MARGIN_EXPANSION` (§7) did *not* fire AND `OPERATING_MARGIN`'s own `change` is negative - revenue growing on shrinking margins, a real quality flag | `REVENUE_UP_MARGIN_DOWN` |
-| `OWNERSHIP_CONTRADICTION` | **Already exists** - reused directly from §9, not redefined | (inherited from Ownership's own reason codes) |
-| `PRICE_WITHOUT_DELIVERY_CONFIRMATION` | `PRICE_RETURN_20D`'s `change` is strongly positive (crosses the `STRONG` band, §3) but `DELIVERY_EXPANSION` (§10) did *not* fire in the same window - a price move institutions/genuine holders aren't backing with delivery | `PRICE_UP_DELIVERY_FLAT_OR_DOWN` |
-| `CAPITAL_RAISE_WITH_WEAK_BUSINESS_INFLECTION` | `EQUITY_RAISE_ACTIVITY` (§11) fired AND neither `REVENUE_ACCELERATION` (§6) nor `PAT_ACCELERATION` (§7) fired for the same instrument in the same window - raising capital without a real growth signal backing it | `EQUITY_RAISE_NO_GROWTH_SIGNAL` |
+| `GROWTH_QUALITY_CONTRADICTION` | Financial's latest state has reason `REVENUE_GROWTH_IMPROVING` AND does NOT have reason `MARGIN_EXPANDING_SUSTAINED` AND `OPERATING_MARGIN`'s own latest `change` is negative - all three reads must share the exact same reporting period (mirrors `FinancialInflectionEngine`'s own `periodsAlign(...)` guard) | `REVENUE_UP_MARGIN_DOWN` |
+| `OWNERSHIP_CONTRADICTION` | Ownership's latest state has reason `OWNERSHIP_CONTRADICTION` - reused directly from §9, not redefined | (Ownership's own reason codes, copied over verbatim) |
+| `PRICE_WITHOUT_DELIVERY_CONFIRMATION` | `PRICE_RETURN_20D`'s own latest `value > 0` AND `change >= 2.0` (genuine positive price strength, not merely a large positive change that could still leave the 20-day return negative overall - e.g. -15% -> -12% does NOT qualify) AND Market's latest state does NOT have reason `DELIVERY_RISING`, both reads from the same trade date | `PRICE_UP_DELIVERY_FLAT_OR_DOWN` |
+| `CAPITAL_RAISE_WITH_WEAK_BUSINESS_INFLECTION` | Capital Allocation's latest state has reason `EQUITY_RAISE_EVENT_COUNT_180D_NONZERO`; **anchor-date read** - Financial is then read *as of* that capital-raise date (never from after it, mirroring `risk.engine.RiskScoreReader.findAsOf`'s own precedent) and must be within 120 days of the anchor (hardcoded staleness guard - one real quarter plus a filing-lag buffer); fires when that as-of read has NEITHER `REVENUE_GROWTH_IMPROVING` NOR `PAT_GROWTH_IMPROVING` | `EQUITY_RAISE_NO_GROWTH_SIGNAL` |
 | `MULTI_DOMAIN_CONTRADICTION` | >= 2 of the above four contradiction states fired simultaneously for the same instrument | `MULTIPLE_CONTRADICTIONS` plus every contributing state's own reason codes |
 
 No priority ladder within this family needed at the interpretation layer - unlike the other
 families, multiple contradictions co-existing is itself the signal (`MULTI_DOMAIN_CONTRADICTION`),
-so all firing contradiction states should be recorded, not collapsed to one winner.
+so all firing contradiction states should be recorded, not collapsed to one winner. `primary_state`
+still needs exactly one slot for the standing "one row per instrument per family per day"
+convention (§15.7): `MULTI_DOMAIN_CONTRADICTION` when >= 2 fire, the single fired state when
+exactly 1 fires, `NO_CLEAR_SIGNAL` when 0 fire.
+
+**Confidence**: real stored source confidence throughout, never a fixed bucket -
+`GROWTH_QUALITY_CONTRADICTION` = `min(financialState.confidence, marginEvidence.confidence)`;
+`PRICE_WITHOUT_DELIVERY_CONFIRMATION` = `min(marketState.confidence, priceEvidence.confidence)`;
+`CAPITAL_RAISE_WITH_WEAK_BUSINESS_INFLECTION` = `min(capitalState.confidence,
+financialAsOfState.confidence)`; `OWNERSHIP_CONTRADICTION` = Ownership's own real stored confidence,
+direct passthrough; `MULTI_DOMAIN_CONTRADICTION` = minimum across every contributing fired state's
+own already-resolved confidence. No persistence bonus/thinness penalty - this family's own trigger
+table has no "Persistence rule" column, so confidence is just the resolved minimum.
+
+**`as_of_date`**: no `Clock` dependency. `GROWTH_QUALITY_CONTRADICTION`/
+`PRICE_WITHOUT_DELIVERY_CONFIRMATION` use their shared, now-verified-equal same-domain date.
+`CAPITAL_RAISE_WITH_WEAK_BUSINESS_INFLECTION` uses the capital-raise anchor date itself (the
+authoritative "when did this happen," not a blend with the contextual Financial read).
+`OWNERSHIP_CONTRADICTION` uses Ownership's own date. `NO_CLEAR_SIGNAL` uses `max()` across every
+read that returned data at all (informational only).
+
+**Instrument universe**: the full real tracked universe
+(`reference.instrument.InstrumentReader.listAll()`), not any single family's own
+`DISTINCT instrument_id` - this family reads across 4 different families, so no one of their
+universes is authoritative for a cross-domain meta-engine.
+
+**Cross-domain reads, resolved**: raw `JdbcTemplate` SQL inside `intelligence.riskcontradiction`,
+not new public reader classes added to the 5 other families (§15.1's original speculative text) -
+mirrors `intelligence.sectorcontext.MarketPriceReturnLookup`'s own precedent for exactly this
+scenario, needs zero changes to any already-shipped family, and needs no new Gradle dependency
+either (`intelligence` already depended on `market`/`financial`/`ownership`/`risk`; raw SQL avoided
+adding one for `corporate`, the one family it hadn't depended on before this build).
 
 ## 14. Recommended build order
 
@@ -471,10 +528,16 @@ different visibilities:
   `sector.transformation.SectorContextEvidenceReader` (new),
   `corporate.transformation.CapitalAllocationEvidenceReader` (new).
 - **Reading a family's Stage 2 *state* table** (needed only by Risk/Contradiction, cross-domain):
-  **public** reader per family, e.g. `market.inflection.MarketInflectionStateReader`,
-  mirroring `sector.engine.SectorScoreReader`'s existing public visibility for exactly this reason
-  (a different module needs to call it). Six of these; Risk/Contradiction's own
-  `intelligence.riskcontradiction.RiskContradictionOrchestrator` calls all six.
+  **revised during Risk/Contradiction's own implementation** - not a new public reader class added
+  to each of the 5 source families (this speculative text's original plan), but raw `JdbcTemplate`
+  SQL inside new package-private reader classes in `intelligence.riskcontradiction` itself,
+  mirroring `intelligence.sectorcontext.MarketPriceReturnLookup`'s own already-established
+  precedent for exactly this situation (a family's internal state table has no public reader yet,
+  and making one public for a single new cross-domain consumer is heavier than necessary). Needed
+  zero changes to any of the 5 already-shipped families, and needed no new Gradle dependency either
+  - `intelligence` already depended on `market`/`financial`/`ownership`/`risk` (confirmed via the
+  real `intelligence.risk.RiskAnalysisOrchestrator`'s own imports), and raw SQL avoided adding one
+  for `corporate`, the one family `intelligence` had never depended on before this build.
 
 ### 15.2 Self-referential "read own prior state" pattern
 
@@ -543,7 +606,7 @@ while coding:
 | 90 (deep real history) | All 5 Market states (§10); Ownership `PROMOTER_HOLDING_INCREASE`/`PROMOTER_DILUTION` (§9); `SECTOR_STRENGTHENING` (§12) |
 | 75 (real but thin, or real-but-not-yet-observed) | All Business/Earnings/Balance-Sheet states (§6-8, 4-transition ceiling); Ownership `FII_ACCUMULATION`/`DII_ACCUMULATION`/`INSTITUTIONAL_OWNERSHIP_EXPANSION`/`BULK_BUYING_WITH_OWNERSHIP_EXPANSION` (§9, XBRL-gated); all 3 Capital Allocation states including `MIXED_CAPITAL_ALLOCATION_ACTIVITY` (§11 - the data source isn't gapped, it's just empty right now, a different case from a real disclosed limitation; also the only family whose confidence formula never applies a thinness penalty, since a rolling-window count has no "first observation, null prior" case) |
 | n/a - history-depth-tiered, not a fixed bucket | `STOCK_OUTPERFORMING_NIFTY`, `STOCK_OUTPERFORMING_SECTOR`, `NEW_LEADERSHIP_EMERGENCE` (§12) - **revised during Sector's implementation**: a flat 60 regardless of real depth was corrected to `0 obs -> 40, 1-4 -> 50, 5-19 -> 60, 20+ -> 75` (real total observation count for the driving metric, per §12), so confidence rises as AlphaGraph accumulates real history instead of needing a future code change. |
-| n/a - derived | Risk/Contradiction (§13): `base_confidence` = the **minimum** `base_confidence` across its contributing states, never its own fixed bucket - a contradiction is only as trustworthy as its weakest input. |
+| n/a - derived | Risk/Contradiction (§13): confidence = the **minimum of the real, already-stored confidence values** of its contributing reads, never a fixed bucket at all (**revised during implementation** - the original draft assigned each contributing family a fixed bucket and took the minimum of those; real per-row confidence already reflects that specific instrument/metric's own persistence and history depth, which a family-wide bucket would have thrown away) - a contradiction is only as trustworthy as its weakest real input. |
 
 ### 15.6 Scheduling order
 
