@@ -47,6 +47,7 @@ public class CronMonitoringRepository {
         JOB_SCHEDULES.put("capital-allocation-inflection", "0 24 19 * * *");
         JOB_SCHEDULES.put("sector-inflection", "0 26 19 * * *");
         JOB_SCHEDULES.put("risk-contradiction-inflection", "0 29 19 * * *");
+        JOB_SCHEDULES.put("market-transformation-sequences", "0 27 19 * * *");
         JOB_SCHEDULES.put("market-accumulation-evidence", "0 32 18 * * *");
         JOB_SCHEDULES.put("document-processing", "0 15 18 * * *");
         JOB_SCHEDULES.put("knowledge-extraction", "0 30 18 * * *");

@@ -917,6 +917,85 @@ traceable to real stored values, blocked states built and disclosed rather than 
 and every plan corrected by the user at least once before implementation began. Next: Stage 3
 (sequence detection over this real Stage 2 history).
 
+**Stage 3 spec** (2026-09-19): `docs/008_Stage3_Sequence_Detection_Specification.md` - a full,
+user-authored specification (23 sections, verified against the real codebase before writing: all
+19 Stage 2 state names checked exact, next migration numbers per module confirmed, the
+`common.rule_definitions` mechanism's real shape confirmed compatible as a lighter-weight
+scalar-constant store). Locks a 15-sequence initial catalogue across Market/Ownership/Financial/
+Sector/Capital Allocation, the shared `FORMING`/`PROGRESSING`/`COMPLETE`/`BROKEN` phase taxonomy,
+and the non-negotiable point-in-time backfill rule. Surfaced a real, live interaction while
+verifying: Ownership's Stage 2 `as_of_date` is still `Clock`-based (`OwnershipTransformationEngine.java:198`,
+the same bug flagged and deferred during Financial's Stage 2 build, background task
+`task_b3c0547c`, still unfixed) - directly blocks Ownership Stage 3's historical semantics, so it's
+now a real prerequisite of that build (item 2 in the recommended order), not just a nice-to-have.
+
+**Stage 3 Market Sequence Detection** (2026-09-21): the reference implementation (docs/008 §14.3/
+§15, item 1 of the build order). Same package as Stage 1+2 (`market.transformation`), reusing the
+existing `ReasonCode` record as-is. Three sequences: `DELIVERY_LED_ACCUMULATION`
+(`DELIVERY_RISING` -> `DELIVERY_EXPANSION_SUSTAINED_5D`), `STEALTH_ACCUMULATION_SEQUENCE` (bounded
+pairing of `DELIVERY_RISING`+`RELATIVE_VOLUME_RISING` -> `VOLUME_DELIVERY_UP_PRICE_FLAT`), and
+`MARKET_RECOGNITION_SEQUENCE` (`DELIVERY_EXPANSION_SUSTAINED_5D` -> `VOLUME_DELIVERY_UP_PRICE_FLAT`
+-> `BREAKOUT_FROM_STEALTH_ACCUMULATION` - the reference sequence, adding a real temporal
+constraint Stage 2 itself doesn't enforce). Step detection reads **reason codes**, never
+`primary_state` (a higher-ranked Stage 2 composite can mask a true sub-condition underneath it,
+same lesson Risk/Contradiction's Stage 2 build already established), and trading-session gaps are
+counted by real row index, never calendar days.
+
+**Four real corrections caught during plan review, before any code was written**: (1) an explicit
+`Attempt` lifecycle (a private immutable record in `MarketTransformationSequenceEngine`) - a
+brand-new `Attempt`, never a mutated old one, starts every time a sequence's first step fires while
+no attempt is active or the prior one is `COMPLETE`/`BROKEN`, so old evidence can never leak into a
+later cycle. (2) `STEALTH_ACCUMULATION_SEQUENCE`'s two prerequisites must pair within
+`stage3-stealth-formation-max-window` sessions of each other, each anchored to its own *first*
+occurrence since the last reset (never refreshed by a later recurrence while still waiting) - the
+original "two independent seen flags" had no expiry and could wrongly pair unrelated evidence weeks
+apart. (3) Step confidence/persistence are sourced from the reason code's own real underlying Stage
+1 metric (added one new ascending-history method, `findHistory`, to the existing
+`MarketTransformationEvidenceReader`, reusing its own `MarketEvidenceObservation` record), never
+the day's winning `primary_state`'s driving-metric numbers. (4) A **separate**
+`market.transformation_sequence_readiness` table (one row per instrument per day, not per
+`sequence_type`), written independent of whether any sequence fired - keeps "no sequence row"
+honestly distinguishable between "genuinely nothing formed" (`READY`) and "not enough real history
+to tell" (`INSUFFICIENT_HISTORY`), the same lesson Sector's Stage 2 readiness already established.
+
+Rule thresholds (`stage3-delivery-led-accumulation-max-gap` 3, `stage3-stealth-formation-max-window`
+20, `stage3-market-recognition-max-gap` 10, `stage3-sequence-max-age` 40 sessions) live in
+`common.rule_definitions` (`common` `V16`) as single-`ALWAYS`-condition rules read as raw scalars -
+a disclosed, lighter-weight adaptation of the existing scoring-ladder mechanism, not a new one.
+Point-in-time backfill built in from the start, not bolted on: `MarketInflectionHistoryReader`/
+`MarketTransformationEvidenceReader.findHistory` both take an `upToInclusiveOrNull` bound
+(`ORDER BY ... DESC LIMIT ?` then reversed to ascending - the most recent valid prefix ending at the
+bound, never the oldest rows truncated), so `MarketTransformationSequenceOrchestrator.backfill()`
+replays every real historical `as_of_date` correctly by construction.
+
+**One real bug caught by live verification, not by any test**: `market.inflection_states.as_of_date`
+is `Clock`-based (Market Stage 2's own already-approved real design), so it doesn't always exactly
+equal an individual metric's own latest real `trade_date` - confirmed live that a metric's evidence
+can genuinely lag a day behind the state row it contributed to. The reader's original exact-date
+merge silently dropped real evidence whenever the dates didn't coincide, surfacing as every real
+sequence row showing `confidence = 0`. Fixed with an as-of merge (latest evidence with
+`tradeDate <= ` the state's date, a forward-pointer scan over two ascending lists) - the same
+as-of-not-exact-match principle `risk.engine.RiskScoreReader.findAsOf`/Risk-Contradiction's
+`findStateAsOf` already established, for a different reason. 15 new tests
+(`MarketTransformationSequenceEngineTest`) covering ordered progression, wrong-order non-completion,
+gap/age expiry, the fresh-attempt-after-completion reset, the bounded pairing window (both
+orderings, same-session, cross-window rejection), correctly-sourced confidence, and readiness
+independent of sequence activity. Full `./gradlew build` (ArchUnit included) green.
+
+Live-verified against the real running app: 60/60 instruments succeeded -
+`DELIVERY_LED_ACCUMULATION` 54 `FORMING`, `STEALTH_ACCUMULATION_SEQUENCE` 42 `FORMING`,
+`MARKET_RECOGNITION_SEQUENCE` 2 `FORMING`. Readiness `INSUFFICIENT_HISTORY` for all 60 - a real,
+honest finding: `market.inflection_states` (Stage 2's own state table) was never backfilled, only
+Stage 1's evidence was, so it genuinely has just 1 real distinct `as_of_date` system-wide today;
+Stage 3 correctly reports "not enough history to tell" even while individual sequences correctly
+detect `FORMING` from that one real day (the two mechanisms are deliberately independent, per
+correction 4). Hand-verified ACE's real `DELIVERY_LED_ACCUMULATION` row after the fix:
+`confidence = 90.00` traces exactly to `DELIVERY_PERCENTAGE_20D_AVG`'s own real evidence row, dated
+one day before the Clock-stamped state row - proof the as-of fix works against real data. The new
+`market-transformation-sequences-backfill` job runs correctly but can only replay that same single
+real day until Stage 2's own state table gets deeper history. Re-triggered same-day: identical row
+count (98) and full-table checksum - idempotent.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
