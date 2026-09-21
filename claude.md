@@ -996,6 +996,72 @@ one day before the Clock-stamped state row - proof the as-of fix works against r
 real day until Stage 2's own state table gets deeper history. Re-triggered same-day: identical row
 count (98) and full-table checksum - idempotent.
 
+**Ownership `as_of_date` fix, closing `task_b3c0547c`** (2026-09-21): the real blocker flagged while
+writing docs/008 - `OwnershipTransformationEngine.bandStates()` stamped `as_of_date` with
+`LocalDate.now()`, so every calendar day the job ran minted a new row for the same real quarterly
+transition. Live before the fix: `ownership.transformation_states` had 236 total rows but only 59
+real distinct `(instrument_id, latest_period_end)` combinations.
+
+First plan proposed swapping `LocalDate.now()` for `periodEnd()`, matching Financial's own pattern -
+**rejected**: `period_end` is which quarter the data is about, never when it became knowable; using
+it directly would trade a duplication bug for a real look-ahead-bias bug against Stage 3's
+point-in-time `evaluateAsOf(...)`. Redesigned around two already-existing, previously-unused
+information-availability timestamps: `ownership.shareholding_pattern.created_at` (stable across
+re-runs - `ShareholdingLoader`'s `ON CONFLICT ... DO UPDATE` never touches it) for
+`PROMOTER`/`PUBLIC`/`NO_CLEAR_SIGNAL`, and `xbrl_enriched_at` (set in the same `UPDATE` that fills
+the value, by `XbrlShareholdingWriter`) for the other 7 XBRL-gated metrics. `latest_period_end`
+stays untouched for quarter sequencing - this only changes what feeds `as_of_date`.
+`TransformationShareholdingPeriod.availableFrom(metric)` resolves the split;
+`OwnershipTransformationEngine` now calls `current.availableFrom(drivingMetric)` instead of
+`LocalDate.now()`. Disclosed, not solved: these are AlphaGraph's own collection/enrichment
+timestamps, not the real NSE filing date (not captured anywhere in this pipeline today) - always at
+least as conservative as reality, never optimistic.
+
+`V17` (ownership) deduped the 236 rows down to one survivor per `(instrument_id, latest_period_end)`
+(highest `computed_at`) and corrected its `as_of_date` via the same split. **First attempt failed
+live**: it corrected the survivor's date before deleting its own not-yet-gone duplicate siblings, so
+DRREDDY's corrected date (2026-09-16) collided with `ux_transformation_states_instrument_date`
+against its own sibling row still sitting at the old Clock-stamped `2026-09-16`. Flyway's
+transactional rollback left no trace (no failed-migration row, no repair needed) - fixed by
+reordering: delete duplicates first, then correct the survivor's date. Re-ran clean: 59/59.
+Hand-verified both branches against real data: DRREDDY (no driving metric) correctly used
+`created_at` (09-16) over the later `xbrl_enriched_at` (09-17); COALINDIA
+(`FII`-driven) and four other real instruments (IRFC, CIPLA, SUNPHARMA, MARUTI, ULTRACEMCO, all
+`DII`-driven) correctly used `xbrl_enriched_at` over the earlier `created_at`.
+
+**A second, real finding surfaced during the idempotency check, not anticipated by the plan**:
+re-triggering `ownership-transformation` grew the table from 59 to 61 rows. Root cause: a scheduled
+XBRL enrichment run legitimately advanced `xbrl_enriched_at` for ADANIPORTS and HDFCBANK mid-session,
+changing their driving metric and therefore their (correctly computed) `as_of_date` - but the
+writer's upsert key is `(instrument_id, as_of_date)`, not `(instrument_id, latest_period_end)`, so
+the old row wasn't replaced, a new one was added alongside it. The fix itself is correct (each row's
+date is real); the writer's key choice means this class of duplication can recur naturally as XBRL
+enrichment progresses, not just from the old `Clock.now()` bug. Raised to the user rather than
+silently redesigned (same category of decision as the `period_end` rejection above). **Decision**:
+clean up the two stray rows now via a small, generic follow-up migration; defer the deeper
+`(instrument_id, latest_period_end)`-keyed upsert redesign to a separate later task. `V18`
+(ownership) reapplied the same generic dedup (no date correction needed, both survivors' dates were
+already correct) - back to 59/59. Re-triggered `ownership-transformation` again: stayed 59/59
+(idempotent for the current data; the underlying key gap remains real but dormant until the next
+XBRL advance).
+
+Re-triggered `risk-contradiction-inflection` afterward: COALINDIA's `MULTI_DOMAIN_CONTRADICTION`
+result was byte-for-byte unchanged (confidence 79.00, same 5 reason codes) - the fix didn't disturb
+the actual signal. It did surface the same class of finding one layer up: Risk/Contradiction's own
+`as_of_date` is derived from the family signals it reads, so Ownership's date correction
+(09-19 Clock-stamped -> 09-16 real) produced a *second*, earlier-dated row for COALINDIA in
+`risk.contradiction_states` rather than replacing the existing one - same `(instrument_id,
+as_of_date)` upsert-key shape as Ownership's own gap. Checked whether this is live-dangerous today:
+no. `risk.contradiction_states` has no downstream reader yet (only `RiskContradictionWriter` writes
+to it; Risk's own Stage 3 doesn't exist yet per docs/008's build order), so nothing is currently
+picking "latest by `as_of_date`" and getting fooled by the stale-but-newer-dated row. Documented,
+not fixed, under the same deferred-decision umbrella as Ownership's own upsert key - a real
+consideration for whoever builds Risk Stage 3.
+
+Full `./gradlew build` (ArchUnit + all tests, including 3 new
+`OwnershipTransformationEngineTest` cases for the promoter/XBRL/fallback split) green before any
+migration ran.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

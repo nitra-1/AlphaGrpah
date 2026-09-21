@@ -42,6 +42,21 @@ import java.util.Optional;
  * {@code DealMaterialityEngine#materialityLevelFor}'s convention. Every state that actually fired is
  * recorded as a reason code regardless of which one wins the ladder, so a contradiction never hides
  * the accumulation that co-occurred with it.
+ *
+ * <p><b>{@code as_of_date} is a real information-availability date, never {@code Clock.now()} and
+ * never {@code periodEnd()} either</b> - fixes the real cadence bug flagged during Financial's
+ * Stage 2 build (`task_b3c0547c`, confirmed live to have produced 177 duplicate rows across 59
+ * instruments before this fix). `periodEnd()` says which quarter the data describes, never when
+ * AlphaGraph (or the market) actually learned it; a `Clock`-based date mints a new row every day
+ * the job runs for the same real quarter. Resolved via
+ * {@link TransformationShareholdingPeriod#availableFrom}: `PROMOTER`/`PUBLIC` (real from the live
+ * summary JSON) use `shareholding_pattern.created_at`; the other 7 metrics (real only once XBRL
+ * enrichment runs) use `shareholding_pattern.xbrl_enriched_at`. <b>Disclosed, not solved</b>: both
+ * are AlphaGraph's own collection/enrichment timestamps, not the real NSE filing/publication date
+ * (not captured anywhere in this pipeline today) - at least as conservative as reality (AlphaGraph
+ * could not have acted before it collected the data), never optimistic, but not literally "the date
+ * the market knew" - same disclosure-not-fabrication discipline as Financial's own already-documented
+ * `period_end != publication date` gap (docs/007_Stage2_Inflection_Specification.md).
  */
 @Component
 class OwnershipTransformationEngine {
@@ -195,7 +210,7 @@ class OwnershipTransformationEngine {
         int persistence = drivingObservation != null ? drivingObservation.persistenceQuarters() : 0;
 
         return new OwnershipTransformationResult(
-            current.instrumentId(), current.symbol(), LocalDate.now(), current.periodEnd(), priorPeriodEnd,
+            current.instrumentId(), current.symbol(), current.availableFrom(drivingMetric), current.periodEnd(), priorPeriodEnd,
             primaryState, confidence, rules.version(), Instant.now(), reasons,
             drivingMetric, level, change, velocityBand, persistence
         );

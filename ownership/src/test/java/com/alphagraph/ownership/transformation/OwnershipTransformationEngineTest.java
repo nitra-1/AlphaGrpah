@@ -177,13 +177,58 @@ class OwnershipTransformationEngineTest {
         assertThat(engine.calculate(List.of(), List.of(), ruleSet())).isEmpty();
     }
 
+    @Test
+    void asOfDateUsesDataAvailableFromWhenPromoterDrivesTheResult() {
+        // PROMOTER_DILUTION - a real information-availability date (the live summary JSON's own
+        // collection date), never CURRENT_PERIOD_END itself and never today's calendar date.
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "49.40", "16.00", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().drivingMetric()).isEqualTo(TransformationMetric.PROMOTER);
+        assertThat(calculation.result().asOfDate()).isEqualTo(CURRENT_PERIOD_END.plusDays(5));
+    }
+
+    @Test
+    void asOfDateUsesXbrlDataAvailableFromWhenAnXbrlGatedMetricDrivesTheResult() {
+        // FII is one of the 7 metrics only ever real once XBRL enrichment runs - its own
+        // availability date must be used, never the earlier promoter/public collection date.
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "18.50", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().drivingMetric()).isEqualTo(TransformationMetric.FII);
+        assertThat(calculation.result().asOfDate()).isEqualTo(CURRENT_PERIOD_END.plusDays(20));
+    }
+
+    @Test
+    void noClearSignalsAsOfDateFallsBackToDataAvailableFromNeverXbrl() {
+        var periods = List.of(
+            period(PRIOR_PERIOD_END, "50.00", "16.00", "18.00"),
+            period(CURRENT_PERIOD_END, "50.00", "16.00", "18.00")
+        );
+
+        var calculation = engine.calculate(periods, List.of(), ruleSet()).orElseThrow();
+
+        assertThat(calculation.result().primaryState()).isEqualTo(TransformationState.NO_CLEAR_SIGNAL);
+        assertThat(calculation.result().asOfDate()).isEqualTo(CURRENT_PERIOD_END.plusDays(5));
+    }
+
     private static List<String> reasonCodes(TransformationCalculation calculation) {
         return calculation.result().reasons().stream().map(ReasonCode::code).toList();
     }
 
     private static TransformationShareholdingPeriod period(LocalDate periodEnd, String promoter, String fii, String dii) {
+        // Real, distinct dates - initial collection (dataAvailableFrom) always precedes XBRL
+        // enrichment (xbrlDataAvailableFrom) by construction, same as the real pipeline.
         return new TransformationShareholdingPeriod(
-            INSTRUMENT_ID, SYMBOL, periodEnd,
+            INSTRUMENT_ID, SYMBOL, periodEnd, periodEnd.plusDays(5), periodEnd.plusDays(20),
             new BigDecimal(promoter), new BigDecimal(fii), new BigDecimal(dii),
             null, null, null, null, null, null
         );
