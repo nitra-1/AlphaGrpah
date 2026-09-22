@@ -1062,6 +1062,77 @@ Full `./gradlew build` (ArchUnit + all tests, including 3 new
 `OwnershipTransformationEngineTest` cases for the promoter/XBRL/fallback split) green before any
 migration ran.
 
+**Ownership Stage 3 Sequence Detection** (2026-09-22): build order item 2, mirroring Market's
+reference architecture (`docs/008` §14.3) wherever Ownership's real semantics allow. Three
+sequences (`docs/008` §14.2): `INSTITUTIONAL_OWNERSHIP_BUILDING` (`FII_ACCUMULATION` or
+`DII_ACCUMULATION` -> `INSTITUTIONAL_OWNERSHIP_EXPANSION`, completing via either persistence or an
+accelerated `BULK_BUYING_WITH_OWNERSHIP_EXPANSION` path, with a *soft* contradiction-tolerance
+counter rather than a hard break), `BROAD_INSTITUTIONAL_PARTICIPATION` (FII+DII pairing, independent
+of promoter behavior), `PROMOTER_INSTITUTION_ALIGNMENT` (promoter increase paired with any of
+FII/DII/expansion). New `ownership.transformation_sequences`/`_reasons`/`_readiness` tables (V19),
+6 new rule thresholds in `common.rule_definitions` (V17), scheduled at 19:18 IST (8 min after
+Ownership's own Stage 2, verified clear of `market-inflection`'s 19:20 slot).
+
+**Four real corrections applied before any code was written**, all from the user's own review of
+the plan: (1) the history reader canonicalizes by distinct `latest_period_end`, never raw state
+rows - the already-disclosed residual gap in the `as_of_date` fix (writer keyed on
+`(instrument_id, as_of_date)`, not the quarter) means more than one real row can still exist per
+quarter, and walking raw rows would inflate every gap/persistence/contradiction/age counter. (2)
+Contradiction and progression are fully orthogonal - verified against
+`OwnershipTransformationEngine.bandStates()` that `OWNERSHIP_CONTRADICTION` and
+`INSTITUTIONAL_OWNERSHIP_EXPANSION` can both fire in the same real quarter (FII/DII rising while
+promoter falls), so a period can simultaneously advance the sequence *and* accrue contradiction
+pressure - the original design wrongly had step progression reset the contradiction streak. (3)
+Composite-state evidence (`INSTITUTIONAL_OWNERSHIP_EXPANSION`/`BULK_BUYING_WITH_OWNERSHIP_EXPANSION`)
+resolves from Stage 2's own stored `driving_metric` column, not an unconditional `min(FII, DII)` -
+traced `drivingMetricFor()` line by line and confirmed it's always deterministically FII or DII
+whenever `EXPANSION` fires, regardless of which state won that row's priority ladder. Evidence
+joins prefer an exact `period_end` match over any older fallback, since a fired reason is always
+guaranteed real same-quarter evidence by Stage 2's own write path. (4) The two pairing sequences
+now persist `FORMING` the moment one side is pending, not just once both complete - Stage 3's
+purpose is exposing transformations while developing.
+
+**Two more real bugs caught before any test ran, both self-caught while writing the tests**: first,
+`Attempt.advance()` (borrowed directly from Market's own convention, where reaching the last step
+*is* completion) auto-completed the building sequence the instant step 2 was reached, short-circuiting
+the intended persistence/bulk-buying completion criteria entirely - fixed by making `advance()`
+always land on `PROGRESSING`, with the pairing sequences explicitly calling `completeVia(...)`
+right after (their own completion criterion really is "both sides paired", so that's correct for
+them). Second, the gap-based expiry check was still counting contradicted quarters as silence, so a
+run of `OWNERSHIP_CONTRADICTION` periods tripped `SEQUENCE_EXPIRED` before the contradiction-tolerance
+counter ever got the chance to fire `CONTRADICTORY_EVIDENCE` - fixed by exempting contradicted
+periods from the ordinary silence-based gap/age/persistence-reset bookkeeping entirely, consistent
+with the corrected-design principle that contradiction is governed only by its own tolerance
+mechanism. 26 new tests (`OwnershipTransformationSequenceEngineTest`), covering `docs/008` §21's
+named cases plus explicit tests for all 4 corrections. Full `./gradlew build` (ArchUnit included)
+green.
+
+**A separate, real Stage 2 bug surfaced while verifying Correction 3 against source, not part of
+this work** - `drivingMetricFor` reuses the "both FII and DII guaranteed positive" helper for
+`BULK_BUYING_WITH_OWNERSHIP_EXPANSION`, whose trigger only requires one of them; a fii-only or
+dii-only bulk-buying quarter can NPE. Flagged as a separate background task (`task_4e663fc4`), not
+folded into this change.
+
+Live-verified against the real running app: readiness `INSUFFICIENT_HISTORY` for all 59
+instruments - an honest, expected finding (same pattern Market's own Stage 3 first run showed):
+`ownership.transformation_states` still has only ~1 real quarter per instrument today, pre-dating a
+Stage 2 backfill that would deepen it. Individual sequences still correctly detected real patterns
+from that one real quarter regardless (the two mechanisms are deliberately independent, per
+Correction 4's Market precedent): `BROAD_INSTITUTIONAL_PARTICIPATION` 1 `COMPLETE` + 18 `FORMING`,
+`INSTITUTIONAL_OWNERSHIP_BUILDING` 1 `PROGRESSING` + 18 `FORMING`, `PROMOTER_INSTITUTION_ALIGNMENT`
+19 `FORMING`. Hand-verified ADANIENT's real `BROAD_INSTITUTIONAL_PARTICIPATION` `COMPLETE` row:
+Stage 2's own `primary_state` for that row is `OWNERSHIP_CONTRADICTION` (promoter diluted -2.87pp
+while both FII/DII accumulated) - proof Stage 3 correctly read the underlying `FII_ACCUMULATION`/
+`DII_ACCUMULATION` reason codes rather than being fooled by a different state winning the ladder.
+`confidence = 90.00` traces exactly to `90×0.4 + 90×0.6` (FII and DII's real evidence both happened
+to carry confidence 90 that quarter); `sequence_strength = 95.00` traces exactly to
+`0.8×100 + 0.2×75` (100% step completion, DII's real `persistence_quarters=3` against a cap of 4 -
+75%) - both by-hand, both exact. Canonicalization verified live: queried every instrument's real
+distinct sequence periods against its real distinct Stage 2 quarters - zero instruments where the
+former exceeds the latter. Re-triggered same-day: identical row counts, reasons replaced not
+accumulated - idempotent. Triggered the backfill job: row counts unchanged (expected, since every
+instrument has only one real quarter to replay today).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

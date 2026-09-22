@@ -31,6 +31,7 @@ import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
 import com.alphagraph.ownership.pattern.XbrlEnrichmentScheduler;
 import com.alphagraph.ownership.transformation.OwnershipTransformationScheduler;
+import com.alphagraph.ownership.transformation.OwnershipTransformationSequenceScheduler;
 import com.alphagraph.sector.transformation.SectorInflectionScheduler;
 import org.junit.jupiter.api.Test;
 
@@ -75,6 +76,7 @@ class JobRegistryTest {
     private final SectorInflectionScheduler sectorInflectionScheduler = mock(SectorInflectionScheduler.class);
     private final RiskContradictionScheduler riskContradictionScheduler = mock(RiskContradictionScheduler.class);
     private final MarketTransformationSequenceScheduler marketTransformationSequenceScheduler = mock(MarketTransformationSequenceScheduler.class);
+    private final OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler = mock(OwnershipTransformationSequenceScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
         marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
@@ -86,10 +88,10 @@ class JobRegistryTest {
         ownershipTransformationScheduler, marketAccumulationScheduler, financialTransformationScheduler,
         capitalAllocationScheduler, sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
         capitalAllocationInflectionScheduler, sectorInflectionScheduler, riskContradictionScheduler,
-        marketTransformationSequenceScheduler
+        marketTransformationSequenceScheduler, ownershipTransformationSequenceScheduler
     );
 
-    private static final List<String> ALL_37_JOB_NAMES = List.of(
+    private static final List<String> ALL_39_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
@@ -100,12 +102,13 @@ class JobRegistryTest {
         "market-accumulation-evidence-backfill", "financial-results-comparision-fetch-backfill",
         "ownership-transformation-backfill", "sector-context-evidence-backfill", "market-inflection",
         "financial-inflection", "capital-allocation-inflection", "sector-inflection", "risk-contradiction-inflection",
-        "market-transformation-sequences", "market-transformation-sequences-backfill"
+        "market-transformation-sequences", "market-transformation-sequences-backfill",
+        "ownership-transformation-sequences", "ownership-transformation-sequences-backfill"
     );
 
     @Test
-    void containsExactlyAllThirtySevenRealJobNames() {
-        for (String jobName : ALL_37_JOB_NAMES) {
+    void containsExactlyAllThirtyNineRealJobNames() {
+        for (String jobName : ALL_39_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -126,7 +129,7 @@ class JobRegistryTest {
             marketAccumulationScheduler, financialTransformationScheduler, capitalAllocationScheduler,
             sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
             capitalAllocationInflectionScheduler, sectorInflectionScheduler, riskContradictionScheduler,
-            marketTransformationSequenceScheduler
+            marketTransformationSequenceScheduler, ownershipTransformationSequenceScheduler
         );
     }
 
@@ -168,6 +171,8 @@ class JobRegistryTest {
         registry.trigger("risk-contradiction-inflection");
         registry.trigger("market-transformation-sequences");
         registry.trigger("market-transformation-sequences-backfill");
+        registry.trigger("ownership-transformation-sequences");
+        registry.trigger("ownership-transformation-sequences-backfill");
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
@@ -205,5 +210,7 @@ class JobRegistryTest {
         verify(riskContradictionScheduler).runRiskContradiction();
         verify(marketTransformationSequenceScheduler).runMarketTransformationSequences();
         verify(marketTransformationSequenceScheduler).runMarketTransformationSequencesBackfill();
+        verify(ownershipTransformationSequenceScheduler).runOwnershipTransformationSequences();
+        verify(ownershipTransformationSequenceScheduler).runOwnershipTransformationSequencesBackfill();
     }
 }

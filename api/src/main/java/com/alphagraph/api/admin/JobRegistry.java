@@ -31,6 +31,7 @@ import com.alphagraph.ownership.deals.DealMaterialityScoringScheduler;
 import com.alphagraph.ownership.interpretation.InstitutionalInterpretationScheduler;
 import com.alphagraph.ownership.pattern.XbrlEnrichmentScheduler;
 import com.alphagraph.ownership.transformation.OwnershipTransformationScheduler;
+import com.alphagraph.ownership.transformation.OwnershipTransformationSequenceScheduler;
 import com.alphagraph.sector.transformation.SectorInflectionScheduler;
 import org.springframework.stereotype.Component;
 
@@ -38,18 +39,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 37 jobs - 32 standalone {@code @Scheduled} jobs plus 5 one-off
+ * Manual re-trigger dispatch for 39 jobs - 33 standalone {@code @Scheduled} jobs plus 6 one-off
  * historical backfills (market/financial/ownership/sector-context Stage 1 evidence, plus Market's
- * own Stage 3 sequence backfill) that have no {@code @Scheduled} annotation at all and only ever
- * run via this registry's {@link #trigger} - the {@code
+ * and Ownership's own Stage 3 sequence backfills) that have no {@code @Scheduled} annotation at all
+ * and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
- * Scheduler bean method Spring's own cron trigger would call (or, for the 4 backfills, the only
+ * Scheduler bean method Spring's own cron trigger would call (or, for the backfills, the only
  * way that method is ever called), so a manual retry gets identical {@code JobRunTracker}
  * bookkeeping (a real RUNNING -> SUCCESS/FAILED row in {@code scheduler.job_runs}) as a real cron
  * firing - no separate retry-tracking mechanism invented, and this can never drift from what each
  * scheduler actually does since it calls the scheduler directly rather than reimplementing its
- * body. The 4 backfills are deliberately absent from {@code CronMonitoringRepository.JOB_SCHEDULES} -
+ * body. The backfills are deliberately absent from {@code CronMonitoringRepository.JOB_SCHEDULES} -
  * they're one-off catch-up operations, not recurring crons, and showing a fake "next scheduled
  * run" time for one on the admin dashboard would be misleading.
  */
@@ -90,7 +91,8 @@ class JobRegistry {
         CapitalAllocationInflectionScheduler capitalAllocationInflectionScheduler,
         SectorInflectionScheduler sectorInflectionScheduler,
         RiskContradictionScheduler riskContradictionScheduler,
-        MarketTransformationSequenceScheduler marketTransformationSequenceScheduler
+        MarketTransformationSequenceScheduler marketTransformationSequenceScheduler,
+        OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -112,6 +114,8 @@ class JobRegistry {
         jobs.put("risk-contradiction-inflection", riskContradictionScheduler::runRiskContradiction);
         jobs.put("market-transformation-sequences", marketTransformationSequenceScheduler::runMarketTransformationSequences);
         jobs.put("market-transformation-sequences-backfill", marketTransformationSequenceScheduler::runMarketTransformationSequencesBackfill);
+        jobs.put("ownership-transformation-sequences", ownershipTransformationSequenceScheduler::runOwnershipTransformationSequences);
+        jobs.put("ownership-transformation-sequences-backfill", ownershipTransformationSequenceScheduler::runOwnershipTransformationSequencesBackfill);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);
