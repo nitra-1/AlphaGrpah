@@ -34,16 +34,17 @@ import com.alphagraph.ownership.pattern.XbrlEnrichmentScheduler;
 import com.alphagraph.ownership.transformation.OwnershipTransformationScheduler;
 import com.alphagraph.ownership.transformation.OwnershipTransformationSequenceScheduler;
 import com.alphagraph.sector.transformation.SectorInflectionScheduler;
+import com.alphagraph.sector.transformation.SectorTransformationSequenceScheduler;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 40 jobs - 34 standalone {@code @Scheduled} jobs plus 6 one-off
- * historical backfills (market/financial/ownership/sector-context Stage 1 evidence, plus Market's
- * and Ownership's own Stage 3 sequence backfills) that have no {@code @Scheduled} annotation at all
- * and only ever run via this registry's {@link #trigger} - the {@code
+ * Manual re-trigger dispatch for 42 jobs - 35 standalone {@code @Scheduled} jobs plus 7 one-off
+ * historical backfills (market/financial/ownership/sector-context Stage 1 evidence, plus Market's,
+ * Ownership's, and Sector's own Stage 3 sequence backfills) that have no {@code @Scheduled}
+ * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
  * Scheduler bean method Spring's own cron trigger would call (or, for the backfills, the only
@@ -99,7 +100,8 @@ class JobRegistry {
         RiskContradictionScheduler riskContradictionScheduler,
         MarketTransformationSequenceScheduler marketTransformationSequenceScheduler,
         OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler,
-        FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler
+        FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler,
+        SectorTransformationSequenceScheduler sectorTransformationSequenceScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -124,6 +126,8 @@ class JobRegistry {
         jobs.put("ownership-transformation-sequences", ownershipTransformationSequenceScheduler::runOwnershipTransformationSequences);
         jobs.put("ownership-transformation-sequences-backfill", ownershipTransformationSequenceScheduler::runOwnershipTransformationSequencesBackfill);
         jobs.put("financial-transformation-sequences", financialTransformationSequenceScheduler::runFinancialTransformationSequences);
+        jobs.put("sector-transformation-sequences", sectorTransformationSequenceScheduler::runSectorTransformationSequences);
+        jobs.put("sector-transformation-sequences-backfill", sectorTransformationSequenceScheduler::runSectorTransformationSequencesBackfill);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

@@ -1197,6 +1197,89 @@ identical row counts, reasons replaced not accumulated - idempotent. Confirmed t
 genuinely unregistered (a manual trigger attempt returns a real 404 "No cron with name", not just
 absent from a list) - the point-in-time-safety decision is real, not just documented.
 
+**Sector Stage 3 Sequence Detection** (2026-09-22): build order item 4. 3 sequences (`docs/008`
+§14.5): `SECTOR_TAILWIND_SEQUENCE` (`SECTOR_RS_RISING` → `OUTPERFORMING_NIFTY_20D`, a plain 2-step
+chain), `STOCK_LEADERSHIP_EMERGENCE` (`SECTOR_RS_RISING` → `OUTPERFORMING_SECTOR_20D` →
+`SECTOR_LEADERSHIP_CROSSING`, a 3-step chain), `IDIOSYNCRATIC_LEADERSHIP` (a present-tense contrast:
+`OUTPERFORMING_SECTOR_20D` firing while the sector itself is not rising - "relative strength is
+company-specific, not sector beta," not a multi-period chain). Sector is a daily-cadence family, same
+as Market.
+
+**Three real corrections from the user's plan review, all substantive**: (1) **reason-level evidence
+dates, not the Stage 2 row's own `as_of_date`.** Sector Stage 2 reads 3 independently-dated metrics
+per run and stamps `sector.inflection_states.as_of_date` from whichever metric drove that row's
+*winning* state - a row's *other* reason codes can be backed by evidence genuinely older than the
+row's own date. Treating the row date as when every reason occurred would let pre-existing,
+unrelated outperformance get falsely credited as a fresh, causally-ordered step the moment an
+unrelated later condition fires. Fixed by carrying each step's own real `evidenceDate` (via an
+as-of-merge, `MarketInflectionHistoryReader.asOfEachStateDate`'s technique - the correct precedent
+for Sector specifically, since its 3 metrics are genuinely independently dated, unlike Financial's
+single unified source row) on `StepEvidence`, and guarding every candidate step advance: reject as a
+non-match if `evidence.evidenceDate().isBefore(attempt.lastStepEvidenceDate())`. Persisted
+`firstStepDate`/`lastStepDate` come from the attempt's own tracked evidence dates, never the Stage 2
+row's date. (2) **same-session multi-step advance.** `SECTOR_LEADERSHIP_CROSSING` structurally
+co-occurs with `OUTPERFORMING_SECTOR_20D` on the same real observation (same `vsSector` row, since a
+crossing is defined as that row's value going positive) - a walker limited to one step per history
+row could never satisfy both, since a crossing is a one-time event that won't recur on a later row.
+Fixed by making `walkSimpleSequence` greedily advance through every consecutive step the *current*
+entry satisfies, via a `while` loop, each advance still passing through correction (1)'s evidence-date
+guard. (3) **`IDIOSYNCRATIC_LEADERSHIP` requires real, mutually-fresh evidence, never inferred from
+reason-code absence.** The original design checked `!hasReason(SECTOR_RS_RISING)` - but since
+Sector's metrics update independently, absence of the reason doesn't distinguish "sector genuinely
+not rising" from "no current sector information at all." Fixed to read `vsSector`/`sectorRs` raw
+observations directly, require both to exist, require `vsSector.value() > 0` and
+`sectorRs.change() == null || signum() <= 0`, and require their real evidence dates be within a new
+rule-driven `stage3-sector-contrast-max-evidence-lag` (default 5, calendar-day difference via
+`ChronoUnit.DAYS.between` - a disclosed imperfect v1 approximation of trading sessions) of each
+other.
+
+**A disclosed, currently-dormant Stage-2-level risk, out of scope for this change**: unlike
+`transformation_evidence` (append-only), `sector.inflection_states` is upserted, and `as_of_date` is
+per-driving-metric rather than Clock-based. Once `reference.sector_benchmarks` gets populated with
+real `VS_SECTOR`/`VS_NIFTY` data, a stale-but-still-qualifying value could someday win the priority
+ladder on a later run and silently overwrite an *older* `(instrument_id, as_of_date)` slot a
+genuinely earlier run had already written correctly. Cannot manifest today (the table is simply
+empty, not stale-with-old-dates) - documented explicitly in `SectorInflectionHistoryReader`'s and the
+orchestrator's javadoc as a real Stage-2-level follow-up.
+
+Unlike Financial, **backfill IS wired** (both `run` and `backfill` jobs registered) - Sector's
+`as_of_date` is a genuine evidence date throughout, not a period-end proxy, so a historical replay is
+point-in-time safe today; the dormant overwrite risk above is a distinct, future concern about
+upsert behavior once real data lands, not about backfill's own correctness now. 19 new tests
+(`SectorTransformationSequenceEngineTest`), covering `docs/008` §21's generic list plus explicit
+tests for all 3 corrections. 2 self-caught issues fixed before the suite ran clean (both before any
+user involvement): a duplicate test helper method with an identical signature, and a test asserting
+`confidence == -10.0` that forgot `buildResult`'s `clamp(confidence, 0.0, 100.0)` - real result is
+`0.0`. Full `./gradlew build` green.
+
+Live-verified against the real running app: 118 readiness rows, all `INSUFFICIENT_HISTORY`, zero
+`MISSING_PREREQUISITE_DATA`. `STOCK_LEADERSHIP_EMERGENCE` and `IDIOSYNCRATIC_LEADERSHIP` show zero
+`COMPLETE` activity system-wide - expected, both blocked on empty `reference.sector_benchmarks`
+(`IDIOSYNCRATIC_LEADERSHIP` needs `vsSector` directly: 0 rows total; `STOCK_LEADERSHIP_EMERGENCE`
+needs it for steps 2/3: reaches `FORMING` only, via step 1 alone). Hand-verified two real instruments'
+`SECTOR_TAILWIND_SEQUENCE` completions to confirm correction (1)'s evidence-date guard and correction
+(2)'s same-session advance both work against live data, not just synthetic tests: DRREDDY has real
+Stage 2 rows at 2026-09-18 and 2026-09-21, **both** already carrying `SECTOR_RS_RISING` and
+`OUTPERFORMING_NIFTY_20D` simultaneously (confirmed via `sector.transformation_evidence`:
+`SECTOR_RELATIVE_STRENGTH` change=+1.33 at 09-18 and +0.84 at 09-21; `VS_NIFTY` values 3.8731/5.1765
+at the same two dates) - the bounded-history-as-of-09-21 evaluation correctly completes at index 0
+(09-18) first, then correctly *restarts* a fresh cycle at index 1 (09-21) since that row's own
+`SECTOR_RS_RISING` is itself a fresh, independent occurrence, producing `first_step_date=last_step_date
+=2026-09-21`. BEML, evaluated the same way, shows the opposite and equally-correct behavior:
+its 09-21 row does *not* carry a fresh `SECTOR_RS_RISING`, so the terminal-restart guard's
+`if (!entry.hasReason(stepReasonCodes.get(0))) continue;` correctly leaves the already-`COMPLETE`
+09-18-anchored attempt untouched, producing `first_step_date=last_step_date=2026-09-18` even though
+the bounded history extends to 09-21. Both outcomes trace by hand to the same, single "a fresh step-1
+occurrence after a completion starts tracking a new cycle" rule - not two different behaviors, one
+rule applied to two different real underlying data shapes. `confidence=90.00`/`strength=84.00` on
+DRREDDY's 09-21 completion traces exactly: `0.8×100 + 0.2×(2/10×100) = 84.0`. Re-triggered same-day:
+132 reason rows before and after (not accumulated) - idempotent. Triggered backfill twice in a row:
+identical row counts both times (36 `COMPLETE` + 40 `FORMING` `SECTOR_TAILWIND_SEQUENCE`, 76 `FORMING`
+`STOCK_LEADERSHIP_EMERGENCE`) - idempotent; multiple `COMPLETE` rows per instrument confirmed to sit
+at genuinely distinct `as_of_date`s with correct, independently-traced evidence dates each, not
+spurious duplicates. Admin monitoring endpoint confirms the job at "19:33 IST daily", `lastStatus:
+SUCCESS`.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
