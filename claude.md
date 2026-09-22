@@ -1133,6 +1133,70 @@ former exceeds the latter. Re-triggered same-day: identical row counts, reasons 
 accumulated - idempotent. Triggered the backfill job: row counts unchanged (expected, since every
 instrument has only one real quarter to replay today).
 
+**Financial Stage 3 Sequence Detection** (2026-09-22): build order item 3. 4 sequences
+(`docs/008` §14.1): `BUSINESS_ACCELERATION_CYCLE` (`REVENUE_GROWTH_IMPROVING` persisting 3
+quarters, 3rd needing velocity MODERATE/STRONG), `OPERATING_LEVERAGE_CYCLE` (revenue-anchored,
+margin+PAT pairing within a window), `MULTI_QUARTER_EARNINGS_EXPANSION` (PAT/margin persistence),
+`INTEREST_COST_RELIEF_TREND` (`INTEREST_EXPENSE_FALLING` persisting 3 quarters). A 5th group
+(`DELEVERAGING_CYCLE`/`BALANCE_SHEET_REPAIR`/`CASH_FLOW_TURNAROUND`) stays reserved - no
+`DEBT_LEVEL`/`CASH_FLOW_FROM_OPERATIONS` evidence exists yet.
+
+**Key architectural finding**: Financial's "acceleration" is a Stage-2-derived concept
+(`FinancialInflectionEngine.computeAcceleration()`'s own private 2nd-derivative growth-rate
+calculation), not stored in Stage 1 evidence at all. Step confidence/persistence read each metric's
+real Stage 1 evidence directly (same discipline as Market/Ownership), **except**
+`BUSINESS_ACCELERATION_CYCLE`'s velocity gate, which has no Stage-1 equivalent and reads the
+already-persisted `financial.inflection_state_reasons.metric_value` directly - the one place this
+engine reads a Stage-2 number instead of Stage-1 evidence, documented prominently so it isn't
+"fixed" by analogy with the other three sequences.
+
+**Three real correctness fixes from the user's plan review, all substantive**: (1) the original
+design let `MULTI_QUARTER_EARNINGS_EXPANSION` treat PAT-one-quarter-then-margin-the-next as a
+2-period "streak" - neither metric actually persisted. Corrected to track PAT and margin as two
+fully independent single-metric persistence chains (reusing the same generic walker twice,
+unmodified), completing when *either* reaches the threshold, never combined via OR. (2)
+`INTEREST_COST_RELIEF_TREND` and `BUSINESS_ACCELERATION_CYCLE` originally allowed a 1-2 period gap
+between qualifying quarters - corrected to strictly consecutive (`maxGapPeriods=0`) for v1, since a
+"trend"/"persistent acceleration" means uninterrupted, not scattered occurrences; both stay real,
+versioned rules so this can be loosened later once real data justifies it. (3) **Point-in-time
+backfill is not safe for Financial** - `as_of_date` is the quarter-*end* date, not the date results
+were actually filed and known to the market (no `available_from`/`result_publication_date` field
+exists upstream), so a working backfill built on it would silently introduce real look-ahead bias.
+`run()` (forward-only) is unaffected; `FinancialTransformationSequenceOrchestrator.backfill()`
+exists (for tests and future activation) but is deliberately not wired to any runnable job -
+no scheduler trigger method, no `JobRegistry`/`CronMonitoringRepository` entry. Re-enabling it is a
+deliberate, visible follow-up once a real publication-date field exists, not a flag to flip.
+
+**Two more bugs self-caught while writing tests, before the suite went green**: `buildResult`'s
+reason-code disambiguation only checked `firstIndex`/`lastStepIndex` (sufficient for Ownership's
+2-step sequences) - for `OPERATING_LEVERAGE_CYCLE`'s 3-step chain, this silently missed the *middle*
+step's own reason code (margin, when it lands between revenue and PAT) entirely; fixed to scan every
+index across the attempt's own span. Separately, a test asserted the original "gate failure ≠ hard
+break, wait for a later qualifying occurrence" design - but with `maxGapPeriods=0` now the real
+default, *any* non-match (gate failure or plain silence) immediately breaks the attempt, since there
+is no gap tolerance left to "wait" in; the code path is still correct (and would matter if the rule
+were ever retuned above 0), but the test's premise was wrong for the actual shipped default - fixed
+the test, not the code. 27 new tests (`FinancialTransformationSequenceEngineTest`), covering `docs/008`
+§21's named cases plus explicit tests for all 3 corrections. Full `./gradlew build` green.
+
+Live-verified against the real running app: zero `MISSING_PREREQUISITE_DATA` readiness rows
+(structurally unreachable, confirmed) across 55 instruments, all `INSUFFICIENT_HISTORY` - an honest
+finding given real quarterly history is still shallow and the corrected strict defaults make
+completion genuinely harder to reach. No sequence has reached `COMPLETE` yet on real data (5
+FORMING/PROGRESSING combinations, e.g. `OPERATING_LEVERAGE_CYCLE` 13 `FORMING` + 9 `PROGRESSING`) -
+not a bug, an honest reflection of thin real history plus the newly-strict gap tolerance. Hand-verified
+ASIANPAINT's real `OPERATING_LEVERAGE_CYCLE` `PROGRESSING` row: Stage 2's own `primary_state` for
+that quarter is plain `PAT_ACCELERATION` (margin never expanded, so neither `OPERATING_LEVERAGE_INFLECTION`
+nor `EARNINGS_INFLECTION_CONVERGENCE` won the ladder) - proof Stage 3 correctly read both the
+`REVENUE_GROWTH_IMPROVING` and `PAT_GROWTH_IMPROVING` reason codes underneath, recognizing 2-of-3
+steps despite a different, narrower state winning Stage 2's own priority ladder. `confidence = 90.00`
+traces exactly to the average of Revenue's and PAT's real independent Stage 1 confidences (both 90);
+`sequence_strength = 58.33` traces exactly to `0.8×66.67 + 0.2×25` (2-of-3 steps complete, PAT's
+real `persistence_quarters=1` against a cap of 4) - both by hand, both exact. Re-triggered same-day:
+identical row counts, reasons replaced not accumulated - idempotent. Confirmed the backfill job is
+genuinely unregistered (a manual trigger attempt returns a real 404 "No cron with name", not just
+absent from a list) - the point-in-time-safety decision is real, not just documented.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

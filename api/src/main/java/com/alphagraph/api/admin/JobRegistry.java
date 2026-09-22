@@ -14,6 +14,7 @@ import com.alphagraph.decision.report.DailyReportScheduler;
 import com.alphagraph.financial.engine.FundamentalAnalysisScheduler;
 import com.alphagraph.financial.transformation.FinancialInflectionScheduler;
 import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
+import com.alphagraph.financial.transformation.FinancialTransformationSequenceScheduler;
 import com.alphagraph.intelligence.financial.FinancialResultsBridgeScheduler;
 import com.alphagraph.intelligence.institutional.InstitutionalAnalysisScheduler;
 import com.alphagraph.intelligence.risk.RiskAnalysisScheduler;
@@ -39,7 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 39 jobs - 33 standalone {@code @Scheduled} jobs plus 6 one-off
+ * Manual re-trigger dispatch for 40 jobs - 34 standalone {@code @Scheduled} jobs plus 6 one-off
  * historical backfills (market/financial/ownership/sector-context Stage 1 evidence, plus Market's
  * and Ownership's own Stage 3 sequence backfills) that have no {@code @Scheduled} annotation at all
  * and only ever run via this registry's {@link #trigger} - the {@code
@@ -52,7 +53,12 @@ import java.util.Map;
  * scheduler actually does since it calls the scheduler directly rather than reimplementing its
  * body. The backfills are deliberately absent from {@code CronMonitoringRepository.JOB_SCHEDULES} -
  * they're one-off catch-up operations, not recurring crons, and showing a fake "next scheduled
- * run" time for one on the admin dashboard would be misleading.
+ * run" time for one on the admin dashboard would be misleading. {@code financial-transformation-sequences}
+ * deliberately has no backfill entry at all (unlike Market's/Ownership's own Stage 3 sequence jobs) -
+ * Financial's {@code as_of_date} is the quarter-end date, not the date results were actually known,
+ * so a historical replay would introduce real look-ahead bias until a real publication-date field
+ * exists upstream (see {@code financial.transformation.FinancialTransformationSequenceOrchestrator}'s
+ * own javadoc).
  */
 @Component
 class JobRegistry {
@@ -92,7 +98,8 @@ class JobRegistry {
         SectorInflectionScheduler sectorInflectionScheduler,
         RiskContradictionScheduler riskContradictionScheduler,
         MarketTransformationSequenceScheduler marketTransformationSequenceScheduler,
-        OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler
+        OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler,
+        FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -116,6 +123,7 @@ class JobRegistry {
         jobs.put("market-transformation-sequences-backfill", marketTransformationSequenceScheduler::runMarketTransformationSequencesBackfill);
         jobs.put("ownership-transformation-sequences", ownershipTransformationSequenceScheduler::runOwnershipTransformationSequences);
         jobs.put("ownership-transformation-sequences-backfill", ownershipTransformationSequenceScheduler::runOwnershipTransformationSequencesBackfill);
+        jobs.put("financial-transformation-sequences", financialTransformationSequenceScheduler::runFinancialTransformationSequences);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

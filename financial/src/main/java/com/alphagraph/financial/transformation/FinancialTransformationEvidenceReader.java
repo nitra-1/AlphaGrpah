@@ -4,6 +4,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -44,6 +46,31 @@ class FinancialTransformationEvidenceReader {
             "WHERE instrument_id = ? AND metric_name = ? ORDER BY period_end DESC LIMIT ?",
             ROW_MAPPER, instrumentId, metric.name(), limit
         );
+        List<FinancialEvidenceObservation> ascending = new ArrayList<>(descending);
+        Collections.reverse(ascending);
+        return ascending;
+    }
+
+    /**
+     * Added for Stage 3 sequence detection (docs/008 §16's point-in-time rule): the most recent
+     * real prefix ending at {@code upToInclusiveOrNull}, ascending. Always
+     * {@code ORDER BY period_end DESC LIMIT ?} first, then reversed in Java - never fetch the
+     * oldest {@code limit} rows and truncate, which would silently drop the real end of the window
+     * for a deep-history instrument. {@code upToInclusiveOrNull == null} means "latest" (today's
+     * live run); a real historical date makes point-in-time backfill correct by construction, since
+     * the query itself can never see a row after the bound.
+     */
+    List<FinancialEvidenceObservation> findHistory(UUID instrumentId, FinancialMetric metric, LocalDate upToInclusiveOrNull, int limit) {
+        String sql = "SELECT " + SELECT_COLUMNS + " FROM financial.transformation_evidence WHERE instrument_id = ? AND metric_name = ?"
+            + (upToInclusiveOrNull == null ? "" : " AND period_end <= ?")
+            + " ORDER BY period_end DESC LIMIT ?";
+        List<Object> args = new ArrayList<>(List.of(instrumentId, metric.name()));
+        if (upToInclusiveOrNull != null) {
+            args.add(Date.valueOf(upToInclusiveOrNull));
+        }
+        args.add(limit);
+
+        List<FinancialEvidenceObservation> descending = jdbcTemplate.query(sql, ROW_MAPPER, args.toArray());
         List<FinancialEvidenceObservation> ascending = new ArrayList<>(descending);
         Collections.reverse(ascending);
         return ascending;
