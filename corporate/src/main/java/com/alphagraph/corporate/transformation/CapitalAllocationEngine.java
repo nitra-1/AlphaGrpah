@@ -47,16 +47,27 @@ class CapitalAllocationEngine {
         int currentValue = countInWindow(exDates, asOfDate);
         int priorValue = countInWindow(exDates, priorAsOfDate);
         int change = currentValue - priorValue;
+        // Gross counts, not inferred from change: entering = exDate == asOfDate exactly; exiting =
+        // exDate == asOfDate - WINDOW_DAYS exactly. change(d) = entered(d) - exited(d) algebraically
+        // (see CapitalAllocationTransformationSequenceEngine's javadoc for the full derivation) -
+        // these never cancel the way change can when an entry and an exit share a day.
+        int enteredEventCount = countOnDate(exDates, asOfDate);
+        int exitedEventCount = countOnDate(exDates, asOfDate.minusDays(WINDOW_DAYS));
         int persistence = persistenceDays(exDates, asOfDate);
 
         return new CapitalAllocationEvidenceObservation(
-            metric, instrumentId, symbol, asOfDate, priorAsOfDate, currentValue, priorValue, change, change, persistence, CONFIDENCE, WINDOW_DAYS
+            metric, instrumentId, symbol, asOfDate, priorAsOfDate, currentValue, priorValue, change,
+            enteredEventCount, exitedEventCount, change, persistence, CONFIDENCE, WINDOW_DAYS
         );
     }
 
     private static int countInWindow(List<LocalDate> exDatesAscending, LocalDate asOfDate) {
         LocalDate windowStartExclusive = asOfDate.minusDays(WINDOW_DAYS);
         return (int) exDatesAscending.stream().filter(d -> d.isAfter(windowStartExclusive) && !d.isAfter(asOfDate)).count();
+    }
+
+    private static int countOnDate(List<LocalDate> exDatesAscending, LocalDate date) {
+        return (int) exDatesAscending.stream().filter(d -> d.equals(date)).count();
     }
 
     /** Consecutive prior days (walking backward from the day before asOfDate) with a non-zero rolling count, bounded so a permanent streak can't loop forever. */

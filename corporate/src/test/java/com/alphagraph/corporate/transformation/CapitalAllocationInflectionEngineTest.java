@@ -90,9 +90,10 @@ class CapitalAllocationInflectionEngineTest {
     }
 
     private static CapitalAllocationEvidenceObservation obs(CapitalAllocationMetric metric, int value, int priorValue, int persistenceDays, double confidence) {
+        int change = value - priorValue;
         return new CapitalAllocationEvidenceObservation(
             metric, INSTRUMENT_ID, SYMBOL, AS_OF_DATE, AS_OF_DATE.minusDays(1),
-            value, priorValue, value - priorValue, value - priorValue, persistenceDays, confidence, 180
+            value, priorValue, change, Math.max(change, 0), Math.max(-change, 0), change, persistenceDays, confidence, 180
         );
     }
 }

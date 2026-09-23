@@ -18,30 +18,33 @@ import java.util.UUID;
  * repetition of the *same* signal across genuinely separate real-world corporate actions, not an
  * ordered chain of distinct reason codes like every other domain.
  *
- * <p><b>The core trap - {@code change}, never {@code value}, drives occurrence detection.</b>
- * {@code CapitalAllocationEngine.calculate} recomputes {@code value} fresh every day as a count of
- * an action type's {@code exDate}s inside a rolling 180-day window; {@code change = currentValue -
- * priorValue}. Working the two windows out algebraically: {@code change(d) = (# actions with
- * exDate == d) - (# actions with exDate == d-180)} - so {@code change > 0} fires only on the exact
- * day a qualifying action's {@code exDate} enters the window, never on any of the following up-to-
- * 179 days the same event's shadow keeps {@code value > 0} (and Stage 2's reason firing for all of
- * them). A walker keyed off {@code value > 0} or reason-code presence would misread one real
- * event's 180-day shadow as many repetitions. {@code change} can also be more than 1 on a single
- * row (multiple qualifying actions sharing one {@code exDate}) - {@link #walkRepeatedEvents}
- * registers {@code Math.max(change, 0)} occurrences per row, not one occurrence per {@code change >
- * 0} row.
+ * <p><b>{@code enteredEventCount}, never {@code change} or {@code value}, drives occurrence
+ * detection.</b> {@code CapitalAllocationEngine.calculate} recomputes {@code value} fresh every day
+ * as a count of an action type's {@code exDate}s inside a rolling 180-day window; {@code change =
+ * currentValue - priorValue} is that net figure's day-over-day delta. Working the two windows out
+ * algebraically: {@code change(d) = (# actions with exDate == d) - (# actions with exDate ==
+ * d-180)} - entries minus exits, on days where both happen. {@code enteredEventCount} is the first
+ * term alone (a true gross count of actions whose {@code exDate == d}, persisted directly by Stage
+ * 1), so unlike {@code change} it can never be masked by a same-day exit. A walker keyed off
+ * {@code value > 0} or reason-code presence would misread one real event's 180-day shadow as many
+ * repetitions - {@code value} stays positive for up to 179 days after a single entering event, not
+ * just on the day it entered. {@code enteredEventCount} can also be more than 1 on a single row
+ * (multiple qualifying actions sharing one {@code exDate}) - {@link #walkRepeatedEvents} registers
+ * one occurrence per unit of {@code enteredEventCount}, not one occurrence per row.
  *
- * <p><b>Disclosed limitation, not fixed here</b>: {@code change} is a net figure (entries minus
- * exits), not a true entering-event count. If a new qualifying action's {@code exDate} lands
- * exactly 180 days after an earlier one's, the entry (+1) and the exit (-1) cancel and
- * {@code change(d) = 0} - that day's real event becomes invisible to this walker. Broader than one
- * exact-offset coincidence: any same-day combination of entries and exits nets out. The
- * architecturally clean fix is for Stage 1 to eventually persist entering/exiting counts
- * separately, not for Stage 3 to read raw {@code corporate.corporate_actions} directly (which
- * would break the "Stage 3 only reads persisted Stage 1/2 evidence" boundary every domain
- * observes). The same gap means the persisted {@code observedOccurrences} is really "the minimum
- * number of entries inferable from positive net changes," not a guaranteed exact event count -
- * always a conservative undercount, never an overcount.
+ * <p><b>Formerly a disclosed limitation, now fixed</b>: earlier, this walker read
+ * {@code Math.max(change, 0)} instead of a persisted gross count. If a new qualifying action's
+ * {@code exDate} landed exactly 180 days after an earlier one's, the entry (+1) and the exit (-1)
+ * cancelled in {@code change(d) = 0}, hiding that day's real event from the walker. Fixed by having
+ * {@link CapitalAllocationEngine} persist {@code enteredEventCount}/{@code exitedEventCount} as
+ * separate gross columns on {@code corporate.transformation_evidence} instead of only the net
+ * {@code change} - Stage 3 reads the gross entering count directly rather than inferring it, still
+ * without reading raw {@code corporate.corporate_actions} (which would break the "Stage 3 only
+ * reads persisted Stage 1/2 evidence" boundary every domain observes). {@code observedOccurrences}
+ * is now an exact ledger count of real entering events, not a conservative undercount inferred from
+ * positive net changes. Evidence rows written before this fix were backfilled from their {@code
+ * change} column and so may still undercount a historical same-day cancellation - see
+ * {@code V18__add_capital_allocation_gross_event_counts.sql}.
  *
  * <p><b>Once {@code COMPLETE}, a cluster stays {@code COMPLETE} on further in-window occurrences -
  * it does not reset to {@code FORMING}.</b> A 3rd buyback must never make an already-established
@@ -126,7 +129,7 @@ class CapitalAllocationTransformationSequenceEngine {
     private Attempt walkRepeatedEvents(List<CapitalAllocationEvidenceObservation> historyAscending, int requiredRepeats, int maxGapDays, int maxAgeDays) {
         Attempt attempt = null;
         for (CapitalAllocationEvidenceObservation obs : historyAscending) {
-            int enteringEvents = Math.max(obs.change(), 0); // window sliding / an old event aging out (change <= 0) is never a new occurrence
+            int enteringEvents = obs.enteredEventCount(); // true gross count - never masked by a same-day exit the way change can be
             StepEvidence evidence = occurrenceEvidence(obs);
             for (int n = 0; n < enteringEvents; n++) {
                 attempt = registerOccurrence(attempt, obs.asOfDate(), requiredRepeats, maxGapDays, evidence);

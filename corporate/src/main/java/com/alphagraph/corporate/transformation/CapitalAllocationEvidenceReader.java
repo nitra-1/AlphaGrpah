@@ -22,7 +22,7 @@ class CapitalAllocationEvidenceReader {
 
     private static final String SELECT_COLUMNS = """
         instrument_id, symbol, metric_name, as_of_date, prior_as_of_date, value, prior_value,
-        change, velocity_per_day, persistence_days, confidence, window_days
+        change, entered_event_count, exited_event_count, velocity_per_day, persistence_days, confidence, window_days
         """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -38,7 +38,8 @@ class CapitalAllocationEvidenceReader {
             (rs, rowNum) -> new CapitalAllocationEvidenceObservation(
                 CapitalAllocationMetric.valueOf(rs.getString("metric_name")), (UUID) rs.getObject("instrument_id"), rs.getString("symbol"),
                 rs.getDate("as_of_date").toLocalDate(), rs.getDate("prior_as_of_date").toLocalDate(),
-                rs.getInt("value"), rs.getInt("prior_value"), rs.getInt("change"), rs.getInt("velocity_per_day"),
+                rs.getInt("value"), rs.getInt("prior_value"), rs.getInt("change"),
+                rs.getInt("entered_event_count"), rs.getInt("exited_event_count"), rs.getInt("velocity_per_day"),
                 rs.getInt("persistence_days"), rs.getDouble("confidence"), rs.getInt("window_days")
             ),
             instrumentId, metric.name()
@@ -67,7 +68,8 @@ class CapitalAllocationEvidenceReader {
             (rs, rowNum) -> new CapitalAllocationEvidenceObservation(
                 CapitalAllocationMetric.valueOf(rs.getString("metric_name")), (UUID) rs.getObject("instrument_id"), rs.getString("symbol"),
                 rs.getDate("as_of_date").toLocalDate(), rs.getDate("prior_as_of_date").toLocalDate(),
-                rs.getInt("value"), rs.getInt("prior_value"), rs.getInt("change"), rs.getInt("velocity_per_day"),
+                rs.getInt("value"), rs.getInt("prior_value"), rs.getInt("change"),
+                rs.getInt("entered_event_count"), rs.getInt("exited_event_count"), rs.getInt("velocity_per_day"),
                 rs.getInt("persistence_days"), rs.getDouble("confidence"), rs.getInt("window_days")
             ),
             args.toArray()

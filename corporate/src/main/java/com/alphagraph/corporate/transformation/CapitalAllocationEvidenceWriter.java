@@ -28,14 +28,14 @@ class CapitalAllocationEvidenceWriter {
             """
             INSERT INTO corporate.transformation_evidence (
                 id, instrument_id, symbol, metric_name, as_of_date, prior_as_of_date, value, prior_value,
-                change, velocity_per_day, persistence_days, confidence, window_days, source, rule_version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                change, entered_event_count, exited_event_count, velocity_per_day, persistence_days, confidence, window_days, source, rule_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (instrument_id, metric_name, as_of_date) DO NOTHING
             """,
             UUID.randomUUID(), observation.instrumentId(), observation.symbol(), observation.metric().name(),
             Date.valueOf(observation.asOfDate()), Date.valueOf(observation.priorAsOfDate()), observation.value(), observation.priorValue(),
-            observation.change(), observation.velocityPerDay(), observation.persistenceDays(), observation.confidence(),
-            observation.windowDays(), SOURCE, RULE_VERSION
+            observation.change(), observation.enteredEventCount(), observation.exitedEventCount(), observation.velocityPerDay(),
+            observation.persistenceDays(), observation.confidence(), observation.windowDays(), SOURCE, RULE_VERSION
         );
     }
 }

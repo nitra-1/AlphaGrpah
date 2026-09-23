@@ -57,7 +57,57 @@ class CapitalAllocationEngineTest {
         assertThat(buyback.value()).isEqualTo(1);
         assertThat(buyback.priorValue()).isEqualTo(0);
         assertThat(buyback.change()).isEqualTo(1);
+        assertThat(buyback.enteredEventCount()).isEqualTo(1);
+        assertThat(buyback.exitedEventCount()).isEqualTo(0);
         assertThat(buyback.persistenceDays()).isEqualTo(0);
+    }
+
+    // ---- gross entered/exited counts (the fix: change alone can hide a same-day cancellation) ----
+
+    @Test
+    void changeAlwaysEqualsEnteredMinusExitedAcrossAWindowOfDatesIncludingAnExit() {
+        var actions = List.of(action("BUYBACK", LocalDate.of(2025, 1, 1)));
+
+        for (int offset = -2; offset <= 182; offset++) {
+            LocalDate asOfDate = LocalDate.of(2025, 1, 1).plusDays(offset);
+            var evidence = engine.calculate(INSTRUMENT_ID, SYMBOL, actions, asOfDate);
+            var buyback = evidence.stream().filter(o -> o.metric() == CapitalAllocationMetric.BUYBACK_EVENT_COUNT_180D).findFirst().orElseThrow();
+            assertThat(buyback.change()).as("asOfDate=%s", asOfDate).isEqualTo(buyback.enteredEventCount() - buyback.exitedEventCount());
+        }
+    }
+
+    @Test
+    void exitingTheWindowExactlyOneEightyDaysAfterExDateShowsAGrossExit() {
+        var actions = List.of(action("BUYBACK", LocalDate.of(2025, 1, 1)));
+        LocalDate asOfDate = LocalDate.of(2025, 1, 1).plusDays(180); // window is [exDate, exDate+179] - the event exits exactly on day 180
+
+        var evidence = engine.calculate(INSTRUMENT_ID, SYMBOL, actions, asOfDate);
+
+        var buyback = evidence.stream().filter(o -> o.metric() == CapitalAllocationMetric.BUYBACK_EVENT_COUNT_180D).findFirst().orElseThrow();
+        assertThat(buyback.value()).isEqualTo(0);
+        assertThat(buyback.change()).isEqualTo(-1);
+        assertThat(buyback.enteredEventCount()).isEqualTo(0);
+        assertThat(buyback.exitedEventCount()).isEqualTo(1);
+    }
+
+    @Test
+    void enteringAndExitingOnTheSameDayCancelInNetChangeButNotInTheGrossCounts() {
+        // A second real buyback's exDate lands exactly 180 days after the first's - the first
+        // exits the window the same day the second enters, so change nets to 0 even though a real
+        // new event genuinely occurred that day. This is the exact case CapitalAllocationTransformationSequenceEngine
+        // used to miss when it read Math.max(change, 0) instead of the persisted gross count.
+        var actions = List.of(
+            action("BUYBACK", LocalDate.of(2025, 1, 1)),
+            action("BUYBACK", LocalDate.of(2025, 1, 1).plusDays(180))
+        );
+        LocalDate asOfDate = LocalDate.of(2025, 1, 1).plusDays(180);
+
+        var evidence = engine.calculate(INSTRUMENT_ID, SYMBOL, actions, asOfDate);
+
+        var buyback = evidence.stream().filter(o -> o.metric() == CapitalAllocationMetric.BUYBACK_EVENT_COUNT_180D).findFirst().orElseThrow();
+        assertThat(buyback.change()).isEqualTo(0); // net change hides the second event
+        assertThat(buyback.enteredEventCount()).isEqualTo(1); // gross count still sees it
+        assertThat(buyback.exitedEventCount()).isEqualTo(1);
     }
 
     @Test

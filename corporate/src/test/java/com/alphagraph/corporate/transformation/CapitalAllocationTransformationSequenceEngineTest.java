@@ -241,24 +241,26 @@ class CapitalAllocationTransformationSequenceEngineTest {
         assertThat(first).isEqualTo(second);
     }
 
-    // ---- disclosed limitation: change is a NET figure ----
+    // ---- formerly disclosed limitation, now fixed: change is a NET figure, enteredEventCount is not ----
 
     @Test
-    void exactOneEightyDayOffsetCancellationHidesTheSecondEvent() {
-        // Day 0: one real entering event, change=+1 (value 0 -> 1).
+    void enteringEventIsStillCountedWhenItsExDateExactlyCancelsAnExitInNetChange() {
+        // Day 0: one real entering event, change=+1 (value 0 -> 1), enteredEventCount=1.
         // Day 180: a second real entering event's exDate lands exactly 180 days later, exactly as
-        // day 0's own event exits the rolling window - entry (+1) and exit (-1) net to 0. This is
-        // the disclosed, accepted limitation (see the engine's own javadoc) - not solved here.
+        // day 0's own event exits the rolling window - entry (+1) and exit (-1) net to change=0,
+        // the exact case that used to hide the second event when the walker read
+        // Math.max(change, 0). enteredEventCount=1 that day regardless of the same-day exit, so the
+        // walker (which now reads enteredEventCount, not change) still counts it.
         List<CapitalAllocationEvidenceObservation> history = List.of(
             obs(0, 1, 1),
-            obs(180, 1, 0)
+            observation(CapitalAllocationMetric.BUYBACK_EVENT_COUNT_180D, 180, 1, 0, 1, 1)
         );
 
         var result = engine.evaluateRepeatedCapitalReturn(INSTRUMENT_ID, SYMBOL, history, DEFAULT_RULES);
 
         assertThat(result).isPresent();
-        assertThat(result.get().observedOccurrences()).isEqualTo(1); // the second real event is missed - documented, not a bug to fix here
-        assertThat(result.get().sequencePhase()).isEqualTo(CapitalAllocationSequencePhase.FORMING);
+        assertThat(result.get().observedOccurrences()).isEqualTo(2); // both real events counted - no longer hidden by the net-change cancellation
+        assertThat(result.get().sequencePhase()).isEqualTo(CapitalAllocationSequencePhase.COMPLETE);
     }
 
     // ---- buyback + equity raise are fully independent ----
@@ -378,18 +380,21 @@ class CapitalAllocationTransformationSequenceEngineTest {
     // ---- helpers ----
 
     private static CapitalAllocationEvidenceObservation obs(int dayOffset, int value, int change) {
-        return observation(CapitalAllocationMetric.BUYBACK_EVENT_COUNT_180D, dayOffset, value, change);
+        return observation(CapitalAllocationMetric.BUYBACK_EVENT_COUNT_180D, dayOffset, value, change, Math.max(change, 0), Math.max(-change, 0));
     }
 
     private static CapitalAllocationEvidenceObservation equityRaiseObs(int dayOffset, int value, int change) {
-        return observation(CapitalAllocationMetric.EQUITY_RAISE_EVENT_COUNT_180D, dayOffset, value, change);
+        return observation(CapitalAllocationMetric.EQUITY_RAISE_EVENT_COUNT_180D, dayOffset, value, change, Math.max(change, 0), Math.max(-change, 0));
     }
 
-    private static CapitalAllocationEvidenceObservation observation(CapitalAllocationMetric metric, int dayOffset, int value, int change) {
+    /** Full control over the gross entered/exited counts, independent of their net {@code change} - needed to build a same-day entry/exit cancellation. */
+    private static CapitalAllocationEvidenceObservation observation(
+        CapitalAllocationMetric metric, int dayOffset, int value, int change, int enteredEventCount, int exitedEventCount
+    ) {
         LocalDate asOfDate = D0.plusDays(dayOffset);
         return new CapitalAllocationEvidenceObservation(
             metric, INSTRUMENT_ID, SYMBOL, asOfDate, asOfDate.minusDays(1),
-            value, value - change, change, change, 1, 90.0, 180
+            value, value - change, change, enteredEventCount, exitedEventCount, change, 1, 90.0, 180
         );
     }
 
