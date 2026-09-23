@@ -1299,8 +1299,8 @@ action's `exDate` enters the window, never on any of the following up-to-179 day
 event's shadow keeps `value > 0` (and Stage 2's reason firing for all of them). A walker keyed off
 `value > 0` or reason-code presence would misread one real event's 180-day shadow as many
 repetitions. `change` can also exceed 1 on a single row (multiple qualifying actions sharing one
-`exDate`) - the walker registers `Math.max(change, 0)` occurrences per row, not one per
-`change > 0` row.
+`exDate`) - the walker registers one occurrence per unit of `enteredEventCount` (see the
+same-day-follow-up fix below), not one per `change > 0` row.
 
 **Three real corrections from two rounds of plan review**: (1) **once `COMPLETE`, a cluster stays
 `COMPLETE` on further in-window occurrences rather than resetting to `FORMING`** - a 3rd buyback
@@ -1330,24 +1330,36 @@ equity-raise's own `change` for that day is nowhere recorded in `corporate.infle
 This engine reads `CapitalAllocationEvidenceReader.findHistory` directly, once per metric,
 independently - zero runtime dependency on Stage 2.
 
-**Disclosed technical debt, not fixed here**: `change` is a *net* figure (entries minus exits),
-not a true entering-event count - if a new qualifying action's `exDate` lands exactly 180 days
-after an earlier one's, the entry (+1) and the exit (-1) cancel and `change(d) = 0`, so that day's
-real event becomes invisible to this walker (covered by a named test asserting the current, missed
-behavior). The same gap means the persisted `observedOccurrences` is really "the minimum number of
-entries inferable from positive net changes," a conservative undercount, never an exact ledger.
-The clean fix is for Stage 1 to eventually persist entering/exiting counts separately, not for
-Stage 3 to read raw `corporate.corporate_actions` directly (would break the "Stage 3 only reads
-persisted Stage 1/2 evidence" boundary every domain observes) - flagged as a standalone follow-up,
-not left to rot in a test comment.
+**Net-change limitation - flagged as follow-up technical debt, then fixed same-day** (commit
+`609c478`, spawned via `spawn_task` after this feature's own commit, run by the user in a separate
+session): `change` is a *net* figure (entries minus exits), not a true entering-event count - if a
+new qualifying action's `exDate` lands exactly 180 days after an earlier one's, the entry (+1) and
+the exit (-1) used to cancel to `change(d) = 0`, hiding that day's real event from a walker keyed
+off `Math.max(change, 0)`. Fixed at the root, in Stage 1: `CapitalAllocationEngine` now persists
+true gross `entered_event_count`/`exited_event_count` columns on `corporate.transformation_evidence`
+alongside the existing `value`/`change` (`V18__add_capital_allocation_gross_event_counts.sql`,
+`change = entered_event_count - exited_event_count` enforced by a CHECK constraint), and Stage 3
+reads the gross entering count directly instead of inferring it from the net figure - never by
+having Stage 3 read raw `corporate.corporate_actions` (would break the "Stage 3 only reads
+persisted Stage 1/2 evidence" boundary every domain observes). `observedOccurrences` is now an
+exact ledger count, not a conservative undercount. One disclosed, permanent caveat: rows written
+*before* V18 are backfilled via the old `GREATEST(change, 0)` approximation (a historical
+`change = 0` row is genuinely ambiguous after the fact - "nothing happened" vs. "an entry and an
+exit cancelled" - and can't be recovered without re-deriving from `corporate.corporate_actions`);
+moot today since zero real `BUYBACK`/`RIGHTS` rows exist in production. The engine test suite's
+`exactOneEightyDayOffsetCancellationHidesTheSecondEvent` (asserting the old missed behavior) was
+replaced with `enteringEventIsStillCountedWhenItsExDateExactlyCancelsAnExitInNetChange`, asserting
+the fixed one - same file, same test count (25), one test's premise flipped along with the code.
 
 Backfill IS wired (unlike Financial) - `corporate.transformation_evidence.as_of_date` is a real,
 `Clock`-based evidence date throughout, and the evidence is append-only and never rewritten, so a
-historical replay is point-in-time safe today. 25 new tests
+historical replay is point-in-time safe today. 25 tests
 (`CapitalAllocationTransformationSequenceEngineTest`), covering `docs/008` §21's generic list plus
-explicit tests for all 3 corrections, the disclosed net-change limitation, and Decision 3's
+explicit tests for all 3 corrections, the (now-fixed) net-change limitation, and Decision 3's
 no-Stage-2-dependency claim (a synthetic `MIXED`-style day proving the equity-raise walk isn't
-starved). Full `./gradlew build` green.
+starved) - plus, from the `609c478` follow-up, new tests directly on `CapitalAllocationEngine`
+and `CapitalAllocationEvidenceObservation` covering the gross entered/exited count computation
+and its `change = entered - exited` invariant. Full `./gradlew build` green.
 
 **Live-verified against the real running app, with an honest finding**: `corporate.corporate_actions`
 contains zero `BUYBACK` or `RIGHTS` actions in real seed data - only 12 `DIVIDEND` records, an
