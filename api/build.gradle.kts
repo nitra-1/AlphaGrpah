@@ -12,6 +12,7 @@ dependencies {
     implementation(project(":intelligence"))
     implementation(project(":decision"))
     implementation(project(":learning"))
+    implementation(project(":discovery"))
     // Not in the original dependency list (see 001_System_Architecture.md §3/§4) - added because
     // the /pipeline-definitions/{id}/run and /pipeline-executions endpoints in
     // docs/004_API_Architecture.md §6 assemble DTOs from data scheduler owns.

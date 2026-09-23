@@ -12,6 +12,7 @@ import com.alphagraph.corporate.transformation.CapitalAllocationScheduler;
 import com.alphagraph.corporate.transformation.CapitalAllocationTransformationSequenceScheduler;
 import com.alphagraph.decision.engine.DecisionScoringScheduler;
 import com.alphagraph.decision.report.DailyReportScheduler;
+import com.alphagraph.discovery.convergence.DiscoveryConvergenceScheduler;
 import com.alphagraph.financial.engine.FundamentalAnalysisScheduler;
 import com.alphagraph.financial.transformation.FinancialInflectionScheduler;
 import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
@@ -42,9 +43,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 44 jobs - 36 standalone {@code @Scheduled} jobs plus 8 one-off
- * historical backfills (market/financial/ownership/sector-context Stage 1 evidence, plus Market's,
- * Ownership's, Sector's, and Capital Allocation's own Stage 3 sequence backfills) that have no {@code @Scheduled}
+ * Manual re-trigger dispatch for 45 jobs - 37 standalone {@code @Scheduled} jobs (including Stage
+ * 4's {@code discovery-convergence-detection}, which deliberately has no backfill entry - see
+ * below) plus 8 one-off historical backfills (market/financial/ownership/sector-context Stage 1
+ * evidence, plus Market's, Ownership's, Sector's, and Capital Allocation's own Stage 3 sequence
+ * backfills) that have no {@code @Scheduled}
  * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
@@ -103,7 +106,8 @@ class JobRegistry {
         OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler,
         FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler,
         SectorTransformationSequenceScheduler sectorTransformationSequenceScheduler,
-        CapitalAllocationTransformationSequenceScheduler capitalAllocationTransformationSequenceScheduler
+        CapitalAllocationTransformationSequenceScheduler capitalAllocationTransformationSequenceScheduler,
+        DiscoveryConvergenceScheduler discoveryConvergenceScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -132,6 +136,10 @@ class JobRegistry {
         jobs.put("sector-transformation-sequences-backfill", sectorTransformationSequenceScheduler::runSectorTransformationSequencesBackfill);
         jobs.put("capital-allocation-transformation-sequences", capitalAllocationTransformationSequenceScheduler::runCapitalAllocationTransformationSequences);
         jobs.put("capital-allocation-transformation-sequences-backfill", capitalAllocationTransformationSequenceScheduler::runCapitalAllocationTransformationSequencesBackfill);
+        // No backfill entry - Stage 4 historical replay is deliberately refused (see
+        // DiscoveryConvergenceOrchestrator's own javadoc: Financial Stage 3's unresolved
+        // publication-date gap), same posture as financial-transformation-sequences below.
+        jobs.put("discovery-convergence-detection", discoveryConvergenceScheduler::runConvergenceDetection);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

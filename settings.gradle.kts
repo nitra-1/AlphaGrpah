@@ -24,6 +24,7 @@ include(
     "intelligence",
     "decision",
     "learning",
+    "discovery",
     "api",
     "scheduler",
     "bootstrap"

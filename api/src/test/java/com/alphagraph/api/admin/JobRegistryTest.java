@@ -12,6 +12,7 @@ import com.alphagraph.corporate.transformation.CapitalAllocationScheduler;
 import com.alphagraph.corporate.transformation.CapitalAllocationTransformationSequenceScheduler;
 import com.alphagraph.decision.engine.DecisionScoringScheduler;
 import com.alphagraph.decision.report.DailyReportScheduler;
+import com.alphagraph.discovery.convergence.DiscoveryConvergenceScheduler;
 import com.alphagraph.financial.engine.FundamentalAnalysisScheduler;
 import com.alphagraph.financial.transformation.FinancialInflectionScheduler;
 import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
@@ -83,6 +84,7 @@ class JobRegistryTest {
     private final FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler = mock(FinancialTransformationSequenceScheduler.class);
     private final SectorTransformationSequenceScheduler sectorTransformationSequenceScheduler = mock(SectorTransformationSequenceScheduler.class);
     private final CapitalAllocationTransformationSequenceScheduler capitalAllocationTransformationSequenceScheduler = mock(CapitalAllocationTransformationSequenceScheduler.class);
+    private final DiscoveryConvergenceScheduler discoveryConvergenceScheduler = mock(DiscoveryConvergenceScheduler.class);
 
     private final JobRegistry registry = new JobRegistry(
         marketPriceBackfillScheduler, dealMaterialityScoringScheduler, institutionalInterpretationScheduler,
@@ -95,10 +97,11 @@ class JobRegistryTest {
         capitalAllocationScheduler, sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
         capitalAllocationInflectionScheduler, sectorInflectionScheduler, riskContradictionScheduler,
         marketTransformationSequenceScheduler, ownershipTransformationSequenceScheduler, financialTransformationSequenceScheduler,
-        sectorTransformationSequenceScheduler, capitalAllocationTransformationSequenceScheduler
+        sectorTransformationSequenceScheduler, capitalAllocationTransformationSequenceScheduler,
+        discoveryConvergenceScheduler
     );
 
-    private static final List<String> ALL_44_JOB_NAMES = List.of(
+    private static final List<String> ALL_45_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
@@ -113,12 +116,13 @@ class JobRegistryTest {
         "ownership-transformation-sequences", "ownership-transformation-sequences-backfill",
         "financial-transformation-sequences",
         "sector-transformation-sequences", "sector-transformation-sequences-backfill",
-        "capital-allocation-transformation-sequences", "capital-allocation-transformation-sequences-backfill"
+        "capital-allocation-transformation-sequences", "capital-allocation-transformation-sequences-backfill",
+        "discovery-convergence-detection"
     );
 
     @Test
-    void containsExactlyAllFortyFourRealJobNames() {
-        for (String jobName : ALL_44_JOB_NAMES) {
+    void containsExactlyAllFortyFiveRealJobNames() {
+        for (String jobName : ALL_45_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -126,6 +130,9 @@ class JobRegistryTest {
         // FinancialTransformationSequenceOrchestrator's own javadoc (as_of_date is the quarter-end
         // date, not the real publication date, so a historical replay isn't point-in-time safe yet).
         assertThat(registry.contains("financial-transformation-sequences-backfill")).isFalse();
+        // Stage 4 historical replay is deliberately refused for the identical reason - see
+        // DiscoveryConvergenceOrchestrator's own javadoc.
+        assertThat(registry.contains("discovery-convergence-detection-backfill")).isFalse();
     }
 
     @Test
@@ -144,7 +151,7 @@ class JobRegistryTest {
             sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
             capitalAllocationInflectionScheduler, sectorInflectionScheduler, riskContradictionScheduler,
             marketTransformationSequenceScheduler, ownershipTransformationSequenceScheduler, financialTransformationSequenceScheduler,
-            sectorTransformationSequenceScheduler, capitalAllocationTransformationSequenceScheduler
+            sectorTransformationSequenceScheduler, capitalAllocationTransformationSequenceScheduler, discoveryConvergenceScheduler
         );
     }
 
@@ -193,6 +200,7 @@ class JobRegistryTest {
         registry.trigger("sector-transformation-sequences-backfill");
         registry.trigger("capital-allocation-transformation-sequences");
         registry.trigger("capital-allocation-transformation-sequences-backfill");
+        registry.trigger("discovery-convergence-detection");
 
         verify(marketPriceBackfillScheduler).runDiscoveryPriceBackfill();
         verify(dealMaterialityScoringScheduler).runDealMaterialityScoring();
@@ -237,5 +245,6 @@ class JobRegistryTest {
         verify(sectorTransformationSequenceScheduler).runSectorTransformationSequencesBackfill();
         verify(capitalAllocationTransformationSequenceScheduler).runCapitalAllocationTransformationSequences();
         verify(capitalAllocationTransformationSequenceScheduler).runCapitalAllocationTransformationSequencesBackfill();
+        verify(discoveryConvergenceScheduler).runConvergenceDetection();
     }
 }

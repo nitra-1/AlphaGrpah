@@ -1378,6 +1378,107 @@ since there is no real data yet to trace - same "logic-complete, disclosed-silen
 throughout this session for every other blocked/thin domain, just one level further upstream
 (the whole domain, not one sequence type within it).
 
+**Stage 4 Cross-Domain Convergence** (2026-09-23): the layer after Stage 3 (`docs/008`'s own
+hand-off point, per the user's own detailed spec). Consumes Market/Ownership/Financial/Sector/
+Capital Allocation's own Stage 3 `transformation_sequences` tables directly, plus
+`risk.contradiction_states` as a contradiction *overlay* (never a 6th positive domain - Risk
+Stage 3 stays deliberately unbuilt). Detects whether multiple independent domains are
+transforming at the same time for the same instrument - a deterministic, explainable snapshot.
+5-state taxonomy: `NO_CONVERGENCE, EARLY_CONVERGENCE, MULTI_DOMAIN_INFLECTION,
+STRONG_CONVERGENCE, CONVERGENCE_WITH_CONTRADICTIONS`. Deliberately never answers BUY/SELL, price
+targets, multibagger probability, or lifecycle stage - those stay out of scope for this layer.
+
+**New `discovery` module, not `intelligence`** - verified, not assumed: `intelligence` owns zero
+Flyway migrations/schema anywhere in this codebase; every existing cross-domain layer that needs
+to persist its own output (`decision`, `learning`) is a self-contained module with its own schema,
+`implementation`-depending on every domain module it needs directly. `discovery` mirrors that
+exact pattern - not in `ModuleBoundaryArchTest`'s `DOMAIN_MODULES` list, so it's automatically
+allowed to depend on `market`/`financial`/`ownership`/`sector`/`corporate`/`risk` with zero
+ArchUnit change needed (live-verified: the test suite passed unmodified). One easy-to-miss piece
+of wiring found independently, not in the user's own spec: Spring Boot's own Flyway autoconfig is
+disabled in this codebase (`spring.flyway.enabled=false`); `FlywayMultiSchemaConfig`'s own
+hardcoded `MODULES_WITH_MIGRATIONS` list is the *only* thing that actually runs a module's
+migrations - `discovery` had to be added there too, or its schema/tables would have silently
+never been created regardless of how correct the Gradle setup was.
+
+**Readers are new, self-built classes inside `discovery`, mirroring `intelligence.riskcontradiction`'s
+own established pattern** - none of the 5 Stage 3 domains has ever had a reader for its own
+`transformation_sequences` output table (every `*SequenceResult`/`*Writer` class in all 5 is
+package-private, not importable cross-module), so 5 new domain-sequence readers plus a brand-new
+`risk.contradiction_states` reader (that table had never been read back at all -
+`RiskContradictionWriter` is write-only) were built from scratch, each issuing raw SQL directly
+against the source schema rather than reusing another meta-layer's internals. The 5 domain readers
+share one small internal base class (`AbstractSequenceReader`) since only the schema name and the
+readiness table's own history-coverage column name (`history_sessions`/`history_periods`/
+`history_days` - genuinely different per domain, not interchangeable) differ between them - ordinary
+in-module code reuse, not a violation of "domain modules never share a type across boundaries"
+(that rule is about *cross*-module sharing; all 5 readers live inside `discovery` itself).
+
+**Five real corrections across three rounds of plan review** - each is documented in
+`DiscoveryConvergenceEngine`'s own javadoc, not just here: (1) `CONVERGENCE_WITH_CONTRADICTIONS`
+only ever overlays an actual positive `pre_contradiction_state`
+(`EARLY_CONVERGENCE`/`MULTI_DOMAIN_INFLECTION`/`STRONG_CONVERGENCE`) - `NO_CONVERGENCE` plus a
+live contradiction stays `NO_CONVERGENCE`, since there's no convergence to contradict. (2)
+`pre_contradiction_state` is computed strictly from the raw, pre-penalty score - both the
+`STRONG_CONVERGENCE` and `MULTI_DOMAIN_INFLECTION` thresholds check `rawConvergenceScore`
+uniformly (the first draft mixed raw/final across the two, which wasn't really "pre" anything);
+contradiction is applied only afterward as a display-level overlay. (3) Risk contradictions have
+their own freshness gate (`stage4-risk-contradiction-max-age-days`, default 90) - without it, a
+contradiction from months ago would silently keep penalizing today's convergence forever if Risk
+Stage 2 hadn't written a fresher state since; a stale contradiction still records
+`STALE_CONTRADICTION_PRESENT` for explainability without affecting the score. (4)
+`INSUFFICIENT_DATA` never manufactures a fake zero score - all 8 score/penalty columns are
+nullable, populated only when readiness allows real evaluation; `PARTIAL_DATA` still computes real
+provisional scores but is structurally barred from the two mature states (both now require
+`readiness == READY`). (5) Historical backfill is refused, not silently unsafe -
+`DiscoveryConvergenceOrchestrator.backfill()` exists (so the intent is documented in code) but
+immediately throws, mirroring `FinancialTransformationSequenceOrchestrator`'s own "exists but not
+wired to any runnable job" posture for the identical root cause: Financial Stage 3's own
+`as_of_date` is the quarter-*end* date, not the publication date, so a historical Stage 4 replay
+could see Financial evidence that wasn't actually public on the replayed date and launder that
+single upstream timing gap into a false cross-domain convergence event. Live-verified: a manual
+trigger on `discovery-convergence-detection-backfill` returns a real 404, matching Financial's own
+backfill's live-verified 404 exactly - the point-in-time-safety decision is real, not just a
+comment. A late implementation guard from the final review round, also verified live (see below):
+freshness/recency/span math is driven by each Stage 3 sequence's own `last_step_date`, never the
+row's `as_of_date`/`computed_at` - a sequence that completed months ago must read as stale even if
+Stage 3 keeps re-evaluating and re-writing that row on later days.
+
+**Contradiction penalty classification, verified against the real reason-code shape** (not an
+assumed array field) - read `RiskContradictionEngine.calculate` directly: each trigger adds one
+fixed marker reason when it fires (`REVENUE_UP_MARGIN_DOWN`, `OWNERSHIP_CONTRADICTION`,
+`PRICE_UP_DELIVERY_FLAT_OR_DOWN`, `EQUITY_RAISE_NO_GROWTH_SIGNAL`); `MULTIPLE_CONTRADICTIONS` is a
+marker only, never itself penalized. Each of the 4 buckets present is penalized once (not per
+occurrence), summed, then clamped at `stage4-max-contradiction-penalty` (default 30) - this is
+what avoids double-penalizing `MULTI_DOMAIN_CONTRADICTION` as "20 + all underlying," confirmed by
+a dedicated test asserting the sum of only the genuinely-fired buckets.
+
+21 new tests (`DiscoveryConvergenceEngineTest`), covering representative-sequence-not-sum domain
+strength, freshness/staleness at exact age boundaries (including the `last_step_date`-vs-`as_of_date`
+guard), breadth band transitions with `*_DOMAIN_JOINED` reason emission, the convergence-span gate,
+all 3 readiness tiers, and explicit cases for all 5 corrections. Full `./gradlew build` green,
+including the `ModuleBoundaryArchTest` ArchUnit suite passing with zero changes.
+
+**Live-verified against the real running app, with an honest, session-consistent finding**: 60
+tracked instruments, every single one currently resolves to `readiness = INSUFFICIENT_DATA` /
+`convergenceState = NO_CONVERGENCE`. Confirmed this is correct, not a bug, by cross-checking
+DRREDDY specifically (the same instrument hand-verified for Sector Stage 3 earlier this session):
+it has a real, live `SECTOR_TAILWIND_SEQUENCE` `COMPLETE` row, but `sector.transformation_sequence_readiness`
+has *never* reported `READY` for it (`history_sessions` = 1-2, against Sector's own
+`MIN_HISTORY_SESSIONS_FOR_READY = 5` threshold) - Stage 4's design deliberately treats a domain
+whose own Stage 3 readiness isn't `READY` as `INSUFFICIENT_DATA` regardless of whether a sequence
+happens to have completed quickly, per round-1 correction 4's own reasoning ("we don't know yet"
+must never look identical to "we checked and it's negative"). Every one of the 4 domains with any
+real data (`market`/`ownership`/`financial`/`sector`) shows `INSUFFICIENT_HISTORY` on 100% of its
+own readiness rows today - a pre-existing characteristic of this session's whole thin/young
+dataset, not something Stage 4 introduces; Capital Allocation contributes 0 rows everywhere, as
+already disclosed. Re-triggered same-day: identical row counts (60 snapshots / 300 contributions /
+360 reasons), confirming idempotent upsert. Admin monitoring endpoint confirms the job at "19:40
+IST daily", `lastStatus: SUCCESS`. Correctness for the actual scoring/state logic rests on the 21
+unit tests plus this live cross-check, not a live hand-trace of a real convergence classification -
+there is currently no real instrument anywhere in the data with enough Stage 3 readiness maturity
+to produce one.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
