@@ -9,6 +9,7 @@ import com.alphagraph.corporate.processing.DocumentProcessingScheduler;
 import com.alphagraph.corporate.signal.CorporateSignalScheduler;
 import com.alphagraph.corporate.transformation.CapitalAllocationInflectionScheduler;
 import com.alphagraph.corporate.transformation.CapitalAllocationScheduler;
+import com.alphagraph.corporate.transformation.CapitalAllocationTransformationSequenceScheduler;
 import com.alphagraph.decision.engine.DecisionScoringScheduler;
 import com.alphagraph.decision.report.DailyReportScheduler;
 import com.alphagraph.financial.engine.FundamentalAnalysisScheduler;
@@ -41,9 +42,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 42 jobs - 35 standalone {@code @Scheduled} jobs plus 7 one-off
+ * Manual re-trigger dispatch for 44 jobs - 36 standalone {@code @Scheduled} jobs plus 8 one-off
  * historical backfills (market/financial/ownership/sector-context Stage 1 evidence, plus Market's,
- * Ownership's, and Sector's own Stage 3 sequence backfills) that have no {@code @Scheduled}
+ * Ownership's, Sector's, and Capital Allocation's own Stage 3 sequence backfills) that have no {@code @Scheduled}
  * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
  * api.admin} analog of {@code scheduler.PipelineRegistry}, which already supports this for the 9
  * ETL pipelines via {@code PipelineDefinitionController}. Every entry wraps the exact same
@@ -101,7 +102,8 @@ class JobRegistry {
         MarketTransformationSequenceScheduler marketTransformationSequenceScheduler,
         OwnershipTransformationSequenceScheduler ownershipTransformationSequenceScheduler,
         FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler,
-        SectorTransformationSequenceScheduler sectorTransformationSequenceScheduler
+        SectorTransformationSequenceScheduler sectorTransformationSequenceScheduler,
+        CapitalAllocationTransformationSequenceScheduler capitalAllocationTransformationSequenceScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -128,6 +130,8 @@ class JobRegistry {
         jobs.put("financial-transformation-sequences", financialTransformationSequenceScheduler::runFinancialTransformationSequences);
         jobs.put("sector-transformation-sequences", sectorTransformationSequenceScheduler::runSectorTransformationSequences);
         jobs.put("sector-transformation-sequences-backfill", sectorTransformationSequenceScheduler::runSectorTransformationSequencesBackfill);
+        jobs.put("capital-allocation-transformation-sequences", capitalAllocationTransformationSequenceScheduler::runCapitalAllocationTransformationSequences);
+        jobs.put("capital-allocation-transformation-sequences-backfill", capitalAllocationTransformationSequenceScheduler::runCapitalAllocationTransformationSequencesBackfill);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

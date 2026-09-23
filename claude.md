@@ -1280,6 +1280,92 @@ at genuinely distinct `as_of_date`s with correct, independently-traced evidence 
 spurious duplicates. Admin monitoring endpoint confirms the job at "19:33 IST daily", `lastStatus:
 SUCCESS`.
 
+**Capital Allocation Stage 3 Sequence Detection** (2026-09-23): build order item 5, flagged in
+`docs/008` §14.4/§15 itself as "structurally different (event sequences, not state-transition
+sequences)." 2 sequences: `REPEATED_CAPITAL_RETURN` (`BUYBACK_ACTIVITY` occurring in more than one
+qualifying event cycle), `REPEATED_EQUITY_RAISE` (`EQUITY_RAISE_ACTIVITY` repeated within the
+configured window - descriptive only, never `DILUTION_CYCLE` until real equity-raise-type
+classification exists). Unlike every prior domain (an ordered chain of *distinct* reason codes),
+these are repetition of the *same* signal across genuinely separate real corporate actions, while
+the underlying Stage 1 evidence is a rolling 180-day trailing event count - a fundamentally
+different detection shape, so a new purpose-built "repeat cluster" walker was written rather than
+reusing `walkSimpleSequence`.
+
+**The core trap, verified by reading `CapitalAllocationEngine.calculate` directly**: `value` is
+recomputed fresh every day as a count of an action type's `exDate`s in a rolling 180-day window;
+`change = currentValue - priorValue`. Algebraically, `change(d) = (# actions with exDate == d) -
+(# actions with exDate == d-180)` - so `change > 0` fires only on the exact day a qualifying
+action's `exDate` enters the window, never on any of the following up-to-179 days the same
+event's shadow keeps `value > 0` (and Stage 2's reason firing for all of them). A walker keyed off
+`value > 0` or reason-code presence would misread one real event's 180-day shadow as many
+repetitions. `change` can also exceed 1 on a single row (multiple qualifying actions sharing one
+`exDate`) - the walker registers `Math.max(change, 0)` occurrences per row, not one per
+`change > 0` row.
+
+**Three real corrections from two rounds of plan review**: (1) **once `COMPLETE`, a cluster stays
+`COMPLETE` on further in-window occurrences rather than resetting to `FORMING`** - a 3rd buyback
+must never make an already-established repeated-return pattern look *less* mature than after the
+2nd; `observedOccurrences` keeps growing (a new persisted column, uncapped) while `currentStep`
+stays pinned at `min(observedOccurrences, requiredRepeats)`. (2) **that same `COMPLETE` cluster
+still expires from silence alone** - the first-round fix over-corrected by exempting `COMPLETE`
+from expiry entirely, which would let a buyback pair from years ago report as "currently active"
+forever; the real rule is `COMPLETE` is exempt only from the *reset-on-next-occurrence* behavior,
+never from *gap-based expiry* - `maxGapDays` (180, mirroring Stage 1's own window) applies
+uniformly to every non-`BROKEN` phase, while the separate, more generous `maxAgeDays` (540) stuck-
+attempt cap applies only to a cluster that never reached `COMPLETE` at all. (3) **readiness is
+gated by the least-covered *applicable* metric, not a blended min/max across both** - the first
+draft took one combined date range across both metrics, which would overstate readiness when the
+two genuinely diverge (e.g. buyback evidence spanning 220 days, equity-raise only 40); fixed to
+compute each metric's own coverage independently and take the minimum across metrics that
+actually have evidence, excluding a metric with zero evidence entirely (not applicable, not
+"thin data"). Readiness column named `history_days` (not `history_sessions`/`history_periods`
+like the daily/quarterly domains, since this is neither).
+
+**Decision, not a correction: no Stage 2 history reader at all.** Every other domain's Stage 3
+needs a Stage 2 state history reader because it merges several *different* reason codes onto one
+timeline. Capital Allocation's two sequences are each anchored to a single metric - there's no
+second code to merge, and going through Stage 2 would actively lose signal: on a
+`MIXED_CAPITAL_ALLOCATION_ACTIVITY` day the priority-ladder tie-break favors buyback, so
+equity-raise's own `change` for that day is nowhere recorded in `corporate.inflection_states`.
+This engine reads `CapitalAllocationEvidenceReader.findHistory` directly, once per metric,
+independently - zero runtime dependency on Stage 2.
+
+**Disclosed technical debt, not fixed here**: `change` is a *net* figure (entries minus exits),
+not a true entering-event count - if a new qualifying action's `exDate` lands exactly 180 days
+after an earlier one's, the entry (+1) and the exit (-1) cancel and `change(d) = 0`, so that day's
+real event becomes invisible to this walker (covered by a named test asserting the current, missed
+behavior). The same gap means the persisted `observedOccurrences` is really "the minimum number of
+entries inferable from positive net changes," a conservative undercount, never an exact ledger.
+The clean fix is for Stage 1 to eventually persist entering/exiting counts separately, not for
+Stage 3 to read raw `corporate.corporate_actions` directly (would break the "Stage 3 only reads
+persisted Stage 1/2 evidence" boundary every domain observes) - flagged as a standalone follow-up,
+not left to rot in a test comment.
+
+Backfill IS wired (unlike Financial) - `corporate.transformation_evidence.as_of_date` is a real,
+`Clock`-based evidence date throughout, and the evidence is append-only and never rewritten, so a
+historical replay is point-in-time safe today. 25 new tests
+(`CapitalAllocationTransformationSequenceEngineTest`), covering `docs/008` §21's generic list plus
+explicit tests for all 3 corrections, the disclosed net-change limitation, and Decision 3's
+no-Stage-2-dependency claim (a synthetic `MIXED`-style day proving the equity-raise walk isn't
+starved). Full `./gradlew build` green.
+
+**Live-verified against the real running app, with an honest finding**: `corporate.corporate_actions`
+contains zero `BUYBACK` or `RIGHTS` actions in real seed data - only 12 `DIVIDEND` records, an
+action type neither Capital Allocation metric tracks. This means `corporate.transformation_evidence`
+has been empty since Stage 1 was built (`capital-allocation-evidence`'s own job has always reported
+"0 row(s) written"), so Stage 2 (`corporate.inflection_states`) has likewise always been empty -
+this is a pre-existing data gap across the *entire* domain, not something introduced by this
+change. Triggering `capital-allocation-transformation-sequences` correctly finds zero instruments
+(`findAllInstrumentIds()` against an empty evidence table) and writes 0 rows with no errors; the
+same for the backfill job; re-triggering both twice each stayed at 0/0 rows both times (trivially
+idempotent, but confirms the full reader -> engine -> writer -> orchestrator -> scheduler -> admin-API
+pipeline is wired correctly end-to-end even against empty real data, failing gracefully rather than
+erroring). Admin monitoring endpoint confirms the job at "19:31 IST daily", `lastStatus: SUCCESS`.
+Correctness for the actual detection logic rests on the 25 unit tests, not a live hand-trace,
+since there is no real data yet to trace - same "logic-complete, disclosed-silent" posture used
+throughout this session for every other blocked/thin domain, just one level further upstream
+(the whole domain, not one sequence type within it).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
