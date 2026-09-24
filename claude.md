@@ -1608,6 +1608,67 @@ hand-trace of a real classification - there is currently no real instrument anyw
 with enough Stage 4 readiness maturity to produce one, the identical honest gap Stage 4 itself
 disclosed one layer down.
 
+**Opportunities Dashboard + Opportunity Detail page** (2026-09-24): the first product surface onto
+the Stage 1-5 discovery pipeline - "Opportunities" rather than "Discovery" to avoid colliding with
+the existing unrelated `/admin/discovery` bulk/block-deal-review feature (confirmed by reading it
+directly before naming this). `GET /api/v1/opportunities` (every instrument's latest Stage 5
+lifecycle, dashboard) and `GET /api/v1/opportunities/{instrumentId}` (one instrument's full causal
+chain - Stage 1 evidence -> Stage 2 inflection -> Stage 3 sequences -> Stage 4 domain contribution
+-> Stage 5 lifecycle, plus the transition timeline), both read-only, no role restriction beyond a
+valid JWT, same convention as `api.rankings`.
+
+**New `decision.opportunity` package + `decision.api` DTOs** - `discovery.lifecycle`/
+`discovery.convergence` are entirely package-private, so `decision` owns its own raw-SQL readers
+and DTOs over their output tables, exactly mirroring how `discovery.lifecycle` itself already reads
+Stage 4's package-private tables one layer down. The harder problem was Stage 1-3: three parallel
+research agents confirmed every domain module (`financial`/`ownership`/`market`/`sector`/
+`corporate`) keeps its own evidence/inflection/sequence readers package-private, and **no domain
+module has any reader at all - public or private - for its own Stage 3 `transformation_sequences`
+table**; the only precedent anywhere in the repo is `discovery.convergence.AbstractSequenceReader`
+reading 5 domains' Stage 3 tables via raw SQL from outside their own module. This plan repeats that
+exact pattern one layer up: a new `AbstractDomainSequenceReader` (decision's own copy) plus 5
+domain-specific readers (`FinancialOpportunityReader` etc.) that read Stage 1/2/3 tables directly,
+schema-qualified in SQL text, without modifying any of the 5 domain modules. `decision/build.gradle.kts`
+gained one new dependency, `:market` (the only domain it didn't already depend on).
+
+**Point-in-time correctness, caught in plan review before implementation**: the first draft read
+Stage 1-3 data as "whatever's latest in the DB right now," which could mix a later day's evidence
+under an earlier day's Stage 4/5 classification if the pipeline hadn't run yet for today. Fixed by
+anchoring every Stage 1-3 query to the *displayed convergence snapshot's own `asOfDate`*
+(`OpportunityDomainDetailAssembler.assemble(instrumentId, asOfDate, ...)`, never `LocalDate.now()`),
+with every query bounded `as_of_date <= ?` / `period_end <= ?` - the identical discipline
+`AbstractSequenceReader.findActiveSequencesAsOf` already established for Stage 4's own Stage 3
+reads, copied rather than reinvented. Live-verified this actually works, not just compiles: DRREDDY's
+Market evidence resolved to 2026-09-23 (yesterday) under a 2026-09-24 anchor - the `<=` bound
+picking the latest row *on or before* the anchor date, not an exact-date or unconditional match.
+
+**A real bug caught live, not by a test** (no DB integration-test infra exists for any writer/reader
+in this codebase, same disclosed gap as every prior stage): `AbstractDomainSequenceReader.findReasons`
+queried `evidence_date` from every domain's own `*_sequence_reasons` table - a column that exists on
+discovery's own `lifecycle_reasons`/`convergence_reasons` tables but **not** on any domain-level
+`*_sequence_reasons`/`*_state_reasons` table (confirmed by re-reading the real migration SQL after
+the live 500). A real `PSQLException: column "evidence_date" does not exist` on first live call to
+the detail endpoint for DRREDDY - fixed by dropping the column from that one query; the 5 domain
+readers' own inflection-reasons queries never had this mistake (checked directly, not assumed).
+
+**Live-verified end-to-end, not just compiled**: dashboard shows all 61 tracked rows (60 instruments
++ the NIFTY50 benchmark) at `lifecycleReadiness: INSUFFICIENT_HISTORY`, `asOfDate` today, matching
+Stage 5's own already-verified state. Detail endpoint for DRREDDY returns real, non-fabricated
+Stage 1-3 data across 4 of 5 domains - Financial (Revenue/PAT/Operating Margin/Interest Expense),
+Ownership (7 shareholding metrics), Market (`EARLY_PRICE_PARTICIPATION` inflection +
+`DELIVERY_LED_ACCUMULATION`/`STEALTH_ACCUMULATION_SEQUENCE` sequences), Sector
+(`STOCK_OUTPERFORMING_NIFTY` inflection + `SECTOR_TAILWIND_SEQUENCE COMPLETE`/
+`STOCK_LEADERSHIP_EMERGENCE` sequences, directly matching the same real `SECTOR_TAILWIND_SEQUENCE`
+fact Stage 4's own live verification found for this exact instrument) - Capital Allocation correctly
+empty (0 rows anywhere, the same disclosed gap every prior stage's verification already found).
+Confirmed a real 404 for a nonexistent instrument id. Confirmed in the actual browser (built-in
+preview, logged in as admin): dashboard table renders all rows without crashing, the DRREDDY detail
+page renders all 4 cards (Lifecycle Summary, Cross-Domain Convergence, Transformation Evidence with
+its 5-domain tab switcher, Transition History), clicking each domain tab correctly swaps in that
+domain's real evidence/inflection/sequence data, sidebar navigation works. Full `./gradlew build`
+and `./gradlew test` green throughout, including `ModuleBoundaryArchTest` unmodified (neither
+`decision` nor `discovery` is in `DOMAIN_MODULES`, and no domain-module source was touched).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

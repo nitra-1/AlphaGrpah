@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Rankings', end: true, adminOnly: false },
+  { to: '/opportunities', label: 'Opportunities', adminOnly: false },
   { to: '/dashboard', label: 'Dashboard', adminOnly: false },
   { to: '/watchlist', label: 'Watchlist', adminOnly: false },
   { to: '/portfolio', label: 'Portfolio', adminOnly: false },

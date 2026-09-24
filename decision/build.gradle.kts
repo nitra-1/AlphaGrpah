@@ -11,6 +11,11 @@ dependencies {
     implementation(project(":sector"))
     implementation(project(":risk"))
     implementation(project(":corporate"))
+    // decision.opportunity: reads Market's own Stage 1-3 transformation_evidence/inflection_states/
+    // transformation_sequences tables via raw SQL (same as the other five domains above) to power
+    // the Opportunity Detail page's causal-chain drill-down - decision had no reason to touch
+    // Market before this.
+    implementation(project(":market"))
     implementation("org.springframework:spring-context")
     implementation("org.springframework:spring-jdbc")
     implementation("org.slf4j:slf4j-api")

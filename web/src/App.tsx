@@ -20,6 +20,8 @@ import { AddUserPage } from './routes/AddUserPage'
 import { MonitoringPage } from './routes/MonitoringPage'
 import { LearningPage } from './routes/LearningPage'
 import { DiscoveryPage } from './routes/DiscoveryPage'
+import { OpportunitiesPage } from './routes/OpportunitiesPage'
+import { OpportunityDetailPage } from './routes/OpportunityDetailPage'
 
 function App() {
   return (
@@ -29,6 +31,8 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<RankingsPage />} />
+          <Route path="/opportunities" element={<OpportunitiesPage />} />
+          <Route path="/opportunities/:instrumentId" element={<OpportunityDetailPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/watchlist" element={<WatchlistPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
