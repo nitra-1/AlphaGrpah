@@ -21,6 +21,36 @@ class DiscoveryConvergenceEngineTest {
 
     private final DiscoveryConvergenceEngine engine = new DiscoveryConvergenceEngine();
 
+    // ---- representative() selection (Stage 5 plan review's writer-bug regression) ----
+
+    /**
+     * The writer used to take {@code sequences().get(0)} for {@code evidence_reference}, which is
+     * "first alphabetically by sequence_type" (the reader's own query order), not the actual
+     * representative (max-strength) sequence. This proves {@code representative()} itself always
+     * picks by strength regardless of list order, so the writer's fixed call
+     * (`DiscoveryConvergenceEngine.representative(dc)`) is correct even when the max-strength
+     * sequence isn't first in the list.
+     */
+    @Test
+    void representativeSelectsMaxStrengthSequenceRegardlessOfListOrder() {
+        SequenceContribution alphabeticallyFirstButWeaker = new SequenceContribution(
+            "AAA_SEQUENCE", SequencePhase.FORMING, 40.0, 80.0, ASOF.minusDays(10), ASOF.minusDays(5), 12.8
+        );
+        SequenceContribution strongerButAlphabeticallyLater = new SequenceContribution(
+            "ZZZ_SEQUENCE", SequencePhase.COMPLETE, 90.0, 90.0, ASOF.minusDays(8), ASOF.minusDays(2), 81.0
+        );
+        DomainContribution dc = new DomainContribution(
+            ConvergenceDomain.MARKET, DomainContributionStatus.ACTIVE, 2, SequencePhase.COMPLETE,
+            95.0, 90.0, ASOF.minusDays(10), ASOF.minusDays(2), 95.0,
+            List.of(alphabeticallyFirstButWeaker, strongerButAlphabeticallyLater)
+        );
+
+        Optional<SequenceContribution> representative = DiscoveryConvergenceEngine.representative(dc);
+
+        assertThat(representative).isPresent();
+        assertThat(representative.get().sequenceType()).isEqualTo("ZZZ_SEQUENCE");
+    }
+
     // ---- evaluateDomainContribution: representative sequence drives strength, never a sum ----
 
     @Test

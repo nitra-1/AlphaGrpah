@@ -13,6 +13,7 @@ import com.alphagraph.corporate.transformation.CapitalAllocationTransformationSe
 import com.alphagraph.decision.engine.DecisionScoringScheduler;
 import com.alphagraph.decision.report.DailyReportScheduler;
 import com.alphagraph.discovery.convergence.DiscoveryConvergenceScheduler;
+import com.alphagraph.discovery.lifecycle.DiscoveryLifecycleScheduler;
 import com.alphagraph.financial.engine.FundamentalAnalysisScheduler;
 import com.alphagraph.financial.transformation.FinancialInflectionScheduler;
 import com.alphagraph.financial.transformation.FinancialTransformationScheduler;
@@ -43,9 +44,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 45 jobs - 37 standalone {@code @Scheduled} jobs (including Stage
- * 4's {@code discovery-convergence-detection}, which deliberately has no backfill entry - see
- * below) plus 8 one-off historical backfills (market/financial/ownership/sector-context Stage 1
+ * Manual re-trigger dispatch for 46 jobs - 38 standalone {@code @Scheduled} jobs (including Stage
+ * 4's {@code discovery-convergence-detection} and Stage 5's {@code lifecycle-classification},
+ * which both deliberately have no backfill entry - see below) plus 8 one-off historical backfills (market/financial/ownership/sector-context Stage 1
  * evidence, plus Market's, Ownership's, Sector's, and Capital Allocation's own Stage 3 sequence
  * backfills) that have no {@code @Scheduled}
  * annotation at all and only ever run via this registry's {@link #trigger} - the {@code
@@ -107,7 +108,8 @@ class JobRegistry {
         FinancialTransformationSequenceScheduler financialTransformationSequenceScheduler,
         SectorTransformationSequenceScheduler sectorTransformationSequenceScheduler,
         CapitalAllocationTransformationSequenceScheduler capitalAllocationTransformationSequenceScheduler,
-        DiscoveryConvergenceScheduler discoveryConvergenceScheduler
+        DiscoveryConvergenceScheduler discoveryConvergenceScheduler,
+        DiscoveryLifecycleScheduler discoveryLifecycleScheduler
     ) {
         jobs.put("market-discovery-price-backfill", marketPriceBackfillScheduler::runDiscoveryPriceBackfill);
         jobs.put("deal-materiality-scoring", dealMaterialityScoringScheduler::runDealMaterialityScoring);
@@ -140,6 +142,10 @@ class JobRegistry {
         // DiscoveryConvergenceOrchestrator's own javadoc: Financial Stage 3's unresolved
         // publication-date gap), same posture as financial-transformation-sequences below.
         jobs.put("discovery-convergence-detection", discoveryConvergenceScheduler::runConvergenceDetection);
+        // No backfill entry - Stage 5 historical replay is deliberately refused (see
+        // DiscoveryLifecycleOrchestrator's own javadoc: it inherits Stage 4's own already-refused
+        // backfill unsafety one layer further), same posture as discovery-convergence-detection above.
+        jobs.put("lifecycle-classification", discoveryLifecycleScheduler::runLifecycleClassification);
         jobs.put("document-processing", documentProcessingScheduler::runDocumentProcessing);
         jobs.put("knowledge-extraction", knowledgeExtractionScheduler::runKnowledgeExtraction);
         jobs.put("technical-analysis", technicalAnalysisScheduler::runDailyTechnicalAnalysis);

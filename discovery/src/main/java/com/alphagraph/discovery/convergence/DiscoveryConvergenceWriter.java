@@ -74,7 +74,7 @@ class DiscoveryConvergenceWriter {
                 dc.earliestSequenceDate() == null ? null : Date.valueOf(dc.earliestSequenceDate()),
                 dc.latestSequenceDate() == null ? null : Date.valueOf(dc.latestSequenceDate()),
                 dc.contributionScore(),
-                dc.sequences().isEmpty() ? null : dc.sequences().get(0).sequenceType()
+                DiscoveryConvergenceEngine.representative(dc).map(SequenceContribution::sequenceType).orElse(null)
             );
         }
 

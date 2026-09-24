@@ -311,7 +311,16 @@ class DiscoveryConvergenceEngine {
         return new ContradictionOutcome(penalty, reasons);
     }
 
-    private static Optional<SequenceContribution> representative(DomainContribution dc) {
+    /**
+     * Package-visible (not {@code private}) so {@link DiscoveryConvergenceWriter} can reuse the
+     * exact same selection for {@code convergence_domain_contributions.evidence_reference} -
+     * previously it took {@code sequences().get(0)} instead, which is "first alphabetically by
+     * sequence_type" (the reader's own {@code ORDER BY sequence_type} - see {@link
+     * AbstractSequenceReader}), not the representative sequence that actually drove {@code
+     * domainStrength}/{@code strongestPhase}. Harmless for one qualifying sequence, silently wrong
+     * for 2+.
+     */
+    static Optional<SequenceContribution> representative(DomainContribution dc) {
         return dc.sequences().stream().max(Comparator.comparingDouble(SequenceContribution::sequenceStrength));
     }
 

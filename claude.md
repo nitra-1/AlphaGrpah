@@ -1479,6 +1479,135 @@ unit tests plus this live cross-check, not a live hand-trace of a real convergen
 there is currently no real instrument anywhere in the data with enough Stage 3 readiness maturity
 to produce one.
 
+**Stage 5 Lifecycle Classification** (2026-09-24): the layer after Stage 4, per the user's own
+framing - "given how cross-domain convergence has evolved over time, where is this company in the
+transformation lifecycle now?" A trajectory classifier over Stage 4's own convergence-snapshot
+*history*, never another scoring layer and never a re-derivation of Stage 3. 7-state taxonomy:
+`DORMANT, EARLY_INFLECTION, EMERGING, ACCELERATING, MARKET_RECOGNITION, MATURE_RERATING,
+DETERIORATING`, plus a separate `TrajectoryDirection` (`RISING, STABLE, WEAKENING, RECOVERING,
+UNKNOWN`). Deliberately never answers BUY/SELL/TARGET_PRICE/EXPECTED_RETURN/
+MULTIBAGGER_PROBABILITY/SUCCESS_PROBABILITY - those stay out of scope for this layer, same as
+every prior stage.
+
+**Kept inside the existing `discovery` module, in a new `discovery.lifecycle` package** - the
+user's own explicit instruction. Verified as architecturally required, not just convenient:
+`discovery.convergence` is entirely package-private (every DTO/enum), and Java package-private
+visibility is per-package, not per-module - a sibling package genuinely cannot import any of it.
+`discovery.lifecycle` therefore has its own raw-SQL reader and own DTOs
+(`ConvergenceSnapshotRow`/`DomainContributionRow` via `ConvergenceHistoryReader`) over
+`discovery.convergence_snapshots`/`_domain_contributions`, exactly mirroring how
+`discovery.convergence`'s own 5 domain-sequence readers already read Stage 3's package-private
+tables one layer up - not a new pattern, the same one repeated one level higher.
+
+**A real, small pre-existing Stage 4 bug found while researching this stage, fixed as Stage 5's
+own first implementation step**: `DiscoveryConvergenceWriter.write()` set
+`convergence_domain_contributions.evidence_reference` to `dc.sequences().get(0).sequenceType()` -
+"first alphabetically by `sequence_type`" (the reader's own `ORDER BY sequence_type`), not the
+actual representative (max-strength) sequence that drove `domainStrength`/`strongestPhase`.
+`DiscoveryConvergenceEngine` already had a correct private `representative(DomainContribution dc)`
+method doing the right `max(by sequenceStrength)` selection, already used correctly elsewhere, just
+never reused by the writer for this one column. Harmless for a domain with exactly one qualifying
+sequence, silently wrong for 2+. Fixed by dropping `private` (package-visible `static` instead) and
+having the writer call it; added a regression test (`representativeSelectsMaxStrengthSequenceRegardlessOfListOrder`)
+constructing a `DomainContribution` whose weaker sequence sorts first alphabetically, asserting the
+stronger one is still selected. This matters directly for Stage 5's own `MARKET_RECOGNITION`
+detection, which reads this exact field to check whether Market's real sequence is
+`MARKET_RECOGNITION_SEQUENCE` - disclosed as a best-effort v1 signal in both engines' javadoc (only
+ever sees the domain's single strongest qualifying sequence, never an exhaustive list).
+
+**Four full rounds of plan review, all incorporated**: (1) today's own Stage 4 snapshot must itself
+be `READY` before classifying today's lifecycle at all - a strong historical run of `READY`
+observations must never override a today that has regressed to `INSUFFICIENT_DATA`/`PARTIAL_DATA`.
+(2) `previousLifecycle` always means the latest *authoritative* Stage 5 classification
+(`readiness=READY AND lifecycle_state IS NOT NULL`), never simply the immediately-preceding row -
+`LifecycleSnapshotReader.findLatestAuthoritativeBefore` skips straight past any
+`INSUFFICIENT_HISTORY`/`NULL` gap day to the last real classification, so a single bad day can never
+erase real lifecycle history for hysteresis, deterioration-eligibility, or cycle-peak tracking. (3)
+Exactly one authoritative transition per instrument per date
+(`UNIQUE(instrument_id, transition_date)`, not `to_state`) - a same-day rerun with fresher data
+replaces the prior candidate transition rather than accumulating a second row; readiness
+loss/recovery (`READY→NULL`) is never itself a transition; the very first-ever authoritative
+classification gets `trigger_reason='INITIAL_LIFECYCLE_CLASSIFICATION'` with `from_state=NULL`,
+distinct from an ordinary transition. (4) the readiness gate must first confirm a Stage 4 snapshot
+exists for the *exact* evaluation date, not just "whatever the most recent row happens to be" in
+the bounded history - protects against a Stage 4 job failure/skip on a given day, since Stage 5's
+own 19:47 IST scheduler still fires 7 minutes later regardless; distinct reason code
+`CURRENT_CONVERGENCE_SNAPSHOT_MISSING`, never conflated with the ordinary
+`INSUFFICIENT_STAGE4_HISTORY` reason. Two more corrections from an earlier round: the
+`MARKET_RECOGNITION` maturity floor on Market's own `contributionScore` is a real, named, versioned
+rule (`stage5-market-recognition-min-market-contribution`, default 60), not an unnamed constant; and
+`peakLifecycleStage` - the highest-ranked state reached during the *current continuous cycle*
+(`EARLY_INFLECTION(1) < EMERGING(2) < ACCELERATING(3) < MARKET_RECOGNITION(4) < MATURE_RERATING(5)`,
+`DORMANT`/`DETERIORATING` deliberately unranked) - is persisted on every snapshot and drives
+`DETERIORATING` eligibility, so a real `EMERGING → DETERIORATING → EARLY_INFLECTION(partial
+recovery) → weakens again` sequence stays eligible throughout (peak carries forward unchanged
+through `DETERIORATING`, resets to `NULL` only on a genuine return to `DORMANT`).
+
+**Rules vs. engine constants, same split discipline as Stage 4**: 23 real DB-backed rules in
+`common/V22__seed_stage5_lifecycle_rules.sql` - all thresholds/persistence counts/window sizes
+named above, plus 4 lifecycle-strength composition weights
+(`stage5-weight-persistence/evidence-confidence/trajectory-consistency/history-quality`, 35/25/20/20)
+mirroring Stage 4's own precedent that scoring weights are rules, not constants - explicitly
+flagged for review before implementation and explicitly approved. Engine constants, each
+individually justified in `DiscoveryLifecycleEngine`'s own javadoc: DORMANT's
+`active_domain_count < 2` floor (derived from Stage 4's own breadth rule); DETERIORATING's "≥2 of 5
+dimensions" structure; only `ACCELERATING` gets a named hysteresis entry/exit pair
+(`stage5-acceleration-entry-threshold=65` / `stage5-acceleration-exit-threshold=55`); the
+decision-hierarchy evaluation order itself (`DETERIORATING` first, then `MATURE_RERATING →
+MARKET_RECOGNITION → ACCELERATING → EMERGING → EARLY_INFLECTION → DORMANT`); the cycle-peak rank
+mapping.
+
+**A real bug self-caught before any test run, via hand-tracing test fixtures against the just-written
+engine code** (not user-reported): the classify() fallback (reached when no state's persistence bar
+is cleared) originally read
+`return current.activeDomainCount() >= 2 ? LifecycleState.EARLY_INFLECTION : LifecycleState.DORMANT;`
+when no `previousLifecycle` existed - this let a single dormant-looking day bypass DORMANT's own
+required persistence check (`stage5-dormant-min-observations=10`) via the fallback, directly
+contradicting the explicit regression requirement that a single `NO_CONVERGENCE` day must never
+qualify for `DORMANT`. Fixed: the fallback now always returns `EARLY_INFLECTION` when no previous
+lifecycle exists (or hysteresis-carries-forward `previousLifecycle`'s own state when one does) -
+`DORMANT` is only ever reachable through its own persistence-gated branch. Caught and fixed before
+the regression test (`singleDormantLookingDayNeverClassifiesDormant`) was even written, then
+confirmed correct once it was.
+
+29 new tests (28 `DiscoveryLifecycleEngineTest` + 1 `DiscoveryLifecycleOrchestratorTest`, Mockito-based
+backfill-refusal check): all 3 readiness tiers, the DORMANT-persistence regression above, EMERGING/
+EARLY_INFLECTION persistence, ACCELERATING velocity-vs-flat-high plus explicit hysteresis (remains
+in ACCELERATING between the 55 exit and 65 entry thresholds; a fresh entry at the identical
+trajectory score does not qualify), all 5 `TrajectoryDirection` values including WEAKENING→RECOVERING,
+MARKET_RECOGNITION requiring real Market participation (not just a high blended score) plus the
+named-rule-floor test with a custom `RuleSet` override, MATURE_RERATING's real-duration requirement
+(5-day streak insufficient, 60+-day streak sufficient), DETERIORATING's real multi-dimension decline
+plus the "permanently-dormant-never-DETERIORATING" regression (peak never established, so the branch
+is structurally unreachable), and explicit peak-tracking tests (carries forward unchanged through
+DETERIORATING, resets to `NULL` only on genuine DORMANT, advances on reaching a higher-ranked state).
+One test fixture bug was caught and fixed during the first real test run, not during hand-tracing:
+the ACCELERATING hysteresis fixture had accidentally included an active MARKET domain, which meant
+`previousLifecycle.state == ACCELERATING` (itself one of `MARKET_RECOGNITION`'s own eligible prior
+states, checked earlier in the decision hierarchy) classified as `MARKET_RECOGNITION` before
+`ACCELERATING` was ever reached - fixed by excluding MARKET from that specific fixture's domain list;
+27/28 passed before the fix, 28/28 after. Full `./gradlew build` and `./gradlew test` green, including
+`ModuleBoundaryArchTest` (`discovery` still isn't in `DOMAIN_MODULES`) with zero changes.
+
+**Live-verified against the real running app**: triggered `discovery-convergence-detection` then
+`lifecycle-classification` back to back so Stage 5 would see a real snapshot for today's own date
+(layer -1 of the readiness gate). Result matches the primary expectation exactly - all 60 tracked
+instruments show `lifecycle_readiness = INSUFFICIENT_HISTORY`, `lifecycle_state = NULL`,
+`trajectory_direction = UNKNOWN`, reason `INSUFFICIENT_STAGE4_HISTORY`, cross-checked directly
+against Stage 4's own `discovery.convergence_snapshots` for today: 60/60 `INSUFFICIENT_DATA`, same
+as Stage 4's own last live verification - Stage 4 has still never produced a single `READY` (or even
+`PARTIAL_DATA`) snapshot for any instrument, so `readySnapshots.size() == 0` for every instrument,
+far below `stage5-min-ready-observations`. Re-triggered same-day: identical row counts (60
+snapshots / 60 reasons / 0 transitions), confirming idempotent upsert with reasons replaced not
+accumulated. Confirmed historical backfill is genuinely refused: manual trigger on
+`lifecycle-classification-backfill` returns a real 404, matching Stage 4's and Financial's own
+live-verified 404s. Admin monitoring endpoint confirms the job at "19:47 IST daily". Correctness
+for the actual state-machine logic (DORMANT/EMERGING/ACCELERATING/MARKET_RECOGNITION/
+MATURE_RERATING/DETERIORATING, hysteresis, peak-tracking) rests on the 29 unit tests, not a live
+hand-trace of a real classification - there is currently no real instrument anywhere in the data
+with enough Stage 4 readiness maturity to produce one, the identical honest gap Stage 4 itself
+disclosed one layer down.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
