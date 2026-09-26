@@ -3,6 +3,7 @@ package com.alphagraph.api.admin;
 import com.alphagraph.corporate.commentary.ManagementCommentaryScheduler;
 import com.alphagraph.corporate.events.EventExtractionScheduler;
 import com.alphagraph.corporate.knowledge.KnowledgeExtractionScheduler;
+import com.alphagraph.corporate.news.EconomicEventScheduler;
 import com.alphagraph.corporate.news.NewsCatalystScheduler;
 import com.alphagraph.corporate.orderbook.OrderBookScheduler;
 import com.alphagraph.corporate.processing.DocumentProcessingScheduler;
@@ -44,7 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manual re-trigger dispatch for 46 jobs - 38 standalone {@code @Scheduled} jobs (including Stage
+ * Manual re-trigger dispatch for 47 jobs - 39 standalone {@code @Scheduled} jobs (including Stage
  * 4's {@code discovery-convergence-detection} and Stage 5's {@code lifecycle-classification},
  * which both deliberately have no backfill entry - see below) plus 8 one-off historical backfills (market/financial/ownership/sector-context Stage 1
  * evidence, plus Market's, Ownership's, Sector's, and Capital Allocation's own Stage 3 sequence
@@ -87,6 +88,7 @@ class JobRegistry {
         OrderBookScheduler orderBookScheduler,
         ManagementCommentaryScheduler managementCommentaryScheduler,
         NewsCatalystScheduler newsCatalystScheduler,
+        EconomicEventScheduler economicEventScheduler,
         CorporateSignalScheduler corporateSignalScheduler,
         DecisionScoringScheduler decisionScoringScheduler,
         DecisionSnapshotScheduler decisionSnapshotScheduler,
@@ -158,6 +160,7 @@ class JobRegistry {
         jobs.put("order-book", orderBookScheduler::runOrderBookUpdate);
         jobs.put("management-commentary", managementCommentaryScheduler::runManagementCommentaryUpdate);
         jobs.put("news-catalyst", newsCatalystScheduler::runNewsCatalystUpdate);
+        jobs.put("economic-event-detection", economicEventScheduler::runEconomicEventDetection);
         jobs.put("corporate-signal", corporateSignalScheduler::runCorporateSignalUpdate);
         jobs.put("decision-scoring", decisionScoringScheduler::runDecisionScoringUpdate);
         jobs.put("decision-snapshot-archive", decisionSnapshotScheduler::runDecisionSnapshotArchive);

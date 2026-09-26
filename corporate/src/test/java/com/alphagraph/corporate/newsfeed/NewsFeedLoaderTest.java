@@ -24,8 +24,8 @@ import static org.mockito.Mockito.when;
 class NewsFeedLoaderTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-    private final NewsRelevanceFilter relevanceFilter = mock(NewsRelevanceFilter.class);
-    private final NewsFeedLoader loader = new NewsFeedLoader(jdbcTemplate, relevanceFilter);
+    private final NonEconomicPreFilter preFilter = mock(NonEconomicPreFilter.class);
+    private final NewsFeedLoader loader = new NewsFeedLoader(jdbcTemplate, preFilter);
 
     private NewsArticleDocument document(String extractedText) {
         return new NewsArticleDocument(
@@ -51,8 +51,8 @@ class NewsFeedLoaderTest {
     }
 
     @Test
-    void relevantArticleInsertedAsProcessed() {
-        when(relevanceFilter.isRelevant("matched text")).thenReturn(true);
+    void plausiblyEconomicArticleInsertedAsProcessed() {
+        when(preFilter.isPlausiblyEconomic("matched text")).thenReturn(true);
         AtomicReference<String> capturedStatus = stubInsertCapturingStatus();
 
         loader.load(document("matched text"));
@@ -61,22 +61,22 @@ class NewsFeedLoaderTest {
     }
 
     @Test
-    void nonRelevantArticleInsertedAsPendingReview() {
-        when(relevanceFilter.isRelevant("unrelated text")).thenReturn(false);
+    void nonEconomicArticleInsertedAsNotEconomicNeverQueuedForReview() {
+        when(preFilter.isPlausiblyEconomic("unrelated text")).thenReturn(false);
         AtomicReference<String> capturedStatus = stubInsertCapturingStatus();
 
         loader.load(document("unrelated text"));
 
-        assertThat(capturedStatus.get()).isEqualTo("PENDING_REVIEW");
+        assertThat(capturedStatus.get()).isEqualTo("NOT_ECONOMIC");
     }
 
     @Test
-    void recentDuplicateTitleSkipsBeforeRelevanceCheckOrInsert() {
+    void recentDuplicateTitleSkipsBeforePreFilterCheckOrInsert() {
         when(jdbcTemplate.queryForObject(contains("COUNT"), eq(Integer.class), any(), anyString())).thenReturn(1);
 
         loader.load(document("any text"));
 
-        verifyNoInteractions(relevanceFilter);
+        verifyNoInteractions(preFilter);
         verify(jdbcTemplate, never()).query(contains("INSERT"), any(RowMapper.class), any(Object[].class));
     }
 }

@@ -3,6 +3,7 @@ package com.alphagraph.api.admin;
 import com.alphagraph.corporate.commentary.ManagementCommentaryScheduler;
 import com.alphagraph.corporate.events.EventExtractionScheduler;
 import com.alphagraph.corporate.knowledge.KnowledgeExtractionScheduler;
+import com.alphagraph.corporate.news.EconomicEventScheduler;
 import com.alphagraph.corporate.news.NewsCatalystScheduler;
 import com.alphagraph.corporate.orderbook.OrderBookScheduler;
 import com.alphagraph.corporate.processing.DocumentProcessingScheduler;
@@ -64,6 +65,7 @@ class JobRegistryTest {
     private final OrderBookScheduler orderBookScheduler = mock(OrderBookScheduler.class);
     private final ManagementCommentaryScheduler managementCommentaryScheduler = mock(ManagementCommentaryScheduler.class);
     private final NewsCatalystScheduler newsCatalystScheduler = mock(NewsCatalystScheduler.class);
+    private final EconomicEventScheduler economicEventScheduler = mock(EconomicEventScheduler.class);
     private final CorporateSignalScheduler corporateSignalScheduler = mock(CorporateSignalScheduler.class);
     private final DecisionScoringScheduler decisionScoringScheduler = mock(DecisionScoringScheduler.class);
     private final DecisionSnapshotScheduler decisionSnapshotScheduler = mock(DecisionSnapshotScheduler.class);
@@ -93,7 +95,7 @@ class JobRegistryTest {
         documentProcessingScheduler, knowledgeExtractionScheduler, technicalAnalysisScheduler,
         financialResultsBridgeScheduler, fundamentalAnalysisScheduler, eventExtractionScheduler,
         institutionalAnalysisScheduler, sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler,
-        managementCommentaryScheduler, newsCatalystScheduler, corporateSignalScheduler, decisionScoringScheduler,
+        managementCommentaryScheduler, newsCatalystScheduler, economicEventScheduler, corporateSignalScheduler, decisionScoringScheduler,
         decisionSnapshotScheduler, forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler,
         ownershipTransformationScheduler, marketAccumulationScheduler, financialTransformationScheduler,
         capitalAllocationScheduler, sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
@@ -103,11 +105,11 @@ class JobRegistryTest {
         discoveryConvergenceScheduler, discoveryLifecycleScheduler
     );
 
-    private static final List<String> ALL_46_JOB_NAMES = List.of(
+    private static final List<String> ALL_47_JOB_NAMES = List.of(
         "market-discovery-price-backfill", "deal-materiality-scoring", "institutional-interpretation",
         "document-processing", "knowledge-extraction", "technical-analysis", "financial-results-bridge",
         "fundamental-analysis", "corporate-event-extraction", "institutional-analysis", "sector-analysis",
-        "risk-analysis", "order-book", "management-commentary", "news-catalyst", "corporate-signal",
+        "risk-analysis", "order-book", "management-commentary", "news-catalyst", "economic-event-detection", "corporate-signal",
         "decision-scoring", "decision-snapshot-archive", "forward-outcome-tracking", "daily-ai-report",
         "xbrl-shareholding-enrichment", "ownership-transformation", "market-accumulation-evidence",
         "financial-results-comparision-fetch", "capital-allocation-evidence", "sector-context-evidence",
@@ -123,8 +125,8 @@ class JobRegistryTest {
     );
 
     @Test
-    void containsExactlyAllFortySixRealJobNames() {
-        for (String jobName : ALL_46_JOB_NAMES) {
+    void containsExactlyAllFortySevenRealJobNames() {
+        for (String jobName : ALL_47_JOB_NAMES) {
             assertThat(registry.contains(jobName)).as("contains(%s)", jobName).isTrue();
         }
         assertThat(registry.contains("not-a-real-job")).isFalse();
@@ -148,7 +150,7 @@ class JobRegistryTest {
             documentProcessingScheduler, technicalAnalysisScheduler, financialResultsBridgeScheduler,
             fundamentalAnalysisScheduler, eventExtractionScheduler, institutionalAnalysisScheduler,
             sectorAnalysisScheduler, riskAnalysisScheduler, orderBookScheduler, managementCommentaryScheduler,
-            newsCatalystScheduler, corporateSignalScheduler, decisionScoringScheduler, decisionSnapshotScheduler,
+            newsCatalystScheduler, economicEventScheduler, corporateSignalScheduler, decisionScoringScheduler, decisionSnapshotScheduler,
             forwardOutcomeScheduler, dailyReportScheduler, xbrlEnrichmentScheduler, ownershipTransformationScheduler,
             marketAccumulationScheduler, financialTransformationScheduler, capitalAllocationScheduler,
             sectorContextScheduler, marketInflectionScheduler, financialInflectionScheduler,
@@ -175,6 +177,7 @@ class JobRegistryTest {
         registry.trigger("order-book");
         registry.trigger("management-commentary");
         registry.trigger("news-catalyst");
+        registry.trigger("economic-event-detection");
         registry.trigger("corporate-signal");
         registry.trigger("decision-scoring");
         registry.trigger("decision-snapshot-archive");
@@ -221,6 +224,7 @@ class JobRegistryTest {
         verify(orderBookScheduler).runOrderBookUpdate();
         verify(managementCommentaryScheduler).runManagementCommentaryUpdate();
         verify(newsCatalystScheduler).runNewsCatalystUpdate();
+        verify(economicEventScheduler).runEconomicEventDetection();
         verify(corporateSignalScheduler).runCorporateSignalUpdate();
         verify(decisionScoringScheduler).runDecisionScoringUpdate();
         verify(decisionSnapshotScheduler).runDecisionSnapshotArchive();

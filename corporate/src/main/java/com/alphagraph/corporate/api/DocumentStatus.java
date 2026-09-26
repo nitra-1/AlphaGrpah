@@ -21,12 +21,15 @@ package com.alphagraph.corporate.api;
  * original EVENTS_EXTRACTED value, which implied a single specific consumer and stopped fitting
  * once a second engine (Order Book, Module 2.4) needed to read the same documents independently.
  *
- * <p>PENDING_REVIEW and DISCARDED (Module 2.6 pre-filter retrofit) are specific to RSS-collected
- * news: {@code corporate.newsfeed.NewsRelevanceFilter} runs a cheap keyword check before a
- * collected article reaches PROCESSED; a non-match lands in PENDING_REVIEW instead, invisible to
- * {@code KnowledgeExtractionOrchestrator}'s normal PROCESSED-only query, and stays there until an
- * admin either promotes it (PROCESSED, then immediately extracted) or rejects it (DISCARDED,
- * terminal - never extracted).
+ * <p>PENDING_REVIEW and DISCARDED (Module 2.6 pre-filter retrofit) are legacy values, kept only
+ * for existing rows' own history/audit trail - **nothing writes them anymore** since the News &
+ * Economic Discovery rework retired the human relevance-triage queue entirely. NOT_ECONOMIC is
+ * their replacement: {@code corporate.newsfeed.NonEconomicPreFilter} runs a cheap, inclusion-
+ * biased keyword check before a collected news article reaches PROCESSED - a clear non-match
+ * (sports/entertainment/celebrity/crime vocabulary) lands in NOT_ECONOMIC, a terminal state that
+ * needs no human action, same as DISCARDED did before. The real relevance classification is
+ * {@code corporate.knowledge.NewsExtractor}'s own {@code economicRelevance} field, run
+ * automatically on every article that clears the cheap pre-filter - never gated behind a human.
  */
 public enum DocumentStatus {
     PENDING,
@@ -36,5 +39,6 @@ public enum DocumentStatus {
     FAILED,
     KNOWLEDGE_EXTRACTED,
     PENDING_REVIEW,
-    DISCARDED
+    DISCARDED,
+    NOT_ECONOMIC
 }

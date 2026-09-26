@@ -12,7 +12,7 @@ import { DailyReportPage } from './routes/DailyReportPage'
 import { TradeJournalPage } from './routes/TradeJournalPage'
 import { InstrumentDetailPage } from './routes/InstrumentDetailPage'
 import { NotFoundPage } from './routes/NotFoundPage'
-import { NewsReviewPage } from './routes/NewsReviewPage'
+import { NewsDiscoveryPage } from './routes/NewsDiscoveryPage'
 import { AddInstrumentPage } from './routes/AddInstrumentPage'
 import { SectorsPage } from './routes/SectorsPage'
 import { AddFinancialDataPage } from './routes/AddFinancialDataPage'
@@ -43,7 +43,7 @@ function App() {
           <Route path="/learning" element={<LearningPage />} />
 
           <Route element={<AdminRoute />}>
-            <Route path="/admin/news-review" element={<NewsReviewPage />} />
+            <Route path="/admin/news-discovery" element={<NewsDiscoveryPage />} />
             <Route path="/admin/discovery" element={<DiscoveryPage />} />
             <Route path="/admin/add-instrument" element={<AddInstrumentPage />} />
             <Route path="/admin/sectors" element={<SectorsPage />} />

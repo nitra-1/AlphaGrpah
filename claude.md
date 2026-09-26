@@ -1702,6 +1702,98 @@ tests exactly. Full `./gradlew build`/`test` green; live-verified end to end in 
 (BLEL added through the real Add Instrument UI, `discovery_status` confirmed `PROMOTED` in the DB
 immediately after).
 
+**News & Economic Discovery rework** (2026-09-26): replaces the old News Review module - a manual
+admin queue where any article whose text didn't literally name a *tracked* instrument sat in
+`PENDING_REVIEW` forever (3,537 real rows stuck there, oldest from 2026-08-11) - with automatic
+classification. Every collected article now flows: Economic Event -> Sector Impact (multi-sector,
+multi-direction) -> Company Exposure (tracked *and* untracked) -> Discovery Candidate, evidence and
+context only, never a direct Decision Engine score input (explicit user instruction: "do not let
+the team 'improve' the Decision Engine score with news during this build").
+
+**Backlog**: one-time migration (`corporate/V19`) discarded the 3,463 `PENDING_REVIEW` rows older
+than 5 days and flipped the remaining 403 to `PROCESSED`, ready for the ordinary next extraction
+cycle - live-verified 0 `PENDING_REVIEW` rows remain. (The plan's own original estimate was
+3,129/408 - the real numbers drifted because the backlog kept growing between planning and
+implementation; the `now() - interval '5 days'` cutoff is evaluated at migration time, by design.)
+
+**Schema** (`corporate/V19`): `economic_events` (theme, economic_relevance, direction, magnitude,
+confidence, horizon, `cluster_key` = theme+date as a v1 dedup proxy, rule-driven `expiry_date`),
+`economic_event_sector_impacts` (one row per sector - a single event can and does produce both
+POSITIVE and NEGATIVE rows across different sectors, never collapsed to one verdict),
+`economic_event_company_exposures` (`match_type` - `EXACT_INSTRUMENT|EXACT_SECURITY_MASTER|
+ALIAS|SAFE_SUBSTRING|UNRESOLVED` - makes every company match auditable, never silent),
+`news_company_aliases` (starts empty, grown incrementally, never auto-populated),
+`news_discovery_candidates` (`NEW -> UNDER_OBSERVATION -> PROMOTED | DISMISSED`, deliberately no
+score/ranking column anywhere).
+
+**`CompanyResolver`** (`corporate.news`) - the highest-risk part of this design: a single naive
+name lookup would conflate "Tata Motors"/"Tata Motors Ltd"/"Tata Motors Passenger Vehicles" with
+different real entities, so a wrong match is worse than no match. Real 4-step pipeline: exact
+match against tracked `reference.instruments` -> exact match against the full NSE universe in
+`reference.security_master` -> curated `news_company_aliases` -> a bounded single-candidate
+substring match via `EntityNameNormalizer.matches` (the codebase's one existing safe-matching
+precedent), applied only when it resolves to exactly one candidate - two or more candidates is
+genuinely ambiguous and resolves to `UNRESOLVED`, never guessed. Caught and fixed two real
+correctness bugs before any test ran wrong: (1) a security-master-resolved symbol wasn't being
+checked against the tracked-instrument list, which would have wrongly reported an already-tracked
+company as an "untracked discovery candidate"; (2) the substring-match helper was copy-pasted from
+`NewsRelevanceFilter`'s single-token-equality shape, which would never match a multi-word phrase
+against a longer company name ("Kaynes Technology" would never have matched "Kaynes Technology
+India Limited") - fixed by switching to `EntityNameNormalizer.matches`'s real containment
+semantics. 9 unit tests, including the ambiguous-multi-candidate-stays-unresolved case as its own
+explicit regression test.
+
+**`NonEconomicPreFilter`** replaces `NewsRelevanceFilter` as `NewsFeedLoader`'s gate - a cheap,
+inclusion-biased keyword blocklist (sports/entertainment/celebrity/crime) that only routes
+obviously non-economic articles to a new terminal `NOT_ECONOMIC` status; nothing is ever queued
+for human review again. The real relevance call is `NewsExtractor`'s own LLM-driven
+`economicRelevance` classification downstream, not this gate.
+
+**`NewsExtractor` schema extension** - one LLM call per document still (cost stays flat), now also
+returning root-level `economicRelevance/theme/eventDirection/magnitude/eventConfidence/horizon` and
+`sectorImpacts[]` alongside the pre-existing per-company `impacts[]` (which itself gained
+`sector`/`exposureType`/`impactStrength`). `EconomicEventOrchestrator`/`Scheduler` run as a fully
+independent consumer of the same `KNOWLEDGE_EXTRACTED` corpus `NewsCatalystOrchestrator` already
+reads, own checkpoint key `ECONOMIC_EVENT_ENGINE`, new cron `economic-event-detection` at 18:33
+IST (48th registered job).
+
+**Live-verified end to end, not just compiled**: restarted the app, confirmed both migrations
+(`corporate/V19`, `common/V23`) applied cleanly. Spot-checked 3 real backlog articles by hand
+through the new `NewsExtractor` schema (a temporary `@SpringBootTest` calling
+`KnowledgeExtractionOrchestrator.extractDocument` directly, deleted immediately after - this
+codebase's own established convention for one-off manual triggers, chosen over running the full
+403-article backlog through the LLM in one shot since that would have also swept in 123 unrelated
+`EXCHANGE_ANNOUNCEMENT` documents sharing the same `PROCESSED` job): got 2 real, correctly
+classified economic events (`STRUCTURED_DEBT_INVESTING`/MARKET/NEUTRAL/LOW and
+`BOND_YIELD_SURGE`/MACRO/NEGATIVE/MEDIUM) with real sector impacts (Wealth Management POSITIVE,
+Banking & Financial Services NEGATIVE) and correct rule-driven expiry dates; the third article
+produced zero facts at all, a pre-existing Stage 1 classification/routing behavior this rework
+never touches, not a new bug. Triggered `economic-event-detection` in full via the admin retry
+endpoint (792 documents checkpointed, a pure-parsing job with no further LLM cost) - the 2 new
+events flowed through correctly, the 789 pre-existing old-schema `KNOWLEDGE_EXTRACTED` articles
+correctly produced nothing (they predate the event-level schema entirely). Hit all 6 new
+`/admin/news-discovery/*` endpoints with a real JWT - summary/events/sector-impact-map/candidates
+all returned real, non-fabricated data matching the DB directly, including the full event-detail
+response (sector impacts, company exposures, source articles with working links). Browser-verified
+the full rebuilt page (logged in as admin): 5 stat cards, Latest Economic Events feed, Sector
+Impact Map, event detail panel with all 3 tabs (News Impact/Sector Impact/Company Exposure)
+switching correctly against real data. Candidates table and its Observe/Dismiss actions verified
+live against a real, genuinely-untracked NSE company (`AARNAV`, inserted as a one-off test row and
+removed after): Observe correctly flipped `NEW -> UNDER_OBSERVATION` and made its own button
+disappear; Dismiss correctly flipped to the terminal `DISMISSED` state and removed both actions -
+matches `NewsDiscoveryService`'s idempotency-guard design exactly. Promote intentionally not
+live-exercised since it reuses the existing, completely unmodified Add Instrument flow already
+verified in the fix above. Full `./gradlew build`/`test` green throughout (including new
+`EconomicEventWriterTest`/`EconomicEventOrchestratorTest`/`NewsDiscoveryServiceTest`), frontend
+`tsc -b` and `vite build` both clean.
+
+**Deferred, disclosed at plan time, not built in this pass**: signal confirmation/contradiction
+detection against existing Market/Sector Stage 2-3 signals; Opportunity Detail page integration
+("why this company appeared" catalyst narrative); any Decision Score weighting from news
+(explicit user instruction to wait for real outcome evidence first); a real decay curve (v1 uses a
+simple rule-driven fixed expiry per magnitude); real semantic event clustering (v1 dedup proxy is
+`(theme, calendar_date)`, a pragmatic stand-in disclosed as such at plan time).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

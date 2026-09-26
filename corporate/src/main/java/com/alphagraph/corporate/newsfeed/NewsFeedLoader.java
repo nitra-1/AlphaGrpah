@@ -18,9 +18,14 @@ import java.util.regex.Pattern;
  * {@code symbol} NULL (Module 2.6's whole premise: which companies this affects is determined
  * later, not at collection). No download/OCR stage exists for RSS-sourced text (see
  * {@code corporate.newsfeed} package-info), so this goes straight past PENDING/DOWNLOADED to
- * either PROCESSED (ready for tonight's automatic extraction) or PENDING_REVIEW (held for an
- * admin decision), decided by {@link NewsRelevanceFilter} - see that class and
- * {@code corporate.api.DocumentStatus} for the full rationale.
+ * either PROCESSED (ready for tonight's automatic extraction/classification) or NOT_ECONOMIC
+ * (the deterministic pre-filter's own terminal state - see {@link NonEconomicPreFilter}).
+ *
+ * <p>News & Economic Discovery rework: **nothing is ever queued for human relevance triage
+ * anymore.** {@link NonEconomicPreFilter} replaces {@link NewsRelevanceFilter} - it is
+ * inclusion-biased (only rejects content dominated by clearly non-economic vocabulary), so the
+ * real relevance call is {@code corporate.knowledge.NewsExtractor}'s own {@code
+ * economicRelevance} classification downstream, not this cheap gate.
  *
  * <p>Two dedup layers: (1) {@code (source, external_id)} - the same outlet republishing the same
  * link is a natural no-op, same as every prior Loader; (2) a real, disclosed, deliberately simple
@@ -40,11 +45,11 @@ public class NewsFeedLoader implements Loader<NewsArticleDocument> {
     private static final long DEDUP_WINDOW_HOURS = 48;
 
     private final JdbcTemplate jdbcTemplate;
-    private final NewsRelevanceFilter relevanceFilter;
+    private final NonEconomicPreFilter preFilter;
 
-    public NewsFeedLoader(JdbcTemplate jdbcTemplate, NewsRelevanceFilter relevanceFilter) {
+    public NewsFeedLoader(JdbcTemplate jdbcTemplate, NonEconomicPreFilter preFilter) {
         this.jdbcTemplate = jdbcTemplate;
-        this.relevanceFilter = relevanceFilter;
+        this.preFilter = preFilter;
     }
 
     @Override
@@ -54,7 +59,7 @@ public class NewsFeedLoader implements Loader<NewsArticleDocument> {
             return;
         }
 
-        String status = relevanceFilter.isRelevant(document.extractedText()) ? "PROCESSED" : "PENDING_REVIEW";
+        String status = preFilter.isPlausiblyEconomic(document.extractedText()) ? "PROCESSED" : "NOT_ECONOMIC";
 
         List<UUID> inserted = jdbcTemplate.query(
             """
@@ -71,8 +76,8 @@ public class NewsFeedLoader implements Loader<NewsArticleDocument> {
 
         if (inserted.isEmpty()) {
             log.debug("News article already collected, skipping: source={} externalId={}", document.source(), document.externalId());
-        } else if ("PENDING_REVIEW".equals(status)) {
-            log.debug("News article filtered out (no tracked-instrument match), held for admin review: {}", document.title());
+        } else if ("NOT_ECONOMIC".equals(status)) {
+            log.debug("News article filtered out (non-economic vocabulary dominant), never queued for review: {}", document.title());
         }
     }
 

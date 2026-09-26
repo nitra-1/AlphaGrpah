@@ -1,5 +1,6 @@
 package com.alphagraph.api.admin;
 
+import com.alphagraph.corporate.news.NewsDiscoveryService;
 import com.alphagraph.corporate.relationships.EntityResolver;
 import com.alphagraph.market.pricing.HistoricalBackfillService;
 import com.alphagraph.ownership.deals.DiscoveryService;
@@ -29,11 +30,12 @@ public class InstrumentAdditionService {
     private final HistoricalBackfillService backfillService;
     private final EntityResolver entityResolver;
     private final DiscoveryService discoveryService;
+    private final NewsDiscoveryService newsDiscoveryService;
 
     public InstrumentAdditionService(
         SecurityMasterReader securityMasterReader, SectorService sectorService,
         InstrumentWriter instrumentWriter, HistoricalBackfillService backfillService, EntityResolver entityResolver,
-        DiscoveryService discoveryService
+        DiscoveryService discoveryService, NewsDiscoveryService newsDiscoveryService
     ) {
         this.securityMasterReader = securityMasterReader;
         this.sectorService = sectorService;
@@ -41,6 +43,7 @@ public class InstrumentAdditionService {
         this.backfillService = backfillService;
         this.entityResolver = entityResolver;
         this.discoveryService = discoveryService;
+        this.newsDiscoveryService = newsDiscoveryService;
     }
 
     public InstrumentDto addInstrument(String symbol, String sectorName) {
@@ -66,6 +69,12 @@ public class InstrumentAdditionService {
         // DiscoveryReader.findPendingReview already excludes it live via reference.instruments,
         // regardless of this flag.
         discoveryService.markPromoted(masterEntry.symbol());
+
+        // Same no-op-for-most-symbols reasoning as the discoveryService call above, but for a
+        // genuinely separate root cause (news exposure, not bulk/block deals) - a symbol only has
+        // a corporate.news_discovery_candidates row if it was once identified as exposed to a real
+        // economic event.
+        newsDiscoveryService.markPromoted(masterEntry.symbol());
 
         backfillService.backfillAsync(instrumentId, masterEntry.symbol());
 

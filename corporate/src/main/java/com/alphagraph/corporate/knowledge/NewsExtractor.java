@@ -104,7 +104,44 @@ class NewsExtractor implements DocumentExtractor {
         }
 
         List<ExtractedFact> facts = new ArrayList<>();
-        for (LlmNewsCompanyImpact impact : response.impacts()) {
+
+        // Event-level group - one per document, present whenever the root economicRelevance
+        // classification came back at all (it's a required schema field). This single group is
+        // what corporate.news.EconomicEventParser looks for to build the Economic Event row;
+        // company/sector groups below are found by their own distinguishing key instead.
+        if (!isBlank(response.economicRelevance())) {
+            UUID eventGroup = UUID.randomUUID();
+            double eventConfidence = response.eventConfidence();
+            facts.add(new ExtractedFact(
+                DocumentIntelligenceEngine.normalizeFactType("economicRelevance"), response.economicRelevance().trim(), "", eventConfidence, null, eventGroup
+            ));
+            addIfPresent(facts, "theme", response.theme(), eventConfidence, eventGroup);
+            addIfPresent(facts, "eventDirection", response.eventDirection(), eventConfidence, eventGroup);
+            addIfPresent(facts, "magnitude", response.magnitude(), eventConfidence, eventGroup);
+            addIfPresent(facts, "horizon", response.horizon(), eventConfidence, eventGroup);
+        }
+
+        List<LlmSectorImpact> sectorImpacts = response.sectorImpacts() == null ? List.of() : response.sectorImpacts();
+        for (LlmSectorImpact sectorImpact : sectorImpacts) {
+            if (isBlank(sectorImpact.sector()) || isBlank(sectorImpact.direction()) || isBlank(sectorImpact.strength())) {
+                continue;
+            }
+            UUID group = UUID.randomUUID();
+            double confidence = sectorImpact.confidence();
+            facts.add(new ExtractedFact(
+                DocumentIntelligenceEngine.normalizeFactType("sectorName"), sectorImpact.sector().trim(), "", confidence, null, group
+            ));
+            facts.add(new ExtractedFact(
+                DocumentIntelligenceEngine.normalizeFactType("sectorDirection"), sectorImpact.direction().trim(), "", confidence, null, group
+            ));
+            facts.add(new ExtractedFact(
+                DocumentIntelligenceEngine.normalizeFactType("sectorStrength"), sectorImpact.strength().trim(), "", confidence, null, group
+            ));
+            addIfPresent(facts, "mechanism", sectorImpact.mechanism(), confidence, group);
+        }
+
+        List<LlmNewsCompanyImpact> impacts = response.impacts() == null ? List.of() : response.impacts();
+        for (LlmNewsCompanyImpact impact : impacts) {
             if (isBlank(impact.companyName()) || isBlank(impact.direction())) {
                 continue;
             }
@@ -119,6 +156,13 @@ class NewsExtractor implements DocumentExtractor {
             ));
             addIfPresent(facts, "signal", impact.signal(), confidence, group);
             addIfPresent(facts, "impactSummary", impact.impactSummary(), confidence, group);
+            // News & Economic Discovery rework: which sector this company's exposure relates to,
+            // the exposure mechanism (DIRECT/SUPPLY_CHAIN/INPUT_COST/DEMAND/REGULATORY/
+            // COMPETITIVE/MACRO), and impact strength - corporate.news.EconomicEventParser reads
+            // these alongside the existing fields to build a CompanyExposure row.
+            addIfPresent(facts, "sector", impact.sector(), confidence, group);
+            addIfPresent(facts, "exposureType", impact.exposureType(), confidence, group);
+            addIfPresent(facts, "impactStrength", impact.impactStrength(), confidence, group);
             // Module 2.7: which graph entity this impact relates to and how - e.g. companyName
             // "Kaynes" BENEFICIARY_OF relatedEntityName "Semiconductor PLI" (relatedEntityType
             // GOVERNMENT_SCHEME). All three are optional together - not every impact resolves to
@@ -144,15 +188,41 @@ class NewsExtractor implements DocumentExtractor {
 
     static String buildPrompt(String documentText) {
         return """
-            You are a specialized extractor that identifies which companies a news item
-            materially affects and how - nothing else. This is general news (business news,
-            government/policy notifications, industry or sector developments), NOT a company's
-            own filing, so there may be zero, one, or several affected companies named or clearly
-            implied by the text (e.g. a government scheme naming an industry rather than a single
-            company - identify the specific companies that industry news would plausibly affect,
-            if the text names or clearly implies them).
+            You are a specialized extractor for Indian financial/economic news. Read the article
+            and produce THREE things: an overall economic classification of the article itself,
+            which SECTORS it affects (if any), and which COMPANIES it affects (if any, tracked or
+            not - name them freely, in your own words, exactly as the text does or clearly
+            implies; do not worry about whether AlphaGraph tracks them).
 
-            For EVERY company the news materially affects, extract:
+            STEP 1 - Classify the article itself:
+            - economicRelevance: exactly one of ECONOMIC, MARKET, SECTOR, COMPANY, COMMODITY,
+              REGULATORY, GEOPOLITICAL, MACRO, NON_ECONOMIC, LOW_CONFIDENCE. Use NON_ECONOMIC for
+              sports/entertainment/celebrity/crime/pure-politics content with no economic angle.
+              Use LOW_CONFIDENCE only when you genuinely cannot tell.
+            - theme: a short label for the underlying economic event/theme, e.g.
+              "DEFENCE_SPENDING", "CRUDE_OIL_PRICE_RISE", "RBI_RATE_DECISION" - empty string if
+              economicRelevance is NON_ECONOMIC.
+            - eventDirection: POSITIVE, NEGATIVE, MIXED, or NEUTRAL for the economy/market overall
+              (not any one company).
+            - magnitude: HIGH, MEDIUM, or LOW - how significant this event is.
+            - eventConfidence: 0-100, your confidence in this classification.
+            - horizon: SHORT_TERM (days), MEDIUM_TERM (months), or LONG_TERM (years) - how long
+              this event's effects plausibly matter.
+            If economicRelevance is NON_ECONOMIC or LOW_CONFIDENCE, leave sectorImpacts and
+            impacts as empty lists - do not force a sector/company mapping onto irrelevant news.
+
+            STEP 2 - For EVERY sector the news plausibly affects (there can be several, with
+            DIFFERENT directions - e.g. crude oil rising is NEGATIVE for Airlines/Paints/Tyres but
+            POSITIVE for Oil Producers/Oil Services - never collapse this into one verdict for
+            "Oil"), extract:
+            - sector: the sector name, e.g. "Defence", "Airlines", "Oil & Gas"
+            - direction: POSITIVE, NEGATIVE, MIXED, or NEUTRAL for this specific sector
+            - strength: HIGH, MEDIUM, or LOW
+            - confidence: 0-100
+            - mechanism: one short phrase for WHY this sector is affected, e.g. "higher fuel
+              cost", "government procurement", "input cost relief" - empty if not clear.
+
+            STEP 3 - For EVERY company the news materially affects, extract:
             - companyName: the company's name exactly as it appears (or is clearly implied) in
               the text - do not abbreviate or normalize it yourself
             - direction: POSITIVE, NEGATIVE, or NEUTRAL - is this news good, bad, or neutral for
@@ -163,6 +233,15 @@ class NewsExtractor implements DocumentExtractor {
               company
             - confidence: 0-100, your confidence in this company being genuinely, materially
               affected (not just tangentially mentioned)
+            - sector: which sector this company's exposure belongs to (should normally match one
+              of the sectorImpacts entries above)
+            - exposureType: exactly one of DIRECT (company directly produces/sells the affected
+              product/service), SUPPLY_CHAIN (supplies the affected industry), INPUT_COST
+              (affected by cost of a commodity/input), DEMAND (benefits from increased demand),
+              REGULATORY (directly affected by a government/regulatory change), COMPETITIVE (one
+              company's gain is a rival's disadvantage), MACRO (interest rates/currency/inflation/
+              liquidity, not sector-specific)
+            - impactStrength: HIGH, MEDIUM, or LOW
 
             If the news names or implies a specific OTHER entity that explains WHY this company is
             affected - a government scheme, a broader industry theme, a customer, a competitor -
@@ -180,14 +259,12 @@ class NewsExtractor implements DocumentExtractor {
               theme is PART_OF_THEME) - empty if relatedEntityName is empty
 
             Example: "The government announced a new Semiconductor PLI scheme. Kaynes Technology
-            welcomed the scheme." -> companyName "Kaynes Technology", relatedEntityName
-            "Semiconductor PLI", relatedEntityType GOVERNMENT_SCHEME, relationshipType
-            BENEFICIARY_OF.
+            welcomed the scheme." -> companyName "Kaynes Technology", sector "Electronics",
+            exposureType REGULATORY, relatedEntityName "Semiconductor PLI", relatedEntityType
+            GOVERNMENT_SCHEME, relationshipType BENEFICIARY_OF.
 
-            If the news doesn't materially affect any identifiable company, return an empty
-            impacts list. Do not invent companies that aren't named or clearly implied by the
-            text, and do not include a company that's only mentioned in passing with no real
-            impact.
+            Do not invent companies or sectors that aren't named or clearly implied by the text,
+            and do not include a company that's only mentioned in passing with no real impact.
 
             Document text:
             %s
@@ -210,6 +287,11 @@ class NewsExtractor implements DocumentExtractor {
                 Map.entry("signal", Map.of("type", "string")),
                 Map.entry("impactSummary", Map.of("type", "string")),
                 Map.entry("confidence", Map.of("type", "integer", "description", "0-100 confidence in this extraction.")),
+                Map.entry("sector", Map.of("type", "string", "description", "Which sector this company's exposure belongs to.")),
+                Map.entry("exposureType", Map.of("type", "string", "enum", List.of(
+                    "DIRECT", "SUPPLY_CHAIN", "INPUT_COST", "DEMAND", "REGULATORY", "COMPETITIVE", "MACRO"
+                ))),
+                Map.entry("impactStrength", Map.of("type", "string", "enum", List.of("HIGH", "MEDIUM", "LOW"))),
                 Map.entry("relatedEntityName", Map.of("type", "string", "description", "Empty string if there's no specific related entity.")),
                 Map.entry("relatedEntityType", Map.of("type", "string", "enum", List.of(
                     "", "CUSTOMER", "THEME", "GOVERNMENT_SCHEME", "COMPETITOR"
@@ -222,17 +304,47 @@ class NewsExtractor implements DocumentExtractor {
             )),
             Map.entry("required", List.of(
                 "companyName", "direction", "signal", "impactSummary", "confidence",
+                "sector", "exposureType", "impactStrength",
                 "relatedEntityName", "relatedEntityType", "relationshipType"
             )),
             Map.entry("additionalProperties", false)
         );
+        Map<String, Object> sectorImpactSchema = Map.ofEntries(
+            Map.entry("type", "object"),
+            Map.entry("properties", Map.ofEntries(
+                Map.entry("sector", Map.of("type", "string")),
+                Map.entry("direction", Map.of("type", "string", "enum", List.of("POSITIVE", "NEGATIVE", "MIXED", "NEUTRAL"))),
+                Map.entry("strength", Map.of("type", "string", "enum", List.of("HIGH", "MEDIUM", "LOW"))),
+                Map.entry("confidence", Map.of("type", "integer", "description", "0-100 confidence in this extraction.")),
+                Map.entry("mechanism", Map.of("type", "string", "description", "Empty string if there's no clear, specific mechanism to name."))
+            )),
+            Map.entry("required", List.of("sector", "direction", "strength", "confidence", "mechanism")),
+            Map.entry("additionalProperties", false)
+        );
+
         Map<String, Object> impactsArraySchema = Map.of("type", "array", "items", impactSchema);
-        Map<String, Object> rootProperties = Map.of("impacts", impactsArraySchema);
+        Map<String, Object> sectorImpactsArraySchema = Map.of("type", "array", "items", sectorImpactSchema);
+        Map<String, Object> rootProperties = Map.ofEntries(
+            Map.entry("economicRelevance", Map.of("type", "string", "enum", List.of(
+                "ECONOMIC", "MARKET", "SECTOR", "COMPANY", "COMMODITY", "REGULATORY", "GEOPOLITICAL",
+                "MACRO", "NON_ECONOMIC", "LOW_CONFIDENCE"
+            ))),
+            Map.entry("theme", Map.of("type", "string", "description", "Empty string if economicRelevance is NON_ECONOMIC.")),
+            Map.entry("eventDirection", Map.of("type", "string", "enum", List.of("POSITIVE", "NEGATIVE", "MIXED", "NEUTRAL"))),
+            Map.entry("magnitude", Map.of("type", "string", "enum", List.of("HIGH", "MEDIUM", "LOW"))),
+            Map.entry("eventConfidence", Map.of("type", "integer", "description", "0-100 confidence in this classification.")),
+            Map.entry("horizon", Map.of("type", "string", "enum", List.of("SHORT_TERM", "MEDIUM_TERM", "LONG_TERM"))),
+            Map.entry("sectorImpacts", sectorImpactsArraySchema),
+            Map.entry("impacts", impactsArraySchema)
+        );
 
         return Map.of(
             "type", "object",
             "properties", rootProperties,
-            "required", List.of("impacts"),
+            "required", List.of(
+                "economicRelevance", "theme", "eventDirection", "magnitude", "eventConfidence", "horizon",
+                "sectorImpacts", "impacts"
+            ),
             "additionalProperties", false
         );
     }
