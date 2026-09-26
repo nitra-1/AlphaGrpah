@@ -2,6 +2,7 @@ package com.alphagraph.api.admin;
 
 import com.alphagraph.corporate.relationships.EntityResolver;
 import com.alphagraph.market.pricing.HistoricalBackfillService;
+import com.alphagraph.ownership.deals.DiscoveryService;
 import com.alphagraph.reference.api.SecurityMasterEntry;
 import com.alphagraph.reference.instrument.InstrumentWriter;
 import com.alphagraph.reference.instrument.SectorService;
@@ -27,16 +28,19 @@ public class InstrumentAdditionService {
     private final InstrumentWriter instrumentWriter;
     private final HistoricalBackfillService backfillService;
     private final EntityResolver entityResolver;
+    private final DiscoveryService discoveryService;
 
     public InstrumentAdditionService(
         SecurityMasterReader securityMasterReader, SectorService sectorService,
-        InstrumentWriter instrumentWriter, HistoricalBackfillService backfillService, EntityResolver entityResolver
+        InstrumentWriter instrumentWriter, HistoricalBackfillService backfillService, EntityResolver entityResolver,
+        DiscoveryService discoveryService
     ) {
         this.securityMasterReader = securityMasterReader;
         this.sectorService = sectorService;
         this.instrumentWriter = instrumentWriter;
         this.backfillService = backfillService;
         this.entityResolver = entityResolver;
+        this.discoveryService = discoveryService;
     }
 
     public InstrumentDto addInstrument(String symbol, String sectorName) {
@@ -56,6 +60,12 @@ public class InstrumentAdditionService {
         // left 51 of the 59 previously-tracked instruments unlinked, since only a one-time
         // migration ever populated this before.
         entityResolver.linkTrackedInstrument(instrumentId, masterEntry.symbol(), masterEntry.companyName());
+
+        // No-op for a symbol that was never a Discovery candidate (no matching discovery_status
+        // row) - only updates the admin's own status history for a symbol that actually was one;
+        // DiscoveryReader.findPendingReview already excludes it live via reference.instruments,
+        // regardless of this flag.
+        discoveryService.markPromoted(masterEntry.symbol());
 
         backfillService.backfillAsync(instrumentId, masterEntry.symbol());
 

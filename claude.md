@@ -1669,6 +1669,39 @@ domain's real evidence/inflection/sequence data, sidebar navigation works. Full 
 and `./gradlew test` green throughout, including `ModuleBoundaryArchTest` unmodified (neither
 `decision` nor `discovery` is in `DOMAIN_MODULES`, and no domain-module source was touched).
 
+**Discovery promotion status flag + Add Instrument success message fix** (2026-09-26): a real user
+report - "promoted SEDEMAC Mechatronics from Discovery, then it was nowhere to be found." Live
+diagnosis confirmed SEDEMAC was genuinely and correctly promoted (`reference.instruments` row,
+`reference.security_master` match, 84 days of real backfilled price history) - not a data-loss
+bug. It was invisible everywhere because it had zero rows in `technical.technical_scores`/
+`financial.fundamental_scores`/`ownership.institutional_scores`/`decision.decision_scores`: it was
+added at 19:23 IST, *after* that day's Technical (18:30)/Fundamental (18:40)/Institutional (18:50)
+analysis jobs had already run, so `decision-scoring` (21:45 IST) correctly excluded it that
+evening - every list page in this app (Rankings, Opportunities, `InstrumentDetailPage`'s own
+lookup) is keyed off Decision Score, not `reference.instruments` directly, so a same-day-added
+instrument is structurally invisible until the *next* full analysis cycle. Confirmed this is a
+same-day timing characteristic of the batch pipeline, not an orchestration bug.
+
+Separately, while diagnosing, found `ownership.discovery_status.status` never actually
+transitions to `'PROMOTED'` - `DiscoveryController`'s own design deliberately doesn't gate
+`findPendingReview()` on this flag (checks live `reference.instruments` existence instead, so the
+Discovery page itself was never wrong), but the flag's own CHECK constraint explicitly lists
+`PROMOTED` as a valid value that nothing ever wrote - a real, if cosmetic, gap in the admin's own
+status history. Fixed: `DiscoveryService.markPromoted(symbol)` (same idempotency-guard SQL shape
+as the existing `discard()`), called from `InstrumentAdditionService.addInstrument()` on every
+successful add - a harmless no-op for a symbol that was never a Discovery candidate (no matching
+`discovery_status` row, covered by its own unit test, not live-exercised since every readily
+available test symbol already had a `discovery_status` row); live-verified the real promotion
+path with two actual Discovery candidates (`GROWW`, `BLEL`), both correctly flipping to
+`PROMOTED` immediately after add. Also fixed `AddInstrumentPage.tsx`'s success
+message, which previously implied scores would be ready "in a minute or two" - conflated the
+genuinely-fast price backfill with the actually-hours-away next scheduled analysis cycle; now
+states plainly that Scores/Rankings/Opportunities won't appear until after that cycle runs, not
+within minutes. Two new `DiscoveryServiceTest` cases added mirroring the existing `discard()`
+tests exactly. Full `./gradlew build`/`test` green; live-verified end to end in the browser
+(BLEL added through the real Add Instrument UI, `discovery_status` confirmed `PROMOTED` in the DB
+immediately after).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

@@ -86,7 +86,9 @@ export function AddInstrumentPage() {
       {lastAdded && (
         <div className="mt-6 rounded-2xl border border-accent-soft bg-accent-soft p-4 text-sm text-text">
           <span className="font-semibold">{lastAdded.symbol}</span> ({lastAdded.companyName}) was added and is now tracked.
-          Historical price data is loading in the background - it can take a minute or two before charts and scores are ready.
+          Historical price data is loading in the background and should be ready within a few minutes. Scores, Rankings, and
+          Opportunities are all produced by the nightly analysis pipeline, though - this instrument won't appear on those pages
+          until after tonight's scheduled run, not within minutes.
         </div>
       )}
 

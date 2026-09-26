@@ -27,4 +27,18 @@ class DiscoveryServiceTest {
 
         assertThat(service.discard("AASTHA")).isFalse();
     }
+
+    @Test
+    void markPromotedReturnsTrueWhenARowWasActuallyUpdated() {
+        when(jdbcTemplate.update(any(String.class), eq("AASTHA"))).thenReturn(1);
+
+        assertThat(service.markPromoted("AASTHA")).isTrue();
+    }
+
+    @Test
+    void markPromotedReturnsFalseForASymbolThatWasNeverADiscoveryCandidate() {
+        when(jdbcTemplate.update(any(String.class), eq("RELIANCE"))).thenReturn(0);
+
+        assertThat(service.markPromoted("RELIANCE")).isFalse();
+    }
 }
