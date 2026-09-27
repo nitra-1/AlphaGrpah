@@ -5,6 +5,17 @@ spring:
     default: local
   flyway:
     enabled: false # migrations run per-module via FlywayMultiSchemaConfig instead
+  task:
+    scheduling:
+      pool:
+        # Spring Boot's own default is 1 - every one of this app's 47 @Scheduled cron jobs shared
+        # a single thread, so a long-running one (knowledge-extraction, sequential real LLM calls
+        # over the day's document backlog) blocked every other job's own scheduled time for its
+        # entire duration - confirmed live via a thread dump showing exactly one "scheduling-1"
+        # thread, mid-Gemini-call, while discovery-convergence-detection/lifecycle-classification
+        # sat missed behind it. 10 gives real headroom over the busiest same-minute cluster
+        # (18:30 alone schedules 2 jobs) without over-provisioning for a single-instance app.
+        size: 10
 
 management:
   endpoints:

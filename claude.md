@@ -1794,6 +1794,34 @@ detection against existing Market/Sector Stage 2-3 signals; Opportunity Detail p
 simple rule-driven fixed expiry per magnitude); real semantic event clustering (v1 dedup proxy is
 `(theme, calendar_date)`, a pragmatic stand-in disclosed as such at plan time).
 
+**Scheduler thread-starvation fix** (2026-09-27): real user report - "the server is running but the
+crons are still going into retry mode," specifically `discovery-convergence-detection` (19:40 IST)
+and `lifecycle-classification` (19:47 IST) both stuck showing `missedToday: true` despite their own
+real prerequisites having already succeeded naturally that evening. Root cause found live, not
+guessed: a `jstack` thread dump of the running JVM showed exactly **one** `scheduling-1` thread for
+the *entire application* - Spring Boot's own default (`spring.task.scheduling.pool.size` defaults
+to 1) when no explicit `TaskScheduler` bean or pool-size property exists, which was the case
+everywhere in this codebase. All 47 `@Scheduled` cron jobs shared that single thread. The dump
+caught `scheduling-1` mid-flight inside `KnowledgeExtractionOrchestrator.extractAllPending()` ->
+`GeminiNewsExtractionClient`, genuinely blocked on a real outbound Gemini HTTP/2 call (confirmed via
+the live stack trace, not stuck/deadlocked) - `knowledge-extraction`'s 18:30 IST run was working
+through the real ~526-document backlog (403 NEWS + 123 EXCHANGE_ANNOUNCEMENT PROCESSED documents,
+sequential, one real LLM call each) and hadn't finished 80+ minutes later. Because Spring's
+`CronTrigger` computes its *next* fire time only once the shared thread frees up (not a queue that
+replays every missed instant), every other job whose slot fell inside that window was permanently
+skipped for the day, not delayed-but-pending - explaining exactly why manual "Retry" was the only
+way to recover them, every single night a large enough backlog accumulates.
+
+Fix: `spring.task.scheduling.pool.size: 10` added to `bootstrap/application.yml` - one line, no
+code change. Live-verified: restarted the app, a fresh `jstack` dump now shows 10 independent idle
+`scheduling-1` through `scheduling-10` threads instead of one, confirmed the setting actually took
+effect (not just assumed from the YAML). 10 was chosen as real headroom over the busiest
+same-minute cluster in `CronMonitoringRepository.JOB_SCHEDULES` (18:30 alone schedules 2 jobs)
+without over-provisioning threads for a single-instance app. `./gradlew :bootstrap:test` green.
+Also manually retried both stuck jobs in the moment (`discovery-convergence-detection`:
+`SUCCESS`, `63 row(s) written to discovery.convergence_snapshots`; `lifecycle-classification`:
+`SUCCESS`) so tonight's own pipeline wasn't left stale while the config fix rolled out.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
