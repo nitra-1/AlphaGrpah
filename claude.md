@@ -1822,6 +1822,38 @@ Also manually retried both stuck jobs in the moment (`discovery-convergence-dete
 `SUCCESS`, `63 row(s) written to discovery.convergence_snapshots`; `lifecycle-classification`:
 `SUCCESS`) so tonight's own pipeline wasn't left stale while the config fix rolled out.
 
+**`ownership-bulk-block-deals` false-FAILED status fix** (2026-09-30): real user report - "this
+cron shows 188 read, 0 accepted, 188 rejected" - initially explained as expected/benign (every
+rejected row was genuinely captured into `ownership.discovered_deals`, none lost), but the user
+pushed back correctly: labeling untracked-symbol rows "rejected" negates this pipeline's entire
+reason for existing - discovering exactly that activity for the admin Discovery page **is** success,
+not a failure to explain away. Pulled the full history to check scope: `scheduler.pipeline_executions`
+showed `FAILED` or `PARTIAL` on every run for at least 15 days straight, never once a clean
+`SUCCESS` - this wasn't a one-off, the status has been wrong on essentially 100% of this pipeline's
+runs since it started using the live NSE feed.
+
+Root cause: `BulkDealsNormalizer.normalize()` threw `IllegalStateException` for an unresolvable
+symbol (after correctly capturing it to Discovery first) purely to signal "not a tracked-instrument
+deal" to the pipeline harness - `common.etl.Pipeline`'s generic accept/reject accounting, built for
+pipelines with exactly one correct destination, has no way to distinguish "genuine data-quality
+problem" from "intentionally routed elsewhere," so it counted every Discovery capture as a
+rejection and flipped the run to `FAILED` whenever `rowsAccepted == 0` (`Pipeline.statusFor`).
+
+Fix, scoped to this one pipeline rather than the shared framework (other pipelines' rejections
+genuinely are bad data, and should keep failing loudly): `BulkDealsNormalizer` now returns
+`Optional<BulkDeal>` - `Optional.empty()` (after capturing to Discovery, same as before) for an
+untracked symbol, no throw; `BulkDealsLoader` no-ops on empty. A normal return counts as
+`rowsAccepted` under the *existing* unmodified `Pipeline` harness, so this pipeline's status is now
+computed correctly with zero framework-level risk to any other pipeline. `BulkDealsScheduledPipeline`'s
+`PipelineDefinition` type parameter updated to match; `BulkDealsNormalizerTest` rewritten for the
+new return type, new `BulkDealsLoaderTest` added covering both branches (empty no-ops, present
+upserts with the real SQL/args). Live-verified after restart: manually retried the pipeline -
+`SUCCESS`, `"200 read, 200 accepted, 0 rejected"` (previously would have read `FAILED`, `0
+accepted`) - and confirmed zero regression in the actual Discovery behavior (196 rows still
+correctly captured into `ownership.discovered_deals` across 39 distinct untracked symbols,
+`ownership.bulk_deals` still correctly empty - same real routing as before, only the misleading
+status label changed). Full `./gradlew build` green.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

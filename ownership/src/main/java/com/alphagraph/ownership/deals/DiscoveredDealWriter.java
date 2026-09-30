@@ -19,10 +19,10 @@ import java.util.UUID;
  * {@code NEW} on first sight, or just has {@code last_detected_at} bumped on a repeat sighting -
  * a symbol already marked {@code DISMISSED} stays dismissed even if new deal activity arrives).
  *
- * <p>Called from {@link BulkDealsNormalizer} right before it throws. Deliberately best-effort:
- * any failure here (a malformed quantity/price, a transient DB issue) is caught and logged, never
- * propagated - a bug in this side-channel capture must never suppress or change the real
- * "Unknown instrument" rejection the caller is about to throw.
+ * <p>Called from {@link BulkDealsNormalizer} right before it returns {@code Optional.empty()}.
+ * Deliberately best-effort: any failure here (a malformed quantity/price, a transient DB issue) is
+ * caught and logged, never propagated - a bug in this side-channel capture must never suppress or
+ * change the caller's own empty return for an unresolvable symbol.
  *
  * <p>Sprint 3: also resolves the deal's participant (see {@link ParticipantResolver}) so
  * repetition/breadth/churn can be judged per genuine real-world entity, not per raw string.

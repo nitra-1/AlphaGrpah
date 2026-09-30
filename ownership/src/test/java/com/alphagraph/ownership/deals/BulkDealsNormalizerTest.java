@@ -9,7 +9,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -28,7 +27,7 @@ class BulkDealsNormalizerTest {
 
         RawDealRow raw = new RawDealRow("BULK", "RELIANCE", "Reliance Industries Ltd", "28-JUL-2026", "SOME FUND", "BUY", "222230", "83.00");
 
-        BulkDeal deal = normalizer.normalize(raw);
+        BulkDeal deal = normalizer.normalize(raw).orElseThrow();
 
         assertThat(deal.instrumentId()).isEqualTo(instrumentId);
         assertThat(deal.symbol()).isEqualTo("RELIANCE");
@@ -51,22 +50,20 @@ class BulkDealsNormalizerTest {
     }
 
     @Test
-    void unknownSymbolThrowsRatherThanReturningAPartialRecord() {
+    void unknownSymbolReturnsEmptyRatherThanThrowing() {
         when(instrumentLookup.findIdBySymbol("AASTHA")).thenReturn(Optional.empty());
 
         RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 STOCK VISION LLP", "BUY", "222230", "83.00");
 
-        assertThatIllegalStateException()
-            .isThrownBy(() -> normalizer.normalize(raw))
-            .withMessageContaining("AASTHA");
+        assertThat(normalizer.normalize(raw)).isEmpty();
     }
 
     @Test
-    void unknownSymbolCapturesTheRawRowAsADiscoveryCandidateBeforeThrowing() {
+    void unknownSymbolCapturesTheRawRowAsADiscoveryCandidate() {
         when(instrumentLookup.findIdBySymbol("AASTHA")).thenReturn(Optional.empty());
         RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 STOCK VISION LLP", "BUY", "222230", "83.00");
 
-        assertThatIllegalStateException().isThrownBy(() -> normalizer.normalize(raw));
+        normalizer.normalize(raw);
 
         verify(discoveredDealWriter).capture(raw);
     }

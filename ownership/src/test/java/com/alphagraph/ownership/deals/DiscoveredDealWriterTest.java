@@ -31,8 +31,8 @@ class DiscoveredDealWriterTest {
 
     @Test
     void malformedQuantityIsSwallowedNotPropagated() {
-        // A capture bug must never suppress or change BulkDealsNormalizer's real "Unknown
-        // instrument" rejection - this is the property that matters, not the DB call itself.
+        // A capture bug must never suppress or change BulkDealsNormalizer's own empty-Optional
+        // return for an unresolvable symbol - this is the property that matters, not the DB call itself.
         RawDealRow raw = new RawDealRow("BULK", "AASTHA", "Aastha Spintex Limited", "28-JUL-2026", "D3 STOCK VISION LLP", "BUY", "not-a-number", "83.00");
 
         assertThatCode(() -> writer.capture(raw)).doesNotThrowAnyException();

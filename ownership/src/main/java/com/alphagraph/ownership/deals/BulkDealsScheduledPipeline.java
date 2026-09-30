@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -27,13 +28,15 @@ import java.util.function.Function;
  * module's {@code Collector<List<String>>} bean (market's, for instance) is an equally valid
  * candidate for this exact generic type - confirmed the hard way in Module 1.2.
  *
- * Sample data note: the bundled CSVs are a real snapshot of NSE's live bulk.csv/block.csv at the
- * time this was written (2026-07-28) - none of our 8 seeded instruments appear in it, which is
- * expected rather than a bug: bulk/block deals concentrate in small/micro-cap stocks whose free
- * float is thin enough for a single trade to cross NSE's reporting threshold (>= 0.5% of shares
- * for bulk, >= 5 lakh shares or INR 5 crore for block) - our large/mid-cap universe rarely
- * generates one. Every row in this run is expected to quarantine as "unknown instrument", which
- * still proves the real fetch -> parse -> validate -> quarantine path end to end.
+ * Real-world note: {@link HttpBulkDealsCollector} (the live NSE fetch) now covers {@code local} as
+ * well as docker/prod - the bundled sample CSVs referenced below are only reachable on a profile
+ * with no live source configured. Most or even all of a real day's rows are still expected to be
+ * for a symbol AlphaGraph doesn't track: bulk/block deals concentrate in small/micro-cap stocks
+ * whose free float is thin enough for a single trade to cross NSE's reporting threshold (>= 0.5%
+ * of shares for bulk, >= 5 lakh shares or INR 5 crore for block), while AlphaGraph's own universe
+ * is large/mid-cap. That's not a failure - see {@link BulkDealsNormalizer}: every such row is
+ * captured into the admin Discovery page, and {@code Optional.empty()} counts as a normal,
+ * successfully-processed record, not a rejection.
  */
 @Component
 public class BulkDealsScheduledPipeline implements ScheduledPipeline {
@@ -77,7 +80,7 @@ public class BulkDealsScheduledPipeline implements ScheduledPipeline {
 
         Validator<RawDealRow> validator = new RequiredFieldsValidator<>(requiredFields);
 
-        PipelineDefinition<List<String>, RawDealRow, BulkDeal> definition = new PipelineDefinition<>(
+        PipelineDefinition<List<String>, RawDealRow, Optional<BulkDeal>> definition = new PipelineDefinition<>(
             sourceConfig, collector, parser, validator, normalizer, loader
         );
 
