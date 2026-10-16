@@ -22,7 +22,11 @@ function confirmationLabel(state: string, rawSessionsElapsed: number): string {
   const sessionsElapsed = Math.min(rawSessionsElapsed, CONFIRMATION_WINDOW_SESSIONS)
   switch (state) {
     case 'PENDING':
-      return `Awaiting confirmation (T+${sessionsElapsed} of 5)`
+      // Same underlying state either way (score in the 30-55 band, or no post-anchor data yet) -
+      // but once the full window has elapsed nothing more is coming, so "Awaiting" would be wrong.
+      return sessionsElapsed >= CONFIRMATION_WINDOW_SESSIONS
+        ? `Inconclusive (T+${sessionsElapsed} of 5)`
+        : `Awaiting confirmation (T+${sessionsElapsed} of 5)`
     case 'PARTIALLY_CONFIRMED':
       return `Partially confirmed (T+${sessionsElapsed} of 5)`
     case 'CONFIRMED':

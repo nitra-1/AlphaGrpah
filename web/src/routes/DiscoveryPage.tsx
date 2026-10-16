@@ -138,7 +138,7 @@ export function DiscoveryPage() {
               onChange={setConfirmationFilter}
               options={[
                 { value: 'ALL', label: 'All' },
-                { value: 'PENDING', label: 'Awaiting confirmation' },
+                { value: 'PENDING', label: 'Awaiting / inconclusive' },
                 { value: 'PARTIALLY_CONFIRMED', label: 'Partially confirmed' },
                 { value: 'CONFIRMED', label: 'Confirmed' },
                 { value: 'FAILED', label: 'Failed' },
@@ -473,6 +473,9 @@ function FlagLegend() {
         <dl className="mt-2 space-y-2 text-xs text-text-muted">
           <LegendRow badge={<ConfirmationBadge state="PENDING" sessionsElapsed={0} />}>
             Too early to tell - still checking the next 5 trading sessions for follow-through.
+          </LegendRow>
+          <LegendRow badge={<ConfirmationBadge state="PENDING" sessionsElapsed={5} />}>
+            The full 5-session window finished without enough follow-through to call it either way - nothing more is coming.
           </LegendRow>
           <LegendRow badge={<ConfirmationBadge state="PARTIALLY_CONFIRMED" sessionsElapsed={3} />}>
             Some real follow-through so far (price/delivery/volume), but not enough yet to call it confirmed.

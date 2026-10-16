@@ -1892,9 +1892,16 @@ PINELABS, ESDS, SAHLIBHFI, WEL, BVCL, ATHERENERG, BIOFILCHEM) had no 5-session s
 their first interpretation for that anchor already had more than 5 sessions, so they can't be
 reconstructed and keep their original scores; `ConfirmationBadge` now clamps its label at 5 so
 they can't show "T+10 of 5". Live-verified: SWIGGY via API and page reads PARTIALLY_CONFIRMED at 5
-sessions, and none of the 243 badges on the Discovery page exceeds T+5. Known remaining oddity,
-not changed: a finished window whose score lands in the 30-55 band is labelled "Awaiting
-confirmation (T+5 of 5)" (99 cards at time of writing).
+sessions, and none of the 243 badges on the Discovery page exceeds T+5.
+
+Label follow-up (same day): a finished window whose score lands in the 30-55 band used to read
+"Awaiting confirmation (T+5 of 5)" (99 cards), which implies more evidence is coming when none is.
+`ConfirmationBadge` now shows "Inconclusive (T+5 of 5)" once `sessionsElapsed >= 5` for the
+`PENDING` state; before that (T+0 to T+4, no or partial post-anchor data) it stays "Awaiting
+confirmation". Display-only - the stored state is still `PENDING`, no data or migration change. The
+Discovery page's legend gained a matching row and its filter option is now "Awaiting /
+inconclusive" since it matches both. Live-verified: 99 cards read Inconclusive (all at T+5), 0 read
+Awaiting at T+5, 0 read Inconclusive before T+5.
 
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
