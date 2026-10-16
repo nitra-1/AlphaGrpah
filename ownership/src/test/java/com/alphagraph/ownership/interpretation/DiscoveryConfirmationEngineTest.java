@@ -176,4 +176,47 @@ class DiscoveryConfirmationEngineTest {
         assertThat(atFive.frozen()).isTrue();
         assertThat(atFive.sessionsElapsed()).isEqualTo(5);
     }
+
+    @Test
+    void sessionsBeyondFiveNeverChangeTheResultOrTheElapsedCount() {
+        // Regression: frozen used to be a label only - a caller passing 10 sessions got "T+10 of 5"
+        // and a score still drifting with sessions 6-10. Sessions 6-7 here have a wildly different
+        // price/volume/delivery; the result must be identical to the exact-5-session result.
+        List<DiscoveredPriceRow> fiveSessions = new java.util.ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            fiveSessions.add(priceRow(ANCHOR.plusDays(i), new BigDecimal("110"), 2000, new BigDecimal("60")));
+        }
+        List<DiscoveredPriceRow> sevenSessions = new java.util.ArrayList<>(fiveSessions);
+        sevenSessions.add(priceRow(ANCHOR.plusDays(6), new BigDecimal("50"), 1, new BigDecimal("1")));
+        sevenSessions.add(priceRow(ANCHOR.plusDays(7), new BigDecimal("50"), 1, new BigDecimal("1")));
+        List<DiscoveredPriceRow> baseline = List.of(priceRow(ANCHOR.minusDays(1), new BigDecimal("100"), 1000, new BigDecimal("50")));
+        List<AnchorCandidateDeal> deals = List.of(buyDeal(new BigDecimal("100"), new BigDecimal("1000")));
+
+        DiscoveryConfirmationResult atFive = engine.evaluate(InstitutionalState.POSSIBLE_ACCUMULATION, ANCHOR, deals, fiveSessions, baseline, List.of());
+        DiscoveryConfirmationResult withExtraSessions = engine.evaluate(InstitutionalState.POSSIBLE_ACCUMULATION, ANCHOR, deals, sevenSessions, baseline, List.of());
+
+        assertThat(withExtraSessions.sessionsElapsed()).isEqualTo(5);
+        assertThat(withExtraSessions.confirmationScore()).isEqualByComparingTo(atFive.confirmationScore());
+        assertThat(withExtraSessions.priceScore()).isEqualByComparingTo(atFive.priceScore());
+        assertThat(withExtraSessions.state()).isEqualTo(atFive.state());
+    }
+
+    @Test
+    void institutionalBuyingAfterTheFifthSessionDoesNotCountTowardRepeatActivity() {
+        List<DiscoveredPriceRow> sevenSessions = new java.util.ArrayList<>();
+        for (int i = 1; i <= 7; i++) {
+            sevenSessions.add(priceRow(ANCHOR.plusDays(i), new BigDecimal("100"), 1000, new BigDecimal("50")));
+        }
+        List<ParticipantDealActivity> activity = List.of(
+            new ParticipantDealActivity(UUID.randomUUID(), "MF One", ParticipantType.MUTUAL_FUND, 95, "BUY", new BigDecimal("1000"), ANCHOR.plusDays(6)),
+            new ParticipantDealActivity(UUID.randomUUID(), "MF Two", ParticipantType.MUTUAL_FUND, 95, "BUY", new BigDecimal("1000"), ANCHOR.plusDays(7))
+        );
+
+        DiscoveryConfirmationResult result = engine.evaluate(
+            InstitutionalState.POSSIBLE_ACCUMULATION, ANCHOR, List.of(buyDeal(new BigDecimal("100"), new BigDecimal("1000"))),
+            sevenSessions, List.of(), activity
+        );
+
+        assertThat(result.repeatScore()).isEqualByComparingTo("20.00");
+    }
 }

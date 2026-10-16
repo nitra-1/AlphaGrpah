@@ -19,16 +19,20 @@ import java.util.stream.Collectors;
  * later "Full Confirmation" stage using those, applicable only after promotion, is an explicitly
  * separate future sprint.
  *
- * <p>Bounded T+1/T+3/T+5-trading-session lifecycle: {@code sessionsElapsed >= 5} freezes the
- * result permanently for the given anchor (see {@link ConfirmationAnchorResolver} for how the
- * anchor itself only advances for real, same-direction evidence) - confirmation is never judged
- * forever against a moving target. {@code NOT_APPLICABLE} for every non-directional
- * {@link InstitutionalState} - there's nothing directional to confirm.
+ * <p>Bounded T+1/T+3/T+5-trading-session lifecycle: only the first {@link #FREEZE_AT_SESSIONS}
+ * sessions after the anchor (and only deals up to the last of those sessions) are ever scored, so
+ * the result stops changing once it has {@code FREEZE_AT_SESSIONS} sessions of evidence - for the
+ * given anchor (see {@link ConfirmationAnchorResolver} for how the anchor itself only advances
+ * for real, same-direction evidence). Confirmation is never judged forever against a moving
+ * target. Real bug this guards against: {@code frozen} used to be a label only, so a caller that
+ * passed more than 5 sessions got a score still drifting day to day and a "T+10 of 5" display.
+ * {@code NOT_APPLICABLE} for every non-directional {@link InstitutionalState} - there's nothing
+ * directional to confirm.
  */
 @Component
 class DiscoveryConfirmationEngine {
 
-    private static final int FREEZE_AT_SESSIONS = 5;
+    static final int FREEZE_AT_SESSIONS = 5;
     private static final double PRICE_WEIGHT = 0.35;
     private static final double DELIVERY_WEIGHT = 0.25;
     private static final double VOLUME_WEIGHT = 0.20;
@@ -44,23 +48,30 @@ class DiscoveryConfirmationEngine {
             return DiscoveryConfirmationResult.notApplicable();
         }
 
-        int sessionsElapsed = postAnchorSessions.size();
+        List<DiscoveredPriceRow> windowSessions = postAnchorSessions.size() > FREEZE_AT_SESSIONS
+            ? postAnchorSessions.subList(0, FREEZE_AT_SESSIONS)
+            : postAnchorSessions;
+        List<ParticipantDealActivity> windowActivity = windowSessions.isEmpty() ? postAnchorActivity : postAnchorActivity.stream()
+            .filter(a -> a.dealDate() == null || !a.dealDate().isAfter(windowSessions.get(windowSessions.size() - 1).tradeDate()))
+            .toList();
+
+        int sessionsElapsed = windowSessions.size();
         boolean frozen = sessionsElapsed >= FREEZE_AT_SESSIONS;
 
         List<WeightedComponent> components = new ArrayList<>();
-        BigDecimal priceScore = priceScore(direction, anchorDateDeals, postAnchorSessions).orElse(null);
+        BigDecimal priceScore = priceScore(direction, anchorDateDeals, windowSessions).orElse(null);
         if (priceScore != null) {
             components.add(new WeightedComponent(PRICE_WEIGHT, priceScore));
         }
-        BigDecimal deliveryScore = deliveryScore(postAnchorSessions, preAnchorBaselineSessions).orElse(null);
+        BigDecimal deliveryScore = deliveryScore(windowSessions, preAnchorBaselineSessions).orElse(null);
         if (deliveryScore != null) {
             components.add(new WeightedComponent(DELIVERY_WEIGHT, deliveryScore));
         }
-        BigDecimal volumeScore = volumeScore(postAnchorSessions, preAnchorBaselineSessions).orElse(null);
+        BigDecimal volumeScore = volumeScore(windowSessions, preAnchorBaselineSessions).orElse(null);
         if (volumeScore != null) {
             components.add(new WeightedComponent(VOLUME_WEIGHT, volumeScore));
         }
-        BigDecimal repeatScore = repeatActivityScore(direction, postAnchorActivity);
+        BigDecimal repeatScore = repeatActivityScore(direction, windowActivity);
         components.add(new WeightedComponent(REPEAT_WEIGHT, repeatScore));
 
         double coveragePct = 100.0 * components.size() / 4.0;

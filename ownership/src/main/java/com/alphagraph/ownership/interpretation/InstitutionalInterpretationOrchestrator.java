@@ -26,8 +26,8 @@ class InstitutionalInterpretationOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(InstitutionalInterpretationOrchestrator.class);
     static final int RULE_VERSION = 1;
     private static final int WINDOW_DAYS = 20;
-    /** Comfortably past the 5-session freeze point, so a freshly-formed anchor doesn't need repeated re-fetches as it matures. */
-    private static final int POST_ANCHOR_SESSION_LIMIT = 10;
+    /** Exactly the confirmation window - sessions past it are never scored, so there's nothing to gain from fetching more. */
+    private static final int POST_ANCHOR_SESSION_LIMIT = DiscoveryConfirmationEngine.FREEZE_AT_SESSIONS;
     private static final int BASELINE_SESSION_COUNT = 20;
 
     private final UnresolvedParticipantBackfillService backfillService;

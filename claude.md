@@ -1854,6 +1854,24 @@ correctly captured into `ownership.discovered_deals` across 39 distinct untracke
 `ownership.bulk_deals` still correctly empty - same real routing as before, only the misleading
 status label changed). Full `./gradlew build` green.
 
+**Discovery confirmation window enforced at 5 sessions** (2026-10-16): user question about an
+AXISCADES card reading "Partially confirmed (T+10 of 5)". Root cause: `DiscoveryConfirmationEngine`
+set `frozen` once `sessionsElapsed >= 5` and documented that it "freezes the result permanently,"
+but `frozen` was only a stored/displayed label - nothing acted on it. The orchestrator fetched up
+to 10 post-anchor sessions (`POST_ANCHOR_SESSION_LIMIT = 10`) and the engine scored every one, so
+`sessionsElapsed` reached 10 (the fetch cap) and the score kept drifting after the freeze
+(AXISCADES: 58.94 -> 58.60 -> 57.71 -> 60.16 -> 59.95 across days 6-10). Fix: the engine now scores
+only the first `FREEZE_AT_SESSIONS` (5) sessions and only post-anchor deals dated on or before the
+5th of them, so the result stops changing at T+5 and the badge reads "T+5 of 5"; the orchestrator
+fetches exactly that window. Two regression tests added (sessions 6-7 with very different
+price/volume/delivery leave the result identical to the exact-5 result; institutional buying after
+session 5 doesn't count toward repeat activity). Stored scores for symbols past session 5 change on
+the next nightly `institutional-interpretation` run. Also documented in the answer to that
+question: confirmation score = 35% price + 25% delivery + 20% volume + 20% repeat activity (bands:
+>=75 Confirmed, 55-75 Partially, 30-55 Awaiting, <30 Failed); `confidence` is a separate number
+(35% participant quality, 30% materiality, 15% churn clarity, 10% breadth, 10% confirmation
+*coverage* - data availability, not whether it confirmed).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.
