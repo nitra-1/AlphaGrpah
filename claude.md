@@ -1872,6 +1872,30 @@ question: confirmation score = 35% price + 25% delivery + 20% volume + 20% repea
 (35% participant quality, 30% materiality, 15% churn clarity, 10% breadth, 10% confirmation
 *coverage* - data availability, not whether it confirmed).
 
+**Follow-up: stored rows from before the 5-session fix** (2026-10-16): the engine fix above only
+affects rows computed from then on. User reported SWIGGY still reading "T+10 of 5", and "many
+others". Cause: `InstitutionalInterpretationOrchestrator` skips a symbol once it has no deals in
+the 20-day interpretation window (`windowRows.isEmpty()`), so a candidate whose last deal is older
+never gets a new row and its final stored row keeps the pre-fix values - 1,115 stored rows across
+139 symbols had `confirmation_sessions_elapsed > 5`, 92 symbols displayed one. The contamination
+also changed outcomes, not just labels (SWIGGY flipped PARTIALLY_CONFIRMED -> PENDING at session 6,
+54.52, when its true frozen T+5 result was 58.95).
+
+Fix: `ownership/V20__correct_confirmation_rows_past_five_sessions.sql` copies the confirmation
+fields from the first row at exactly 5 sessions for the same (symbol, anchor) onto every later row
+of that anchor. That snapshot was computed before the bug could matter, and the fixed engine would
+reproduce it every later day (same sessions, baseline and deals - SWIGGY is 58.95 on five
+consecutive days). 1,059 rows corrected; dry-run inside a rolled-back transaction first, then
+applied on restart. Not touched: `confidence` (its confirmation weight is data coverage, which this
+doesn't change) and the persisted reason codes. 56 rows across 9 symbols (WESTLIFE, AARTIPHARM,
+PINELABS, ESDS, SAHLIBHFI, WEL, BVCL, ATHERENERG, BIOFILCHEM) had no 5-session snapshot because
+their first interpretation for that anchor already had more than 5 sessions, so they can't be
+reconstructed and keep their original scores; `ConfirmationBadge` now clamps its label at 5 so
+they can't show "T+10 of 5". Live-verified: SWIGGY via API and page reads PARTIALLY_CONFIRMED at 5
+sessions, and none of the 243 badges on the Discovery page exceeds T+5. Known remaining oddity,
+not changed: a finished window whose score lands in the 30-55 band is labelled "Awaiting
+confirmation (T+5 of 5)" (99 cards at time of writing).
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

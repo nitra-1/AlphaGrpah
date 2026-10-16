@@ -13,7 +13,13 @@ const CONFIRMATION_STYLES: Record<string, string> = {
 // isn't resolved yet. The session count (already returned by every endpoint that returns this
 // state) is the thing that actually explains it - display-layer only, the underlying
 // PENDING/PARTIALLY_CONFIRMED/CONFIRMED/FAILED/NOT_APPLICABLE enum and ladder logic are untouched.
-function confirmationLabel(state: string, sessionsElapsed: number): string {
+// The confirmation window is 5 sessions and the engine never scores past it - clamped here too so a
+// stored row from before that was enforced (and with no T+5 snapshot to correct it from) can never
+// read "T+10 of 5".
+const CONFIRMATION_WINDOW_SESSIONS = 5
+
+function confirmationLabel(state: string, rawSessionsElapsed: number): string {
+  const sessionsElapsed = Math.min(rawSessionsElapsed, CONFIRMATION_WINDOW_SESSIONS)
   switch (state) {
     case 'PENDING':
       return `Awaiting confirmation (T+${sessionsElapsed} of 5)`
