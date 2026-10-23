@@ -42,9 +42,26 @@ alphagraph:
   corporate:
     news-extractor:
       # NewsExtractor's Gemini free-tier pilot (real cost driver: knowledge-extraction is the
-      # dominant Claude spend in this app). true = try Gemini first, fall back to Claude on any
-      # failure. Flip to false to go back to Claude-only with no code change.
+      # dominant Claude spend in this app). true = try Gemini first; Claude only as a capped last
+      # resort (see claude-fallback below). false = Claude for every article, uncapped - the way to
+      # go back to Claude-only with no code change, and the expensive one.
       use-gemini: true
+    gemini:
+      # Every Gemini call (Stage 1 + news extraction share one project quota) goes through
+      # GeminiCallExecutor: paced, retried, and circuit-broken. Gemini's free tier allows 5 requests
+      # a minute and a news sweep makes two calls per article - exceeding that sent a large share of
+      # news to Claude, which is what made the Claude bill jump ~10x after the news rework.
+      requests-per-minute: 4 # stay under the free tier's 5; raise it (or 0 = no pacing) once on a paid tier
+      max-attempts: 4 # per call, including the first
+      max-retry-wait-seconds: 90 # a 429 asking for longer than this (a daily quota) isn't waited for
+      breaker-failures: 3 # consecutive calls that exhausted their retries before Gemini calls pause
+      breaker-open-minutes: 10
+    claude-fallback:
+      # Claude is a last resort for NEWS only, and capped: at most this many fallback calls per day
+      # for each of Stage 1 and news extraction, counted in corporate.claude_fallback_usage so a
+      # restart can't reset it. 0 disables the fallback entirely. When Gemini is merely unavailable
+      # (quota/overload) Claude is never used regardless - the document waits for the next sweep.
+      daily-limit-per-purpose: 10
     stage1-classification:
       # Stage 1 (DocumentIntelligenceEngine) is mandatory for every document, regardless of which
       # Stage 2 extractor eventually runs - this is a separate toggle from news-extractor.use-gemini

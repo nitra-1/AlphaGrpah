@@ -27,7 +27,16 @@ class CanonicalKnowledgeWriter {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * Safe to repeat for the same document: clears whatever an earlier, interrupted attempt left
+     * before inserting. Without this a retry died on {@code document_summary}'s primary key after
+     * first adding a duplicate batch of topic rows - three documents were stuck that way, re-billing
+     * Stage 1 every night.
+     */
     void writeClassification(UUID documentId, DocumentClassification classification) {
+        jdbcTemplate.update("DELETE FROM corporate.document_topics WHERE document_id = ?", documentId);
+        jdbcTemplate.update("DELETE FROM corporate.document_summary WHERE document_id = ?", documentId);
+
         for (String topic : classification.topics()) {
             jdbcTemplate.update(
                 "INSERT INTO corporate.document_topics (id, document_id, topic) VALUES (?, ?, ?)",
@@ -42,7 +51,10 @@ class CanonicalKnowledgeWriter {
         );
     }
 
+    /** Safe to repeat for the same document, same reason as {@link #writeClassification}: nothing else writes facts for a document that isn't extracted yet. */
     void writeFacts(UUID documentId, List<ExtractedFact> facts) {
+        jdbcTemplate.update("DELETE FROM corporate.document_facts WHERE document_id = ?", documentId);
+
         for (ExtractedFact fact : facts) {
             jdbcTemplate.update(
                 "INSERT INTO corporate.document_facts (id, document_id, fact_type, fact_value, unit, confidence, commitment_level, fact_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

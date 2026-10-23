@@ -40,9 +40,11 @@ class GeminiDocumentClassificationClient implements DocumentClassificationExtrac
     private static final Set<String> OPTIONAL_WHEN_BLANK_FIELDS = Set.of();
 
     private final Client client;
+    private final GeminiCallExecutor executor;
 
-    GeminiDocumentClassificationClient(Client client) {
+    GeminiDocumentClassificationClient(Client client, GeminiCallExecutor executor) {
         this.client = client;
+        this.executor = executor;
     }
 
     @Override
@@ -54,12 +56,16 @@ class GeminiDocumentClassificationClient implements DocumentClassificationExtrac
             .build();
 
         try {
-            GenerateContentResponse response = client.models.generateContent(MODEL, DocumentIntelligenceEngine.buildPrompt(documentText), config);
+            GenerateContentResponse response = executor.execute(
+                () -> client.models.generateContent(MODEL, DocumentIntelligenceEngine.buildPrompt(documentText), config)
+            );
             String text = response.text();
             if (text == null || text.isBlank()) {
                 throw new IllegalStateException("Gemini returned an empty response for document classification");
             }
             return text;
+        } catch (GeminiUnavailableException e) {
+            throw e;
         } catch (GenAiIOException e) {
             throw new IllegalStateException("Gemini API call failed during document classification: " + e.getMessage(), e);
         } catch (RuntimeException e) {

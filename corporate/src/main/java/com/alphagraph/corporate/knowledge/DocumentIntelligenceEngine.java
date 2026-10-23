@@ -46,15 +46,19 @@ public class DocumentIntelligenceEngine {
 
     private final ClaudeDocumentClassificationClient claudeClient;
     private final GeminiDocumentClassificationClient geminiClient;
+    private final ClaudeFallbackBudget fallbackBudget;
     private final ObjectMapper objectMapper;
     private final boolean useGeminiForNews;
 
+    static final String FALLBACK_PURPOSE = "NEWS_CLASSIFICATION";
+
     public DocumentIntelligenceEngine(
-        ClaudeDocumentClassificationClient claudeClient, GeminiDocumentClassificationClient geminiClient, ObjectMapper objectMapper,
-        @Value("${alphagraph.corporate.stage1-classification.use-gemini-for-news:true}") boolean useGeminiForNews
+        ClaudeDocumentClassificationClient claudeClient, GeminiDocumentClassificationClient geminiClient, ClaudeFallbackBudget fallbackBudget,
+        ObjectMapper objectMapper, @Value("${alphagraph.corporate.stage1-classification.use-gemini-for-news:true}") boolean useGeminiForNews
     ) {
         this.claudeClient = claudeClient;
         this.geminiClient = geminiClient;
+        this.fallbackBudget = fallbackBudget;
         this.objectMapper = objectMapper;
         this.useGeminiForNews = useGeminiForNews;
     }
@@ -76,8 +80,15 @@ public class DocumentIntelligenceEngine {
         }
         try {
             return parseClassification(geminiClient.extractRawJson(documentText));
+        } catch (ExtractionDeferredException e) {
+            throw e; // Gemini unavailable right now - see NewsExtractor#extract; never answered by spending Claude
         } catch (Exception e) {
-            log.warn("Gemini document classification failed, falling back to Claude: {}", e.getMessage());
+            if (!fallbackBudget.tryAcquire(FALLBACK_PURPOSE)) {
+                throw new ExtractionDeferredException(
+                    "Gemini document classification failed (" + e.getMessage() + ") and today's Claude fallback allowance is used up - left for the next sweep", e
+                );
+            }
+            log.warn("Gemini document classification failed, falling back to Claude (counted against today's allowance): {}", e.getMessage());
             return parseClassification(claudeClient.extractRawJson(documentText));
         }
     }

@@ -50,11 +50,17 @@ public class KnowledgeExtractionOrchestrator {
         List<PendingKnowledgeDocument> pending = documentReader.findProcessed();
 
         int succeeded = 0;
+        int deferred = 0;
         int failed = 0;
         for (PendingKnowledgeDocument document : pending) {
             try {
                 extractOne(document);
                 succeeded++;
+            } catch (ExtractionDeferredException e) {
+                // Not a failure: Gemini couldn't answer and Claude isn't to be spent on it. Nothing was
+                // written for this document, so it simply stays PROCESSED and is retried next sweep.
+                deferred++;
+                log.warn("Deferred document {} (symbol={}) to the next sweep: {}", document.id(), document.symbol(), e.getMessage());
             } catch (Exception e) {
                 log.error("Failed to extract knowledge for document {} (symbol={}): {}",
                     document.id(), document.symbol(), e.getMessage(), e);
@@ -64,7 +70,8 @@ public class KnowledgeExtractionOrchestrator {
 
         relationshipBuilder.expandCompetitorGroups();
 
-        log.info("Knowledge extraction: {} documents processed, {} failed (of {})", succeeded, failed, pending.size());
+        log.info("Knowledge extraction: {} documents processed, {} deferred to the next sweep, {} failed (of {})",
+            succeeded, deferred, failed, pending.size());
     }
 
     /**
@@ -80,13 +87,17 @@ public class KnowledgeExtractionOrchestrator {
     }
 
     private void extractOne(PendingKnowledgeDocument document) {
+        // Every LLM call happens first and nothing is written until all of them have succeeded. If a
+        // call fails (or defers the document), the document is exactly as it was and the next sweep
+        // starts clean - previously Stage 1's rows were written before Stage 2 ran, so a Stage 2
+        // failure left a summary row behind and every later sweep died on its duplicate key.
         DocumentClassification classification = classificationEngine.classify(document.extractedText(), document.source());
-        writer.writeClassification(document.id(), classification);
-
         DocumentContext context = new DocumentContext(
             document.id(), document.instrumentId(), document.symbol(), document.extractedText(), classification
         );
         List<ExtractedFact> facts = router.route(context);
+
+        writer.writeClassification(document.id(), classification);
         writer.writeFacts(document.id(), facts);
         relationshipBuilder.build(document.id(), document.symbol(), facts);
 

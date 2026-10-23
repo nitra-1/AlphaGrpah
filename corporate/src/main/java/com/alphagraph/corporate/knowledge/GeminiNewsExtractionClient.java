@@ -42,9 +42,11 @@ class GeminiNewsExtractionClient implements NewsImpactExtractionClient {
     private static final int MAX_OUTPUT_TOKENS = 2048;
 
     private final Client client;
+    private final GeminiCallExecutor executor;
 
-    GeminiNewsExtractionClient(Client client) {
+    GeminiNewsExtractionClient(Client client, GeminiCallExecutor executor) {
         this.client = client;
+        this.executor = executor;
     }
 
     @Override
@@ -56,12 +58,16 @@ class GeminiNewsExtractionClient implements NewsImpactExtractionClient {
             .build();
 
         try {
-            GenerateContentResponse response = client.models.generateContent(MODEL, NewsExtractor.buildPrompt(documentText), config);
+            GenerateContentResponse response = executor.execute(
+                () -> client.models.generateContent(MODEL, NewsExtractor.buildPrompt(documentText), config)
+            );
             String text = response.text();
             if (text == null || text.isBlank()) {
                 throw new IllegalStateException("Gemini returned an empty response for news extraction");
             }
             return text;
+        } catch (GeminiUnavailableException e) {
+            throw e;
         } catch (GenAiIOException e) {
             throw new IllegalStateException("Gemini API call failed during news extraction: " + e.getMessage(), e);
         } catch (RuntimeException e) {

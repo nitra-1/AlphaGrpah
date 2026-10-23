@@ -1903,6 +1903,69 @@ Discovery page's legend gained a matching row and its filter option is now "Awai
 inconclusive" since it matches both. Live-verified: 99 cards read Inconclusive (all at T+5), 0 read
 Awaiting at T+5, 0 read Inconclusive before T+5.
 
+**Gemini throttle + capped Claude fallback for news** (2026-10-23): user reported Claude API spend
+up ~10x ($5 used to last 2-3 weeks, now ~$20/week). AlphaGraph's own volume looked small on paper
+(~4.3M chars of announcements + ~0.14M tokens of news in 21 days), so the cause had to be news
+landing on Claude. Measured, not guessed: one news article costs ~2,700 input tokens (the 5.7k-char
+prompt + schema; the article itself is ~80 tokens) + ~550 output tokens, ~2 cents on Sonnet at list
+price (an estimate from measured sizes, not a billed figure) - ~105 articles/day is ~$17/week if all
+of it hits Claude, matching the bill; before the 09-26 news rework (every article, not just those
+naming a tracked stock, now goes to extraction) it was ~10/day, ~$2/week. A live probe of the real
+Gemini client on six real articles showed why Gemini wasn't absorbing it: **the key's project is on
+Gemini's free tier, capped at 5 requests/minute** (`GenerateRequestsPerMinutePerProjectPerModel-
+FreeTier`, 429), plus 503 "high demand" - and a sweep makes two Gemini calls per article (Stage 1 +
+extraction) one after another. Supporting inference: sweeps were finishing ~4 articles/min = ~8
+calls/min, which the free tier cannot serve. The exact fallback share was never measurable - nothing
+recorded which provider answered.
+
+Changes (`corporate.knowledge`): `GeminiCallExecutor` - every Gemini call (Stage 1 and extraction
+share one quota, so one limiter) is paced to `alphagraph.corporate.gemini.requests-per-minute`
+(default 4), retried on 429 (waits the delay Gemini states, parsed from "retry in Xs" / RetryInfo,
++1s) and on 5xx/network errors (5s/10s/20s), gives up immediately on a 429 asking for more than
+`max-retry-wait-seconds` (a daily quota), and opens a circuit after 3 consecutive exhausted calls
+for 10 minutes. Exhaustion throws `GeminiUnavailableException` (an `ExtractionDeferredException`).
+The SDK's own retry is switched off (`GeminiClientConfig`, attempts=1) so it can't stack hidden
+retries under these. **Claude fallback for news is now a capped last resort**: Gemini
+*unavailable* never uses Claude - the document stays PROCESSED for the next sweep; Gemini
+answering *unusably* (bad/truncated JSON, rejected request) may use Claude only within
+`claude-fallback.daily-limit-per-purpose` (default 10/day each for Stage 1 and extraction, India
+calendar day; 0 disables), counted atomically in the new `corporate.claude_fallback_usage` (V20) so
+a restart can't reset it - which is also the first record of how often news reaches Claude.
+Announcements and `use-gemini: false` are unchanged (still uncapped Claude).
+
+Two existing bugs found and fixed because "leave it for the next night" depends on them:
+(1) `KnowledgeExtractionOrchestrator` wrote Stage 1's `document_summary`/`document_topics` rows
+*before* Stage 2 ran, and `writeClassification` was a plain INSERT, so any Stage 2 failure left the
+document PROCESSED with a summary row and every later sweep died on its primary key (after first
+inserting another batch of topics) - three documents were permanently stuck, 29-40 duplicate topic
+rows each, with Stage 1 re-run (and billed if it fell back) every night. Now all LLM calls happen
+first and nothing is written until they've all succeeded, and `writeClassification`/`writeFacts`
+delete-then-insert so a retry is safe; the three stuck documents heal on the next sweep. (2)
+`DocumentRouter` swallows every extractor exception and only logs it, so the document was marked
+KNOWLEDGE_EXTRACTED with zero facts and never retried - a deferral would have been silently lost. Only
+`ExtractionDeferredException` now passes through; ordinary extractor failures are still swallowed
+exactly as before (not changed here - see open items). The orchestrator counts deferred documents
+separately in its summary line.
+
+Verified: 22 new/updated unit tests (pacing, 429/503 retry, retry-delay parsing, daily-quota
+give-up, circuit open/close/reset, budget limit and India-day keying, write-after-LLM ordering,
+retry-safe writer, router deferral); full `./gradlew build` green; the six real articles that
+previously hit 429/503 all succeeded through the real executor against live Gemini at the
+production default (the last call took 31s - the executor waiting out a transient error); app
+restarted on the new code, V20 applied, table present. **Not yet verified: a full overnight sweep
+through the real app** (first one is the 18:30 IST run). Expect it to be slower: Gemini calls take
+11-16s each, so ~33s per article, ~1 hour for a normal ~105-article night (more than the ~42 min
+the call count alone suggests). The free-tier cap is a property of the key's Google project - adding
+credit to an account does not upgrade a key whose project isn't linked to the billing account; if the
+project moves to a paid tier, raise `requests-per-minute`.
+
+Open items, not done: 273 of 2,481 news documents (11%) and 402 of 489 announcements were marked
+extracted with zero facts since 09-27 - many are legitimate (compliance certificates etc.), but the
+router swallowing means some are likely failures, and the split can't be determined from the data;
+an earlier note attributing one such article to Stage 1 routing was not backed by evidence. No
+per-call provider/token logging exists beyond the fallback counter; announcements remain the
+uncapped Claude cost.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

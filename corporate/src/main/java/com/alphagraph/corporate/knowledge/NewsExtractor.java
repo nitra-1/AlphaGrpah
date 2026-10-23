@@ -52,15 +52,19 @@ class NewsExtractor implements DocumentExtractor {
 
     private final ClaudeNewsExtractionClient claudeClient;
     private final GeminiNewsExtractionClient geminiClient;
+    private final ClaudeFallbackBudget fallbackBudget;
     private final ObjectMapper objectMapper;
     private final boolean useGemini;
 
+    static final String FALLBACK_PURPOSE = "NEWS_EXTRACTION";
+
     NewsExtractor(
-        ClaudeNewsExtractionClient claudeClient, GeminiNewsExtractionClient geminiClient, ObjectMapper objectMapper,
-        @Value("${alphagraph.corporate.news-extractor.use-gemini:true}") boolean useGemini
+        ClaudeNewsExtractionClient claudeClient, GeminiNewsExtractionClient geminiClient, ClaudeFallbackBudget fallbackBudget,
+        ObjectMapper objectMapper, @Value("${alphagraph.corporate.news-extractor.use-gemini:true}") boolean useGemini
     ) {
         this.claudeClient = claudeClient;
         this.geminiClient = geminiClient;
+        this.fallbackBudget = fallbackBudget;
         this.objectMapper = objectMapper;
         this.useGemini = useGemini;
     }
@@ -89,8 +93,19 @@ class NewsExtractor implements DocumentExtractor {
         }
         try {
             return parseResult(geminiClient.extractRawJson(context.documentText()));
+        } catch (ExtractionDeferredException e) {
+            // Gemini can't answer right now (quota/overload/outage, after waiting and retrying) -
+            // that is never a reason to spend Claude. The document stays PROCESSED for the next sweep.
+            throw e;
         } catch (Exception e) {
-            log.warn("Gemini news extraction failed, falling back to Claude: {}", e.getMessage());
+            // Gemini answered but unusably (bad/truncated JSON, rejected request, ...). Claude is the
+            // last resort, and only within today's allowance - see ClaudeFallbackBudget.
+            if (!fallbackBudget.tryAcquire(FALLBACK_PURPOSE)) {
+                throw new ExtractionDeferredException(
+                    "Gemini news extraction failed (" + e.getMessage() + ") and today's Claude fallback allowance is used up - left for the next sweep", e
+                );
+            }
+            log.warn("Gemini news extraction failed, falling back to Claude (counted against today's allowance): {}", e.getMessage());
             return parseResult(claudeClient.extractRawJson(context.documentText()));
         }
     }

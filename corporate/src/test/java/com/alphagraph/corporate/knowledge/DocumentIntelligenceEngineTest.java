@@ -24,7 +24,8 @@ class DocumentIntelligenceEngineTest {
 
     private final ClaudeDocumentClassificationClient claudeClient = mock(ClaudeDocumentClassificationClient.class);
     private final GeminiDocumentClassificationClient geminiClient = mock(GeminiDocumentClassificationClient.class);
-    private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+    private final ClaudeFallbackBudget fallbackBudget = mock(ClaudeFallbackBudget.class);
+    private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
 
     @Test
     void parsesFullClassificationFromValidJson() {
@@ -139,19 +140,20 @@ class DocumentIntelligenceEngineTest {
 
     @Test
     void newsSourceWithGeminiEnabledAndGeminiSucceedsNeverCallsClaude() {
-        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
         when(geminiClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
         DocumentClassification classification = engineWithGemini.classify("doc text", "NEWS");
 
         assertThat(classification.documentType()).isEqualTo("GENERAL_UPDATE");
         org.mockito.Mockito.verify(geminiClient).extractRawJson("doc text");
-        org.mockito.Mockito.verifyNoInteractions(claudeClient);
+        org.mockito.Mockito.verifyNoInteractions(claudeClient, fallbackBudget);
     }
 
     @Test
-    void newsSourceWithGeminiEnabledAndGeminiFailsFallsBackToClaude() {
-        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+    void newsSourceGeminiFailureFallsBackToClaudeWhileTheDailyAllowanceLasts() {
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
+        when(fallbackBudget.tryAcquire(DocumentIntelligenceEngine.FALLBACK_PURPOSE)).thenReturn(true);
         when(geminiClient.extractRawJson("doc text")).thenThrow(new IllegalStateException("Gemini API call failed"));
         when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
@@ -162,24 +164,43 @@ class DocumentIntelligenceEngineTest {
     }
 
     @Test
+    void newsSourceGeminiFailureWithTheAllowanceUsedUpDefersAndNeverCallsClaude() {
+        when(fallbackBudget.tryAcquire(DocumentIntelligenceEngine.FALLBACK_PURPOSE)).thenReturn(false);
+        when(geminiClient.extractRawJson("doc text")).thenThrow(new IllegalStateException("Gemini API call failed"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> engine.classify("doc text", "NEWS"))
+            .isInstanceOf(ExtractionDeferredException.class);
+        org.mockito.Mockito.verifyNoInteractions(claudeClient);
+    }
+
+    @Test
+    void newsSourceGeminiUnavailableDefersWithoutTouchingTheAllowanceOrClaude() {
+        when(geminiClient.extractRawJson("doc text")).thenThrow(new GeminiUnavailableException("quota", null));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> engine.classify("doc text", "NEWS"))
+            .isInstanceOf(GeminiUnavailableException.class);
+        org.mockito.Mockito.verifyNoInteractions(claudeClient, fallbackBudget);
+    }
+
+    @Test
     void nonNewsSourceNeverTouchesGeminiEvenWithFlagOn() {
-        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), true);
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
         when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
         engineWithGemini.classify("doc text", "EXCHANGE_ANNOUNCEMENT");
 
-        org.mockito.Mockito.verifyNoInteractions(geminiClient);
+        org.mockito.Mockito.verifyNoInteractions(geminiClient, fallbackBudget);
         org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
     }
 
     @Test
     void useGeminiForNewsFalseNeverCallsGeminiEvenForNews() {
-        DocumentIntelligenceEngine engineClaudeOnly = new DocumentIntelligenceEngine(claudeClient, geminiClient, new ObjectMapper(), false);
+        DocumentIntelligenceEngine engineClaudeOnly = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), false);
         when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
         engineClaudeOnly.classify("doc text", "NEWS");
 
-        org.mockito.Mockito.verifyNoInteractions(geminiClient);
+        org.mockito.Mockito.verifyNoInteractions(geminiClient, fallbackBudget);
         org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
     }
 }

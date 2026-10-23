@@ -13,21 +13,20 @@ import org.springframework.context.annotation.Configuration;
  * credentials from {@code GOOGLE_API_KEY} at call time - never hardcoded, never routed through
  * Spring's own property resolution.
  *
- * <p>{@code HttpRetryOptions} raises the SDK's own retry budget the same way
- * {@code AnthropicClientConfig.MAX_RETRIES} does for the Anthropic client - a transient Gemini
- * failure (429/5xx) should exhaust its own retry budget before {@link NewsExtractor}'s
- * Claude-fallback logic ever triggers, not fall back on the very first blip.
+ * <p>The SDK's own retry is deliberately left at a single attempt: retrying, pacing to the
+ * provider's per-minute cap, honouring a 429's requested wait and the circuit breaker all live in
+ * {@link GeminiCallExecutor}, which every Gemini call goes through. Leaving the SDK's built-in
+ * retry on would stack hidden retries (each one spending quota) under the executor's visible ones.
  */
 @Configuration
 class GeminiClientConfig {
 
-    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final int SDK_ATTEMPTS = 1; // 1 = no SDK-level retry; GeminiCallExecutor owns retries
 
     @Bean
     Client geminiClient() {
         HttpRetryOptions retryOptions = HttpRetryOptions.builder()
-            .attempts(MAX_RETRY_ATTEMPTS)
-            .httpStatusCodes(429, 500, 502, 503, 504)
+            .attempts(SDK_ATTEMPTS)
             .build();
         return Client.builder()
             .httpOptions(HttpOptions.builder().retryOptions(retryOptions).build())

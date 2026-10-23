@@ -34,6 +34,10 @@ class DocumentRouter {
             try {
                 ExtractionResult result = extractor.extract(context);
                 facts.addAll(result.facts());
+            } catch (ExtractionDeferredException e) {
+                // "Try again next sweep" must reach the orchestrator - swallowing it here would mark the
+                // document extracted with no facts and it would never be revisited.
+                throw e;
             } catch (Exception e) {
                 log.error("Extractor {} failed for document {} (symbol={}): {}",
                     extractor.getClass().getSimpleName(), context.documentId(), context.symbol(), e.getMessage(), e);

@@ -18,7 +18,8 @@ class NewsExtractorTest {
 
     private final ClaudeNewsExtractionClient claudeClient = mock(ClaudeNewsExtractionClient.class);
     private final GeminiNewsExtractionClient geminiClient = mock(GeminiNewsExtractionClient.class);
-    private final NewsExtractor extractor = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), true);
+    private final ClaudeFallbackBudget fallbackBudget = mock(ClaudeFallbackBudget.class);
+    private final NewsExtractor extractor = new NewsExtractor(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
 
     private static final String EVENT_HEADER = """
         "economicRelevance": "ECONOMIC", "theme": "DEFENCE_SPENDING", "eventDirection": "POSITIVE",
@@ -268,7 +269,7 @@ class NewsExtractorTest {
 
     @Test
     void useGeminiTrueAndGeminiSucceedsNeverCallsClaude() {
-        NewsExtractor extractorWithGemini = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), true);
+        NewsExtractor extractorWithGemini = new NewsExtractor(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
         String json = "{" + EVENT_HEADER + "\"sectorImpacts\": [], \"impacts\": []}";
         when(geminiClient.extractRawJson("doc text")).thenReturn(json);
 
@@ -276,12 +277,13 @@ class NewsExtractorTest {
 
         assertThat(result.facts()).isNotEmpty();
         org.mockito.Mockito.verify(geminiClient).extractRawJson("doc text");
-        org.mockito.Mockito.verifyNoInteractions(claudeClient);
+        org.mockito.Mockito.verifyNoInteractions(claudeClient, fallbackBudget);
     }
 
     @Test
-    void useGeminiTrueAndGeminiFailsFallsBackToClaude() {
-        NewsExtractor extractorWithGemini = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), true);
+    void geminiFailureFallsBackToClaudeWhileTheDailyAllowanceLasts() {
+        NewsExtractor extractorWithGemini = new NewsExtractor(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
+        when(fallbackBudget.tryAcquire(NewsExtractor.FALLBACK_PURPOSE)).thenReturn(true);
         when(geminiClient.extractRawJson("doc text")).thenThrow(new IllegalStateException("Gemini API call failed"));
         when(claudeClient.extractRawJson("doc text")).thenReturn("{" + EVENT_HEADER + """
             "sectorImpacts": [], "impacts": [{"companyName": "TCS", "direction": "POSITIVE", "signal": "x",
@@ -295,14 +297,34 @@ class NewsExtractorTest {
     }
 
     @Test
+    void geminiFailureWithTheAllowanceUsedUpDefersTheDocumentAndNeverCallsClaude() {
+        when(fallbackBudget.tryAcquire(NewsExtractor.FALLBACK_PURPOSE)).thenReturn(false);
+        when(geminiClient.extractRawJson("doc text")).thenReturn("{ not json");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> extractor.extract(context("doc text")))
+            .isInstanceOf(ExtractionDeferredException.class)
+            .hasMessageContaining("left for the next sweep");
+        org.mockito.Mockito.verifyNoInteractions(claudeClient);
+    }
+
+    @Test
+    void geminiBeingUnavailableDefersTheDocumentWithoutTouchingTheAllowanceOrClaude() {
+        when(geminiClient.extractRawJson("doc text")).thenThrow(new GeminiUnavailableException("quota", null));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> extractor.extract(context("doc text")))
+            .isInstanceOf(GeminiUnavailableException.class);
+        org.mockito.Mockito.verifyNoInteractions(claudeClient, fallbackBudget);
+    }
+
+    @Test
     void useGeminiFalseNeverCallsGeminiAtAll() {
-        NewsExtractor extractorClaudeOnly = new NewsExtractor(claudeClient, geminiClient, new ObjectMapper(), false);
+        NewsExtractor extractorClaudeOnly = new NewsExtractor(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), false);
         String json = "{" + EVENT_HEADER + "\"sectorImpacts\": [], \"impacts\": []}";
         when(claudeClient.extractRawJson("doc text")).thenReturn(json);
 
         extractorClaudeOnly.extract(context("doc text"));
 
-        org.mockito.Mockito.verifyNoInteractions(geminiClient);
+        org.mockito.Mockito.verifyNoInteractions(geminiClient, fallbackBudget);
         org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
     }
 

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests routing/dispatch logic in isolation from any real extractor implementation. */
 class DocumentRouterTest {
@@ -61,6 +62,26 @@ class DocumentRouterTest {
         List<ExtractedFact> facts = router.route(context());
 
         assertThat(facts).extracting(ExtractedFact::factType).containsExactly("still-works");
+    }
+
+    @Test
+    void aDeferralIsNotSwallowedSoTheDocumentIsNeverMarkedExtractedWithNoFacts() {
+        // Unlike an ordinary failure above, "try again next sweep" has to reach the orchestrator -
+        // swallowing it would mark the document extracted with no facts and it would never be revisited.
+        DocumentExtractor deferring = new DocumentExtractor() {
+            @Override
+            public boolean supports(DocumentClassification classification) {
+                return true;
+            }
+
+            @Override
+            public ExtractionResult extract(DocumentContext context) {
+                throw new GeminiUnavailableException("quota", null);
+            }
+        };
+
+        assertThatThrownBy(() -> new DocumentRouter(List.of(deferring)).route(context()))
+            .isInstanceOf(ExtractionDeferredException.class);
     }
 
     private DocumentContext context() {
