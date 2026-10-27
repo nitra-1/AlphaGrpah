@@ -25,7 +25,7 @@ class DocumentIntelligenceEngineTest {
     private final ClaudeDocumentClassificationClient claudeClient = mock(ClaudeDocumentClassificationClient.class);
     private final GeminiDocumentClassificationClient geminiClient = mock(GeminiDocumentClassificationClient.class);
     private final ClaudeFallbackBudget fallbackBudget = mock(ClaudeFallbackBudget.class);
-    private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
+    private final DocumentIntelligenceEngine engine = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true, 10000);
 
     @Test
     void parsesFullClassificationFromValidJson() {
@@ -140,7 +140,7 @@ class DocumentIntelligenceEngineTest {
 
     @Test
     void newsSourceWithGeminiEnabledAndGeminiSucceedsNeverCallsClaude() {
-        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true, 10000);
         when(geminiClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
         DocumentClassification classification = engineWithGemini.classify("doc text", "NEWS");
@@ -152,7 +152,7 @@ class DocumentIntelligenceEngineTest {
 
     @Test
     void newsSourceGeminiFailureFallsBackToClaudeWhileTheDailyAllowanceLasts() {
-        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true, 10000);
         when(fallbackBudget.tryAcquire(DocumentIntelligenceEngine.FALLBACK_PURPOSE)).thenReturn(true);
         when(geminiClient.extractRawJson("doc text")).thenThrow(new IllegalStateException("Gemini API call failed"));
         when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
@@ -184,7 +184,7 @@ class DocumentIntelligenceEngineTest {
 
     @Test
     void nonNewsSourceNeverTouchesGeminiEvenWithFlagOn() {
-        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true);
+        DocumentIntelligenceEngine engineWithGemini = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), true, 10000);
         when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
         engineWithGemini.classify("doc text", "EXCHANGE_ANNOUNCEMENT");
@@ -195,12 +195,77 @@ class DocumentIntelligenceEngineTest {
 
     @Test
     void useGeminiForNewsFalseNeverCallsGeminiEvenForNews() {
-        DocumentIntelligenceEngine engineClaudeOnly = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), false);
+        DocumentIntelligenceEngine engineClaudeOnly = new DocumentIntelligenceEngine(claudeClient, geminiClient, fallbackBudget, new ObjectMapper(), false, 10000);
         when(claudeClient.extractRawJson("doc text")).thenReturn(VALID_JSON);
 
         engineClaudeOnly.classify("doc text", "NEWS");
 
         org.mockito.Mockito.verifyNoInteractions(geminiClient, fallbackBudget);
         org.mockito.Mockito.verify(claudeClient).extractRawJson("doc text");
+    }
+
+    @Test
+    void shortDocumentsAreSentToStage1Unchanged() {
+        assertThat(DocumentIntelligenceEngine.excerpt("short text", 10000)).isEqualTo("short text");
+        assertThat(DocumentIntelligenceEngine.excerpt(null, 10000)).isNull();
+    }
+
+    @Test
+    void aLongDocumentBecomesItsBeginningAndEndWithAnExplicitOmissionMarker() {
+        String text = "A".repeat(8000) + "M".repeat(50000) + "Z".repeat(2000) + "TAILEND";
+
+        String excerpt = DocumentIntelligenceEngine.excerpt(text, 10000);
+
+        assertThat(excerpt).startsWith("A".repeat(8000));
+        assertThat(excerpt).endsWith("TAILEND");
+        assertThat(excerpt).doesNotContain("M");
+        assertThat(excerpt).contains("characters omitted from the middle of this long document");
+        assertThat(excerpt.length()).isLessThan(10300);
+    }
+
+    @Test
+    void theOmissionMarkerStatesHowManyCharactersWereLeftOut() {
+        String text = "x".repeat(60000);
+
+        assertThat(DocumentIntelligenceEngine.excerpt(text, 10000)).contains("[... 50000 characters omitted");
+    }
+
+    @Test
+    void aMaxCharsOfZeroDisablesTheExcerptEntirely() {
+        String text = "x".repeat(60000);
+
+        assertThat(DocumentIntelligenceEngine.excerpt(text, 0)).isEqualTo(text);
+    }
+
+    @Test
+    void classifyHandsClaudeTheExcerptNotTheWholeDocument() {
+        String longText = "HEAD" + "m".repeat(60000) + "TAIL";
+        String excerpt = DocumentIntelligenceEngine.excerpt(longText, 10000);
+        when(claudeClient.extractRawJson(excerpt)).thenReturn(VALID_JSON);
+
+        engine.classify(longText, "EXCHANGE_ANNOUNCEMENT");
+
+        org.mockito.Mockito.verify(claudeClient).extractRawJson(excerpt);
+        org.mockito.Mockito.verify(claudeClient, org.mockito.Mockito.never()).extractRawJson(longText);
+    }
+
+    @Test
+    void classifyHandsGeminiTheExcerptToo() {
+        String longText = "HEAD" + "m".repeat(60000) + "TAIL";
+        String excerpt = DocumentIntelligenceEngine.excerpt(longText, 10000);
+        when(geminiClient.extractRawJson(excerpt)).thenReturn(VALID_JSON);
+
+        engine.classify(longText, "NEWS");
+
+        org.mockito.Mockito.verify(geminiClient).extractRawJson(excerpt);
+    }
+
+    @Test
+    void thePromptSaysAnExcerptMayBeShownButDoesNotInviteExtraExtractorsJustInCase() {
+        String prompt = DocumentIntelligenceEngine.buildPrompt("text");
+
+        assertThat(prompt).contains("EXCERPT of a long document");
+        assertThat(prompt).contains("do not add an extractor");
+        assertThat(prompt).doesNotContain("even when that content isn't visible");
     }
 }

@@ -49,18 +49,21 @@ public class DocumentIntelligenceEngine {
     private final ClaudeFallbackBudget fallbackBudget;
     private final ObjectMapper objectMapper;
     private final boolean useGeminiForNews;
+    private final int maxChars;
 
     static final String FALLBACK_PURPOSE = "NEWS_CLASSIFICATION";
 
     public DocumentIntelligenceEngine(
         ClaudeDocumentClassificationClient claudeClient, GeminiDocumentClassificationClient geminiClient, ClaudeFallbackBudget fallbackBudget,
-        ObjectMapper objectMapper, @Value("${alphagraph.corporate.stage1-classification.use-gemini-for-news:true}") boolean useGeminiForNews
+        ObjectMapper objectMapper, @Value("${alphagraph.corporate.stage1-classification.use-gemini-for-news:true}") boolean useGeminiForNews,
+        @Value("${alphagraph.corporate.stage1-classification.max-chars:30000}") int maxChars
     ) {
         this.claudeClient = claudeClient;
         this.geminiClient = geminiClient;
         this.fallbackBudget = fallbackBudget;
         this.objectMapper = objectMapper;
         this.useGeminiForNews = useGeminiForNews;
+        this.maxChars = maxChars;
     }
 
     /**
@@ -74,7 +77,11 @@ public class DocumentIntelligenceEngine {
      * inside the try, not after it, so a "succeeded but garbage" Gemini response is caught the
      * same as an outright call failure.
      */
-    public DocumentClassification classify(String documentText, String source) {
+    public DocumentClassification classify(String fullDocumentText, String source) {
+        // Stage 1 only decides what the document is and which extractors it needs - it never reads
+        // figures (that's Stage 2, which still gets the full text). Sending a 677,000-character
+        // filing whole just to learn it is a results announcement was a large share of the Claude bill.
+        String documentText = excerpt(fullDocumentText, maxChars);
         if (!useGeminiForNews || !"NEWS".equals(source)) {
             return parseClassification(claudeClient.extractRawJson(documentText));
         }
@@ -91,6 +98,23 @@ public class DocumentIntelligenceEngine {
             log.warn("Gemini document classification failed, falling back to Claude (counted against today's allowance): {}", e.getMessage());
             return parseClassification(claudeClient.extractRawJson(documentText));
         }
+    }
+
+    /**
+     * The beginning and end of a long document (80% / 20% of {@code maxChars}) with an explicit
+     * marker for what was left out, so the model knows it is looking at an excerpt. Short documents,
+     * and {@code maxChars <= 0}, are returned unchanged.
+     */
+    static String excerpt(String text, int maxChars) {
+        if (maxChars <= 0 || text == null || text.length() <= maxChars) {
+            return text;
+        }
+        int headChars = maxChars * 4 / 5;
+        int tailChars = maxChars - headChars;
+        int omitted = text.length() - headChars - tailChars;
+        return text.substring(0, headChars)
+            + "\n\n[... " + omitted + " characters omitted from the middle of this long document ...]\n\n"
+            + text.substring(text.length() - tailChars);
     }
 
     DocumentClassification parseClassification(String rawJson) {
@@ -170,6 +194,12 @@ public class DocumentIntelligenceEngine {
               industry-wide development. If none applies, or another kind of specialized
               processing seems relevant, suggest a short descriptive uppercase identifier of your
               own, or return an empty list if nothing specialized applies.
+
+            The text below may be an EXCERPT of a long document - if it contains a line saying
+            characters were omitted, you are seeing only the beginning and the end. Classify what the
+            whole document evidently is. Base the extractor recommendations on what you can actually
+            see and on what this type of document evidently contains - do not add an extractor "just
+            in case", because each one re-reads the whole document.
 
             Document text:
             %s

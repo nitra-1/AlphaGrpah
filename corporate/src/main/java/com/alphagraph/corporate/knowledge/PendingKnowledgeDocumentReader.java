@@ -34,7 +34,7 @@ class PendingKnowledgeDocumentReader {
 
     List<PendingKnowledgeDocument> findProcessed() {
         return jdbcTemplate.query(
-            "SELECT id, instrument_id, symbol, extracted_text, source FROM corporate.documents WHERE status = 'PROCESSED'",
+            "SELECT id, instrument_id, symbol, extracted_text, source FROM corporate.documents WHERE status = 'PROCESSED' ORDER BY announced_at, id",
             ROW_MAPPER
         );
     }

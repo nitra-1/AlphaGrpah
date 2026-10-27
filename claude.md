@@ -1966,6 +1966,54 @@ an earlier note attributing one such article to Stage 1 routing was not backed b
 per-call provider/token logging exists beyond the fallback counter; announcements remain the
 uncapped Claude cost.
 
+**Announcement cost controls** (2026-10-27): user's Anthropic console chart showed October at ~$45
+(vs ~$2/week earlier) with four spike days. Cross-checking each against what the DB says was
+extracted that day split it into two causes: (a) news falling back to Claude because Gemini's free
+tier caps at 5 requests/min (17 Oct-ish, **18 Oct ~$9.7: 319 news + 43 announcements; 22 Oct ~$5.3:
+217 news, tiny announcements** - after subtracting announcements, ~2.2 cents per news article, the
+same figure derived independently from token sizes; addressed by the 2026-10-23 throttle/capped
+fallback), and (b) results-season announcement bursts (**17 Oct ~$7.2, 24 Oct ~$8.8: 49
+announcements, 3.34M chars vs ~230k on a normal day**), which that change doesn't touch. Cost of
+announcements is ~$2.6 per million characters at that mix. The user's interactive sessions are not
+on this account (23 Oct, the heaviest session, shows ~$0.05). Two things made 24 Oct large: **46% of
+its text was the same filing re-sent** (one filing is attached to several announcements - "results",
+"record date", "board outcome" - and each was stored and sent to Claude in full: INFY's 677k-char PDF
+twice, SHRIRAMFIN's 141k-char PDF eight times; 30% of all announcement text over 30 days), and
+Stage 1 sent the *whole* document to Claude just to learn what kind it is.
+
+Changes: (1) **Stage 1 excerpt** - `DocumentIntelligenceEngine.excerpt`: documents over
+`stage1-classification.max-chars` (default 30000; 0 = old behaviour) are sent as their first 80% +
+last 20% with an explicit "N characters omitted" marker; Stage 2 extractors still get the full text.
+(2) **Repeat skip** - `documents.text_hash` (md5, backfilled in V21) + `duplicate_of_document_id`:
+an announcement whose text is identical to one already extracted for the same symbol is marked
+extracted with no LLM call and no facts of its own (so the filing is also no longer counted once per
+announcement downstream); only a fully extracted non-repeat counts as the original, so a
+failed/deferred twin never causes a skip (`DocumentRepeatDetector`). (3) **Daily text allowance** -
+`announcement-text-budget.daily-chars` (default 1.5M, India day, 0 = no cap): each announcement's
+length is charged once atomically in `corporate.claude_text_usage` (survives restarts); past it the
+rest are deferred to the next sweep, oldest first (`findProcessed` now `ORDER BY announced_at`),
+nothing is dropped; the first document of a day always runs so a single huge filing can't be starved.
+Deferral reuses `ExtractionDeferredException`; the orchestrator's summary line now also counts
+repeats skipped.
+
+Validated on real data, not just unit tests (22 new/updated tests; full `./gradlew build` green):
+Java `TextHash` equals Postgres `md5(text)` on 120/120 real documents incl. 80 non-ASCII; real Claude
+Stage 1 on excerpts of 24 real long announcements vs. what the full text had produced: at 30k input
+to Claude falls **33%** (Stage 1 2.84M -> 0.72M chars, Stage 2 up slightly because Stage 1 recommends
+somewhat more extractors) and the **financial-results extractor was still chosen 11/11**, but the
+**management-guidance extractor was chosen for only 16 of the 20 extractor uses the full text had**
+(10k saved 39% but kept 14/20). The misses include ICICIBANK where 85% of the text was visible, so
+Stage 1's pick of the guidance extractor is noisy even on full text - truncation is not the only
+cause, but some guidance facts (e.g. INFY's revenue guidance, in the body of a 677k-char document)
+will now be missed. A keyword rescue was tried and rejected: "guidance|outlook" over all 134 long
+announcements found 11/20 guidance documents with 35 false positives, a broader cue 16/20 with 45.
+An earlier prompt note telling the model to recommend whatever a document type "normally needs"
+over-recommended (Stage 2 input +67% on the sample) and was replaced by "do not add an extractor just
+in case". Set `max-chars: 0` to restore full-text Stage 1. Not verified yet: a full sweep under the
+new controls (first one is the 18:30 IST run; no announcements were waiting at deploy time, so tonight's
+repeat count and allowance use were not forecast). The ~$0.8 spent on the two classification probes
+was real Claude spend.
+
 What we're building is not an application. We're building a financial intelligence platform. Those platforms almost always fail when teams jump straight into UI and dashboards. Bloomberg, FactSet, Capital IQ, and TradingView all spent years building their data and intelligence layers before polishing the front end.
 
 So let's treat AlphaGraph like an enterprise platform.

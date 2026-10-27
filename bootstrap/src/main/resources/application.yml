@@ -70,3 +70,17 @@ alphagraph:
       # unconditionally regardless of this flag - a Stage 1 misclassification silently misroutes a
       # document, so this pilot deliberately does not extend beyond public news content.
       use-gemini-for-news: true
+      # Stage 1 only decides what a document is and which extractors it needs, so a long document is
+      # sent as just its beginning and end (80%/20% of this many characters, with a marker for the
+      # omitted middle); Stage 2 extractors still get the full text. Measured on 24 real long
+      # announcements: input to Claude -33%, the financial-results extractor still chosen 11/11,
+      # but the management-guidance extractor was chosen for 16 of the 20 extractor uses the full
+      # text had (Stage 1's pick of it is noisy even on full text). 10000 saved more (-39%) and
+      # kept fewer (14/20). 0 = send everything (the old behaviour).
+      max-chars: 30000
+    announcement-text-budget:
+      # Ceiling on exchange-announcement text sent for extraction per India calendar day (counted
+      # once per document; ~$2.6 per million characters at October's mix). Past it, the rest wait
+      # for the next sweep, oldest first - nothing is dropped. The first document of a day always
+      # runs. A results-season Saturday brought 3.3M characters (~$9); 0 = no cap.
+      daily-chars: 1500000
